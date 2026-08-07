@@ -1,0 +1,277 @@
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { createDeadline, deleteDeadline, updateDeadline, logDeadlineProgress } from "../api.js";
+import { formatDuration } from "../format.js";
+import { useConfirm } from "./ConfirmDialog.jsx";
+import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
+import Dropdown from "./Dropdown.jsx";
+
+// Same flag glyph as the Deadlines tab icon, tinted with the deadline
+// category accent so every deadline card reads as one visual family.
+function FlagIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 3v18" />
+      <path d="M6 4h11l-2 3 2 3H6" />
+    </svg>
+  );
+}
+
+const STATUS_COPY = {
+  done: { label: "Goal met", tone: "focus-green" },
+  overdue: { label: "Overdue", tone: "rust" },
+  ahead: { label: "Ahead of pace", tone: "focus-green" },
+  onTrack: { label: "On track", tone: "brass" },
+  tight: { label: "Tight, pick up the pace", tone: "brass" },
+  behind: { label: "Behind pace", tone: "rust" },
+  unknown: { label: "Not enough history yet", tone: "dim" },
+};
+
+function LogProgressInline({ deadline, onLogged }) {
+  const [value, setValue] = useState("");
+  async function submit(e) {
+    e.preventDefault();
+    const hours = Number(value);
+    if (!hours || hours <= 0) return;
+    await logDeadlineProgress(deadline.id, hours);
+    setValue("");
+    onLogged();
+  }
+  return (
+    <form className="fd-log-progress" onSubmit={submit}>
+      <input
+        type="number"
+        step="0.25"
+        min="0.25"
+        placeholder="Hours worked"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button type="submit" className="fd-link-btn">
+        Log
+      </button>
+    </form>
+  );
+}
+
+export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, onDataChanged }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [tagId, setTagId] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [estHours, setEstHours] = useState(10);
+  const [addAsTask, setAddAsTask] = useState(false);
+  const [error, setError] = useState(null);
+  const [pendingIds, setPendingIds] = useState(() => new Set());
+  const confirm = useConfirm();
+  const requestDelete = useUndoableDelete();
+
+  const avgHours = avgDailyFocusSeconds / 3600;
+  const active = deadlines.filter((d) => d.status !== "done" && d.status !== "archived" && !pendingIds.has(d.id));
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!title.trim() || !dueDate) return;
+    setError(null);
+    try {
+      await createDeadline({
+        title: title.trim(),
+        tag_id: tagId || null,
+        due_date: dueDate,
+        estimated_hours: Number(estHours),
+        add_as_task: addAsTask,
+      });
+      setTitle("");
+      setDueDate("");
+      setAddAsTask(false);
+      setFormOpen(false);
+      onDataChanged();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleMarkDone(id) {
+    await updateDeadline(id, { status: "done" });
+    onDataChanged();
+  }
+
+  async function handleDelete(deadline) {
+    const ok = await confirm({ title: `Delete "${deadline.title}"?` });
+    if (!ok) return;
+
+    setPendingIds((prev) => new Set(prev).add(deadline.id));
+    requestDelete({
+      id: deadline.id,
+      label: "Deadline",
+      onHide: () => {},
+      onRestore: () =>
+        setPendingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(deadline.id);
+          return next;
+        }),
+      deleteFn: () => deleteDeadline(deadline.id),
+      afterCommit: onDataChanged,
+    });
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.12 }}
+      className="fd-view"
+    >
+      <div className="fd-view__head">
+        <div className="fd-panel__label" style={{ marginBottom: 0 }}>
+          Deadline Planner
+        </div>
+        <button className="fd-link-btn" onClick={() => setFormOpen((v) => !v)}>
+          {formOpen ? "Cancel" : "+ New Deadline"}
+        </button>
+      </div>
+
+      <div className="fd-pace-note">
+        Your real average: <strong>{formatDuration(avgDailyFocusSeconds)}/day</strong> over the last
+        30 days, used below to judge whether each plan is realistic.
+      </div>
+
+      <AnimatePresence>
+        {formOpen && (
+          <motion.form
+            className="fd-manual-form"
+            onSubmit={handleCreate}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <div className="fd-manual-form__row">
+              <label>
+                Title
+                <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} required />
+              </label>
+            </div>
+            <div className="fd-manual-form__row">
+              <label>
+                Due date
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+              </label>
+              <label>
+                Estimated hours needed
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  value={estHours}
+                  onChange={(e) => setEstHours(e.target.value)}
+                  required
+                />
+              </label>
+            </div>
+            <div className="fd-manual-form__row">
+              <label>
+                Track via tag (optional, progress auto-calculated from sessions)
+                <Dropdown className="fd-select" value={tagId} onChange={(e) => setTagId(e.target.value)}>
+                  <option value="">No tag, I'll log progress manually</option>
+                  {tags.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Dropdown>
+              </label>
+            </div>
+            <div className="fd-manual-form__row">
+              <label className="fd-checkbox-row">
+                <input type="checkbox" checked={addAsTask} onChange={(e) => setAddAsTask(e.target.checked)} />
+                Also add to my task list
+              </label>
+            </div>
+            {error && <div className="fd-inline-error">{error}</div>}
+            <div className="fd-manual-form__actions">
+              <button type="submit" className="fd-btn fd-btn--start">
+                Add Deadline
+              </button>
+            </div>
+          </motion.form>
+        )}
+      </AnimatePresence>
+
+      {active.length === 0 && (
+        <div className="fd-empty">No active deadlines. Add one above to get a daily pace plan.</div>
+      )}
+
+      <div className="fd-deadline-list">
+        <AnimatePresence initial={false}>
+          {active.map((d) => {
+            const status = STATUS_COPY[d.status] || STATUS_COPY.unknown;
+            const pct = d.remainingHours <= 0 ? 1 : Math.min(1, d.completedHours / Number(d.estimated_hours));
+            return (
+              <motion.div
+                key={d.id}
+                layout
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                transition={{ duration: 0.25 }}
+                className="fd-panel fd-deadline-card fd-check-card--deadline"
+              >
+                <div className="fd-check-card">
+                  <span className="fd-check-card__icon">
+                    <FlagIcon />
+                  </span>
+                  <div className="fd-check-card__body">
+                    <span className="fd-check-card__title">{d.title}</span>
+                    <span className="fd-check-card__meta">
+                      ★ {d.daysLeft >= 0 ? `${d.daysLeft} days left` : `${-d.daysLeft} days overdue`}
+                    </span>
+                  </div>
+                  <div className="fd-check-card__value">
+                    <span className="fd-check-card__value-num">{d.completedHours.toFixed(1)}h</span>
+                    <span className="fd-check-card__value-unit">of {Number(d.estimated_hours).toFixed(1)}h</span>
+                  </div>
+                  <div className="fd-deadline-card__actions">
+                    <button className="fd-icon-btn" onClick={() => handleMarkDone(d.id)} aria-label="Mark done">
+                      ✓
+                    </button>
+                    <button className="fd-icon-btn" onClick={() => handleDelete(d)} aria-label="Delete">
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div className="fd-tag-row__bar-track">
+                  <motion.div
+                    className="fd-tag-row__bar"
+                    style={{ background: "var(--accent-deadline)" }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct * 100}%` }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                  />
+                </div>
+
+                {d.remainingHours > 0 && (
+                  <div className="fd-deadline-card__pace">
+                    Need <strong>{d.hoursPerDayNeeded.toFixed(1)}h/day</strong> to finish in time
+                    {avgHours > 0 && ` (you average ${avgHours.toFixed(1)}h/day)`}.
+                  </div>
+                )}
+
+                <div className={`fd-deadline-card__status fd-deadline-card__status--${status.tone}`}>
+                  {status.label}
+                </div>
+
+                {!d.tag_id && d.status !== "done" && (
+                  <LogProgressInline deadline={d} onLogged={onDataChanged} />
+                )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
