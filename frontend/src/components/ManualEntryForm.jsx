@@ -65,7 +65,7 @@ export default function ManualEntryForm({ tags, onSessionCreated }) {
           </Dropdown>
         </label>
       </div>
-      <div className="fd-manual-form__row">
+      <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Start
           <input

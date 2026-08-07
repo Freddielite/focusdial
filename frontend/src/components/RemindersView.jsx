@@ -114,7 +114,7 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
 
   return (
     <form className="fd-manual-form" onSubmit={submitDeadline}>
-      <div className="fd-manual-form__row">
+      <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Due date
           <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
@@ -246,7 +246,7 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
                 <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} required />
               </label>
             </div>
-            <div className="fd-manual-form__row">
+            <div className="fd-manual-form__row fd-manual-form__row--dates">
               <label>
                 Remind me at
                 <input

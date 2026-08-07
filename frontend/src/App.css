@@ -861,6 +861,26 @@ button {
   color: var(--parchment);
   border-radius: 4px;
   font-family: var(--font-body);
+  width: 100%;
+}
+
+/* date/datetime-local inputs render several fixed-width internal
+   segments (month/day/year, hour/minute, AM/PM, plus the calendar-icon
+   button) that don't compress below a certain point — on a narrow phone,
+   two of them side-by-side (Start/End) simply don't have room and
+   overflow/clip, which is the "broken browser default" look this fixes.
+   Stacking them one-per-row on mobile gives each one its full natural
+   width instead of fighting for space. Applied via a modifier class
+   (rather than to every .fd-manual-form__row) so short-field rows like
+   Tag/Hours elsewhere keep their normal side-by-side layout. */
+@media (max-width: 480px) {
+  .fd-manual-form__row--dates {
+    flex-direction: column;
+  }
+
+  .fd-manual-form__row--dates label {
+    min-width: 0;
+  }
 }
 
 .fd-manual-form__actions {

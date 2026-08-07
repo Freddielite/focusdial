@@ -57,7 +57,7 @@ export default function SessionEditModal({ session, tags, onClose, onSaved }) {
               </Dropdown>
             </label>
           </div>
-          <div className="fd-manual-form__row">
+          <div className="fd-manual-form__row fd-manual-form__row--dates">
             <label>
               Start
               <input

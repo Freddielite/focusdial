@@ -1176,3 +1176,39 @@ un-retrofitted direct delete call across every component — none found.
 interaction (tap delete, see the toast, tap Undo before it closes, item
 reappears) needs a real click-through, same as everything else built in
 this sandbox.
+
+## Date/time input mobile overflow fix
+
+Every paired date/time field in the app (Start+End in
+`ManualEntryForm.jsx`/`SessionEditModal.jsx`, Due-date+Hours in
+`DeadlinesView.jsx`/`RemindersView.jsx`, Remind-at+Repeat in
+`RemindersView.jsx`) was overflowing/clipping on narrow phones. Root
+cause: native `date`/`datetime-local` inputs render several fixed-width
+internal segments (month/day/year, hour/minute, AM/PM, the calendar-icon
+button) that don't compress — two of them side-by-side in a flex row
+simply don't have room on a ~360-390px phone. `color-scheme` was already
+set correctly (so the native picker *popup* itself was already themed
+right), the bug was purely the closed-state field's layout.
+
+Fix: `width: 100%` on `.fd-manual-form__row input`/`select` (they had no
+explicit width before, relying on browser intrinsic sizing), plus a new
+`.fd-manual-form__row--dates` modifier class (added to the JSX of each
+of those specific rows, not applied blanket to
+`.fd-manual-form__row`) that stacks the pair vertically on screens
+≤480px instead of forcing them side-by-side. Scoped to a modifier rather
+than the base row class so short-field rows elsewhere (Tag, Note, etc.)
+keep their normal wrapping behavior.
+
+**Worth knowing for anyone extending date/time UI further:** this
+codebase already solved the equivalent problem for `<select>` properly —
+`Dropdown.jsx` is a fully custom-built replacement (portaled option
+list, positioned/flipped to avoid clipping, styled to match the rest of
+the app) rather than a CSS patch on the native element. Native
+`date`/`datetime-local` inputs don't have an equivalent custom
+replacement here yet — this fix keeps the native browser picker (now
+just correctly *sized*), it doesn't rebuild it. If pixel-perfect
+cross-device consistency for the picker *popup* itself (not just the
+closed field) is ever wanted, a custom calendar/time-select component
+following the same pattern as `Dropdown.jsx` would be the natural next
+step — flagged, not built, this session.
+
