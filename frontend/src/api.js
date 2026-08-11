@@ -103,11 +103,12 @@ export const updateSession = (id, payload) =>
   apiFetch(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const deleteSession = (id) => apiFetch(`/sessions/${id}`, { method: "DELETE" });
 
-// Returns { sessions, total } -- total is every completed session you
-// have, not just this page, so callers can render page counts / disable
-// Next without a separate request.
-export const listRecentSessions = (limit = 10, offset = 0) =>
-  apiFetch(`/sessions?limit=${limit}&offset=${offset}`);
+// Returns { sessions, total }. total is null when includeTotal is false
+// -- callers that already know the total (paging without a mutation)
+// pass that to skip the count query server-side; total is only worth
+// recomputing on first load or after a create/delete.
+export const listRecentSessions = (limit = 10, offset = 0, includeTotal = true) =>
+  apiFetch(`/sessions?limit=${limit}&offset=${offset}&count=${includeTotal ? 1 : 0}`);
 export const getSessionHistory = () => apiFetch("/sessions/history");
 
 // Not an apiFetch call — this is a direct download link handed to an <a>

@@ -35,16 +35,17 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
 
-  async function load(pageNum) {
+  async function load(pageNum, { withTotal = true } = {}) {
     setLoading(true);
     setError(null);
     try {
       const { sessions: rows, total: count } = await listRecentSessions(
         PAGE_SIZE,
-        (pageNum - 1) * PAGE_SIZE
+        (pageNum - 1) * PAGE_SIZE,
+        withTotal
       );
       setSessions(rows);
-      setTotal(count);
+      if (count !== null) setTotal(count);
       setPage(pageNum);
       setPendingIds(new Set());
     } catch (err) {
@@ -59,13 +60,22 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
   // created/completed elsewhere on this tab" (Timer, Manual entry both
   // live outside this component), which is what `sessionsVersion`
   // signals. A bump there jumps back to page 1, same as most apps do
-  // after adding something to a list that's newest-first.
+  // after adding something to a list that's newest-first. The total can
+  // genuinely have changed here (a session was added), so this is one
+  // of the few calls that keeps the default withTotal: true.
   useEffect(() => {
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionsVersion]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Plain paging: the row count on this page can change, the total
+  // number of sessions across all pages cannot -- so skip re-querying
+  // it on every click.
+  function goToPage(pageNum) {
+    load(pageNum, { withTotal: false });
+  }
 
   async function handleDelete(session) {
     const ok = await confirm({
@@ -90,11 +100,11 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
       deleteFn: () => deleteSession(session.id),
       afterCommit: () => {
         onSessionDeleted?.(session.id);
-        // If this was the last item on a page beyond the first, land on
-        // whatever the new last page is instead of showing an empty
-        // page -- otherwise deleting the sole item on the last page
-        // leaves you stranded looking at nothing with no way back
-        // except the Prev button.
+        // Deleting a row changes the total, so this is the other case
+        // (besides initial load) that needs the real count back --
+        // also lands on whatever the new last page is instead of
+        // showing an empty page if this was the sole item on one past
+        // page 1.
         const newTotal = Math.max(0, total - 1);
         const newLastPage = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
         load(Math.min(page, newLastPage));
@@ -104,7 +114,9 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
 
   function handleSaved(updated) {
     onSessionUpdated?.(updated);
-    load(page);
+    // An edit can't change how many sessions exist, just their content
+    // -- no need to recount.
+    load(page, { withTotal: false });
   }
 
   const visibleSessions = sessions.filter((s) => !pendingIds.has(s.id));
@@ -164,7 +176,7 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
           <button
             type="button"
             className="fd-link-btn"
-            onClick={() => load(page - 1)}
+            onClick={() => goToPage(page - 1)}
             disabled={loading || page <= 1}
           >
             ← Prev
@@ -175,7 +187,7 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
           <button
             type="button"
             className="fd-link-btn"
-            onClick={() => load(page + 1)}
+            onClick={() => goToPage(page + 1)}
             disabled={loading || page >= totalPages}
           >
             Next →

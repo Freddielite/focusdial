@@ -195,24 +195,29 @@ sessionsRouter.get("/sessions/export", async (req, res) => {
 sessionsRouter.get("/sessions", async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 200);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
+  // The COUNT(*) is a full scan of this user's completed sessions --
+  // cheap at hobby-app scale, but there's no reason to redo it on every
+  // plain Prev/Next click, since paging alone can never change the
+  // total. Callers pass count=0 for that case and reuse the total they
+  // already have; count=1 (the default) is for the initial load and
+  // after anything that could actually change the row count (create,
+  // delete).
+  const includeTotal = req.query.count !== "0";
   try {
-    // Total count (of completed sessions only, matching the WHERE below)
-    // is returned alongside the page itself so the frontend can render
-    // "Page X of Y" / disable Next without a second round trip.
-    const [{ rows }, { rows: countRows }] = await Promise.all([
-      pool.query(
-        `SELECT s.*, t.name AS tag_name, t.color AS tag_color
-         FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id
-         WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
-         ORDER BY s.started_at DESC LIMIT $2 OFFSET $3`,
-        [req.userId, limit, offset]
-      ),
-      pool.query(
-        `SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND ended_at IS NOT NULL`,
-        [req.userId]
-      ),
-    ]);
-    res.json({ sessions: rows, total: Number(countRows[0].count) });
+    const rowsPromise = pool.query(
+      `SELECT s.*, t.name AS tag_name, t.color AS tag_color
+       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id
+       WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
+       ORDER BY s.started_at DESC LIMIT $2 OFFSET $3`,
+      [req.userId, limit, offset]
+    );
+    const countPromise = includeTotal
+      ? pool.query(`SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND ended_at IS NOT NULL`, [req.userId])
+      : Promise.resolve(null);
+    const [{ rows }, countResult] = await Promise.all([rowsPromise, countPromise]);
+    // total: null tells the frontend "unchanged, keep what you already
+    // have" rather than something it needs to react to.
+    res.json({ sessions: rows, total: countResult ? Number(countResult.rows[0].count) : null });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "failed to list sessions" });

@@ -1369,3 +1369,20 @@ bounded lists (open tasks, active/upcoming reminders) that don't grow
 into the hundreds the way session history does, so they were left as
 plain unpaginated lists — flagged here in case that assumption stops
 holding and one of them needs the same treatment later.
+
+### Follow-up: skip the recount on plain page turns
+
+Caught right after the pagination above shipped: `GET /api/sessions` ran
+a `COUNT(*)` on *every* request, including a plain Prev/Next click where
+the total can't possibly have changed — pure wasted work, worse the more
+sessions someone has.
+
+Fixed with a `count=0|1` query param (default `1`, so nothing calling
+the old shape breaks): `count=0` skips the COUNT query server-side and
+returns `total: null`, which the frontend reads as "unchanged, keep what
+you already have" rather than something to act on. `SessionLog`'s
+`load(pageNum, { withTotal })` defaults to `true`, and only plain
+Prev/Next (`goToPage`) and post-edit refetches pass `withTotal: false` —
+initial load and post-delete refetches still pass `true`, since those
+are exactly the two moments the total can genuinely change (a session
+was added or removed).
