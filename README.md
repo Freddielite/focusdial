@@ -35,12 +35,25 @@ mapping.
 
 ## Deadline Planner
 
-Enter a task, a due date, and how many hours it'll take. Optionally link
-it to a tag — if you do, progress is computed automatically from real
-logged sessions on that tag (only counting sessions logged *after* the
-deadline was created, so pre-existing history doesn't inflate progress
-you hadn't actually made toward this specific goal). Without a linked
-tag, you log progress manually with a simple "add N hours" action.
+Enter a task, a due date, and how many hours it'll take. An optional due
+*time* can go with the date, for deadlines that are due at a specific
+moment rather than just "sometime that day" — leave it blank and the
+deadline is treated as due end-of-day. Optionally link the deadline to a
+tag — if you do, progress is computed automatically from real logged
+sessions on that tag (only counting sessions logged *after* the deadline
+was created, so pre-existing history doesn't inflate progress you hadn't
+actually made toward this specific goal). Without a linked tag, you log
+progress manually with a simple "add N hours" action.
+
+Each card shows a live ticking `Nd hh:mm:ss` countdown to the exact due
+moment (date + optional time), not just a static "X days left." If a
+timer is currently running on the deadline's linked tag, the card also
+adds that in-progress time on top of its saved hours in real time (with
+a small pulsing dot to flag that it's live) — the number keeps climbing
+while you work, rather than only updating once you stop the timer. That
+live addition is purely a display-time calculation; nothing is written
+to the deadline's actual progress until the session itself is stopped
+and saved.
 
 The planner then does the actual "thinking": it calculates hours/day
 needed to finish on time (`remaining hours ÷ days left`), and compares
@@ -199,13 +212,13 @@ npm run dev
 | POST | `/api/sessions/start` | Start a live timer session |
 | POST | `/api/sessions/:id/stop` | Stop a running session |
 | POST | `/api/sessions` | Create a manual (backfilled) session |
-| GET | `/api/sessions?limit=` | Recent completed sessions, for the log UI |
+| GET | `/api/sessions?limit=&offset=` | A page of completed sessions (`{ sessions, total }`), for the log UI |
 | GET | `/api/sessions/history` | Full completed-session history, for analytics |
 | PATCH/DELETE | `/api/sessions/:id` | Edit or delete a session |
 | GET/POST | `/api/budgets` | List (with assigned tags) / create a budget |
 | PATCH/DELETE | `/api/budgets/:id` | Update or delete a budget |
 | GET/POST | `/api/deadlines` | List / create a deadline |
-| PATCH | `/api/deadlines/:id` | Update a deadline (title, tag, due date, hours, status) |
+| PATCH | `/api/deadlines/:id` | Update a deadline (title, tag, due date/time, hours, status) |
 | POST | `/api/deadlines/:id/log` | Add hours to a deadline's manual progress (untagged ones only) |
 | DELETE | `/api/deadlines/:id` | Delete a deadline |
 | GET | `/api/push/public-key` | The VAPID public key (and whether push is configured at all) |

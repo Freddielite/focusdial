@@ -1248,3 +1248,124 @@ down the list feels logical by topic. Grouping by "requires auth or
 not," not by feature area, is what actually matters for correctness
 here.
 
+
+## Session 7 — deadline countdown + live tag-linked hours
+
+Two additions to the Deadline Planner, both requested together since
+they're related: a real countdown, and having the hours-worked number
+actually move while you're mid-session, not just after you stop the
+timer.
+
+**Optional due time.** `deadlines.due_time` (nullable `TIME`) added via
+the same idempotent `ALTER TABLE ADD COLUMN IF NOT EXISTS` pattern
+already used for `last_notified_status` — no separate migration file,
+consistent with how this project has always evolved the schema in
+`db.js`. `routes/deadlines.js`'s PATCH handler treats it like `tag_id`
+(a `hasOwnProperty` check + `CASE WHEN`, not `COALESCE`), since a request
+needs to be able to explicitly clear a due time back to "just a date" by
+sending `due_time: null` — `COALESCE` would silently ignore that and
+keep the old value. `computeDeadlineProgress` (`analytics.js`) derives a
+new `dueAt` (exact `Date`) per deadline: `due_time` present → that exact
+moment on `due_date`; absent → end-of-day, so a deadline with no time set
+behaves exactly like it did before this feature existed (not "overdue"
+until the day has actually fully passed). The pre-existing `daysLeft`
+(whole-day granularity, used for the Ahead/On Track/Tight/Behind pace
+read) is deliberately untouched — `dueAt` is only for the new countdown
+display, not for feasibility math, so this doesn't change how any
+existing deadline was already being judged.
+
+**Live countdown.** `DeadlinesView.jsx` has its own 1-second ticker
+(`useLiveNow`) feeding a small `Countdown` component that formats
+`dueAt - now` into `Nd hh:mm:ss` (`formatCountdown` in `format.js`). One
+shared interval for the whole list, not one per card.
+
+**Live hours while a timer runs.** This is the part worth understanding
+before touching it again: `DeadlinesView` polls `GET /sessions/running`
+itself (`useRunningSession`, every 15s + on `visibilitychange`) rather
+than trying to read `TimerPanel`'s local `running` state. That's a
+deliberate choice, not an oversight — `TimerPanel` only exists while the
+Today tab is mounted (the tab switcher in `App.jsx` conditionally renders
+exactly one tab at a time), so a session could easily be running while
+someone's sitting on the Deadlines tab with `TimerPanel` nowhere in the
+tree. Polling from `DeadlinesView` directly means the live number works
+regardless of which tab started the timer or which tab is open now.
+
+For a deadline with a linked tag, if the currently-running session's
+`tag_id` matches, the elapsed time since `started_at` is added on top of
+`d.completedHours` (which only reflects sessions already stopped and
+saved — see the original `analytics.js` comment on why running sessions
+aren't in `history` at all) purely for that render — `completedHours`,
+`remainingHours`, and the progress bar's `pct` are all recomputed
+locally in the card from that live total. **Nothing is written back
+anywhere from this** — it's a display-only projection that self-corrects
+the moment the real session is stopped and `onDataChanged`/`loadAll`
+refetches actual history. A small pulsing dot (`.fd-countdown__live-dot`)
+next to the countdown is the only UI cue that a number is currently
+"live" vs. a stable saved value — worth keeping if this is touched again,
+since without it there's no way to tell the two apart at a glance.
+
+**Known rough edge, not fixed this session:** the progress bar's
+`motion.div` re-runs its `0.6s` width transition on every 1-second tick
+while a matching session is running (since `pct` changes slightly each
+second). It reads as smooth continuous motion in practice, not as
+visibly restarting, but if a future pass wants it perfectly smooth, the
+real fix is a CSS-driven fill (`transition: width 1s linear` with no
+framer-motion `animate` re-trigger) rather than tuning the current
+approach further.
+
+## Session 8 — pagination on Recent Sessions
+
+`GET /api/sessions` was "give me up to `limit` sessions, newest first,"
+with no way to reach anything past that. Added `offset` and changed the
+response shape from a bare array to `{ sessions, total }` — `total` is a
+`COUNT(*)` over the same `WHERE user_id = $1 AND ended_at IS NOT NULL`
+run alongside the page query (`Promise.all`, one round trip), so the
+frontend can render "Page X of Y" and disable Next without a second
+request. This is the only response-shape change in the app's REST API
+so far; the only caller was `listRecentSessions` in `api.js`, updated in
+the same commit, so nothing else broke.
+
+**Why SessionLog now fetches its own data instead of getting a prop.**
+Before this, `App.jsx`'s `loadAll()` fetched 50 sessions up front as part
+of its one big `Promise.all`, stored in `recentSessions` state, and
+`SessionLog` just rendered whatever slice of that it was handed — fine
+for a flat list, not workable for real pagination (you can't "go to page
+6" of a list that was only ever fetched 50-deep). `SessionLog` now calls
+`listRecentSessions(10, offset)` itself, owns its own `page`/`total`
+state, and re-fetches on page change. `loadAll()` no longer touches the
+raw session list at all — it still fetches `/sessions/history` (5000-cap,
+used for analytics: streaks, tag breakdowns, deadline pace, etc.), which
+is a genuinely different endpoint/purpose and was correctly left alone.
+
+**The one thing SessionLog can't know by itself: a new session showing
+up.** Starting/stopping the timer and the manual-entry form both live as
+separate components on the same tab, not inside `SessionLog` — so
+`App.jsx` still needs to tell it "something new landed." That's the
+`sessionsVersion` counter: bumped in `handleSessionCompleted` and
+`handleSessionCreated`, passed down as a prop, and `SessionLog` resets to
+page 1 and re-fetches whenever it changes (same "land on page 1 to see
+the new thing" behavior most apps default to). Edits and deletes don't
+need this — both are triggered from *inside* `SessionLog` itself (the
+edit modal, the delete button), so they just call `load(page)` directly
+after committing, no cross-component signal required.
+
+**Why `history` (the analytics copy) still gets patched locally on
+delete, in `App.jsx`.** `handleSessionDeleted` used to strip the deleted
+session out of both `recentSessions` and `history`. `recentSessions` is
+gone now (see above), but `history` still needs that same optimistic
+local removal — it's a separate fetch from a separate endpoint
+(`/sessions/history`), and without patching it directly, today's total /
+streak / deadline progress would all show stale numbers for anything
+derived from the deleted session until the next unrelated `loadAll()`
+happened to run.
+
+**Page-boundary edge case handled:** deleting the only item on a page
+past page 1 (or the last remaining item overall) recomputes the new last
+page from `total - 1` and lands there instead of leaving the view on a
+now-empty page with nothing but a Prev button to escape with.
+
+**Not extended to Reminders/Tasks this session.** Both are naturally
+bounded lists (open tasks, active/upcoming reminders) that don't grow
+into the hundreds the way session history does, so they were left as
+plain unpaginated lists — flagged here in case that assumption stops
+holding and one of them needs the same treatment later.

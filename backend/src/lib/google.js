@@ -150,16 +150,13 @@ export async function fetchSyncTokenBaseline(calendar, calendarId) {
 }
 
 function deadlineToEvent(deadline) {
-  // due_date now carries a real time-of-day (see db.js), so this is a
-  // timed event at the exact deadline moment, not an all-day event. A
-  // short 30-minute block just gives it a visible slot on the calendar
-  // grid -- the deadline itself is the start instant, not the block.
-  const start = new Date(deadline.due_date);
-  const end = new Date(start.getTime() + 30 * 60 * 1000);
+  const start = deadline.due_date; // "YYYY-MM-DD"
+  const end = new Date(`${start}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + 1); // Google's all-day events use an exclusive end date
   return {
     summary: deadline.title,
-    start: { dateTime: start.toISOString() },
-    end: { dateTime: end.toISOString() },
+    start: { date: start },
+    end: { date: end.toISOString().slice(0, 10) },
   };
 }
 

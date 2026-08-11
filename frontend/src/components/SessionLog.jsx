@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatDuration } from "../format.js";
-import { deleteSession } from "../api.js";
+import { deleteSession, listRecentSessions } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import SessionEditModal from "./SessionEditModal.jsx";
@@ -19,17 +19,53 @@ function ClockIcon() {
 }
 
 const QUALITY_LABEL = { focused: "Focused", neutral: "Neutral", distracted: "Distracted" };
+const PAGE_SIZE = 10;
 
-export default function SessionLog({ sessions, tags, onSessionDeleted, onSessionUpdated }) {
+export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, onSessionUpdated }) {
+  const [sessions, setSessions] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [editing, setEditing] = useState(null); // the session row being edited, or null
   // Optimistically hides a row the instant delete is confirmed, without
   // waiting for the real DELETE call (which useUndoableDelete holds off
-  // on for a few seconds in case of Undo) — sessions live in App.jsx's
-  // state, not this component's, so hiding here is purely a render-layer
-  // filter rather than mutating the actual list.
+  // on for a few seconds in case of Undo).
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
+
+  async function load(pageNum) {
+    setLoading(true);
+    setError(null);
+    try {
+      const { sessions: rows, total: count } = await listRecentSessions(
+        PAGE_SIZE,
+        (pageNum - 1) * PAGE_SIZE
+      );
+      setSessions(rows);
+      setTotal(count);
+      setPage(pageNum);
+      setPendingIds(new Set());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Fetches its own page independently of App.jsx's `loadAll` -- the
+  // one thing it can't know on its own is "a new session just got
+  // created/completed elsewhere on this tab" (Timer, Manual entry both
+  // live outside this component), which is what `sessionsVersion`
+  // signals. A bump there jumps back to page 1, same as most apps do
+  // after adding something to a list that's newest-first.
+  useEffect(() => {
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsVersion]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   async function handleDelete(session) {
     const ok = await confirm({
@@ -52,8 +88,23 @@ export default function SessionLog({ sessions, tags, onSessionDeleted, onSession
           return next;
         }),
       deleteFn: () => deleteSession(session.id),
-      afterCommit: () => onSessionDeleted(session.id),
+      afterCommit: () => {
+        onSessionDeleted?.(session.id);
+        // If this was the last item on a page beyond the first, land on
+        // whatever the new last page is instead of showing an empty
+        // page -- otherwise deleting the sole item on the last page
+        // leaves you stranded looking at nothing with no way back
+        // except the Prev button.
+        const newTotal = Math.max(0, total - 1);
+        const newLastPage = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
+        load(Math.min(page, newLastPage));
+      },
     });
+  }
+
+  function handleSaved(updated) {
+    onSessionUpdated?.(updated);
+    load(page);
   }
 
   const visibleSessions = sessions.filter((s) => !pendingIds.has(s.id));
@@ -61,8 +112,11 @@ export default function SessionLog({ sessions, tags, onSessionDeleted, onSession
   return (
     <div className="fd-panel fd-log-panel">
       <div className="fd-panel__label">Recent Sessions</div>
-      {visibleSessions.length === 0 && <div className="fd-empty">No sessions yet. Start the timer above.</div>}
-      <div className="fd-log-list">
+      {error && <div className="fd-inline-error">{error}</div>}
+      {!loading && visibleSessions.length === 0 && (
+        <div className="fd-empty">No sessions yet. Start the timer above.</div>
+      )}
+      <div className={`fd-log-list ${loading ? "fd-log-list--loading" : ""}`}>
         {visibleSessions.map((s) => {
           const seconds =
             (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
@@ -105,12 +159,38 @@ export default function SessionLog({ sessions, tags, onSessionDeleted, onSession
           );
         })}
       </div>
+      {total > PAGE_SIZE && (
+        <div className="fd-pagination">
+          <button
+            type="button"
+            className="fd-link-btn"
+            onClick={() => load(page - 1)}
+            disabled={loading || page <= 1}
+          >
+            ← Prev
+          </button>
+          <span className="fd-pagination__status">
+            Page {page} of {totalPages} · {total} sessions
+          </span>
+          <button
+            type="button"
+            className="fd-link-btn"
+            onClick={() => load(page + 1)}
+            disabled={loading || page >= totalPages}
+          >
+            Next →
+          </button>
+        </div>
+      )}
       {editing && (
         <SessionEditModal
           session={editing}
           tags={tags}
           onClose={() => setEditing(null)}
-          onSaved={onSessionUpdated}
+          onSaved={(updated) => {
+            setEditing(null);
+            handleSaved(updated);
+          }}
         />
       )}
     </div>

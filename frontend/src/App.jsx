@@ -18,7 +18,6 @@ import { maybePushEvent } from "./push.js";
 import { formatDuration } from "./format.js";
 import {
   listTags,
-  listRecentSessions,
   getSessionHistory,
   listBudgets,
   listDeadlines,
@@ -83,13 +82,18 @@ export default function App({ user, onLogout, onUserUpdated }) {
   );
 
   const [tags, setTags] = useState([]);
-  const [recentSessions, setRecentSessions] = useState([]);
   const [history, setHistory] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [deadlines, setDeadlines] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  // Bumped whenever a session is started/stopped or manually added
+  // elsewhere on the Today tab (Timer, Manual entry) -- SessionLog fetches
+  // its own paginated data independently (see its own component), so
+  // this is the one signal it needs from outside itself: "something new
+  // landed, go back to page 1 and reload."
+  const [sessionsVersion, setSessionsVersion] = useState(0);
 
   const [waking, setWaking] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -97,10 +101,9 @@ export default function App({ user, onLogout, onUserUpdated }) {
 
   async function loadAll() {
     try {
-      const [tagData, recent, hist, budgetData, deadlineData, reminderData, taskData, settingsData] =
+      const [tagData, hist, budgetData, deadlineData, reminderData, taskData, settingsData] =
         await Promise.all([
           listTags(),
-          listRecentSessions(50),
           getSessionHistory(),
           listBudgets(),
           listDeadlines(),
@@ -109,7 +112,6 @@ export default function App({ user, onLogout, onUserUpdated }) {
           getSettings().catch(() => DEFAULT_SETTINGS),
         ]);
       setTags(tagData);
-      setRecentSessions(recent);
       setHistory(hist);
       setBudgets(budgetData);
       setDeadlines(deadlineData);
@@ -327,12 +329,19 @@ export default function App({ user, onLogout, onUserUpdated }) {
       maybePushEvent("session_completed", "Session complete", body);
     }
     loadAll();
+    setSessionsVersion((v) => v + 1);
   }
   function handleSessionCreated() {
     loadAll();
+    setSessionsVersion((v) => v + 1);
   }
+  // SessionLog owns its own paginated fetch of the raw session list now
+  // (see that component), so this only needs to keep the *analytics*
+  // copy (`history`, from GET /sessions/history) in sync -- everything
+  // derived from it (today's total, streaks, tag-linked deadline
+  // progress, etc.) would otherwise stay stale until the next full
+  // reload.
   function handleSessionDeleted(id) {
-    setRecentSessions((prev) => prev.filter((s) => s.id !== id));
     setHistory((prev) => prev.filter((s) => s.id !== id));
   }
 
@@ -405,7 +414,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     tags={tags}
                     summary={summary}
                     streakAtRisk={streakAtRisk}
-                    recentSessions={recentSessions}
+                    sessionsVersion={sessionsVersion}
                     tasks={tasks}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}

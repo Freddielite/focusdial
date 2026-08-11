@@ -10,7 +10,7 @@ export default function TodayView({
   tags,
   summary,
   streakAtRisk,
-  recentSessions,
+  sessionsVersion,
   tasks,
   onSessionCompleted,
   onSessionCreated,
@@ -38,7 +38,7 @@ export default function TodayView({
         </div>
       </div>
       <SessionLog
-        sessions={recentSessions}
+        sessionsVersion={sessionsVersion}
         tags={tags}
         onSessionDeleted={onSessionDeleted}
         onSessionUpdated={onDataChanged}

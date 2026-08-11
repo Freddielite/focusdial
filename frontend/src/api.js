@@ -103,7 +103,11 @@ export const updateSession = (id, payload) =>
   apiFetch(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const deleteSession = (id) => apiFetch(`/sessions/${id}`, { method: "DELETE" });
 
-export const listRecentSessions = (limit = 50) => apiFetch(`/sessions?limit=${limit}`);
+// Returns { sessions, total } -- total is every completed session you
+// have, not just this page, so callers can render page counts / disable
+// Next without a separate request.
+export const listRecentSessions = (limit = 10, offset = 0) =>
+  apiFetch(`/sessions?limit=${limit}&offset=${offset}`);
 export const getSessionHistory = () => apiFetch("/sessions/history");
 
 // Not an apiFetch call — this is a direct download link handed to an <a>

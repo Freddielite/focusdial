@@ -1311,6 +1311,48 @@ button {
 .fd-log-list {
   display: flex;
   flex-direction: column;
+  transition: opacity 0.15s ease;
+}
+
+.fd-log-list--loading {
+  opacity: 0.5;
+}
+
+/* ---------- Pagination (session log, reusable elsewhere) ---------- */
+
+.fd-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.fd-pagination .fd-link-btn {
+  padding: 4px 6px;
+}
+
+.fd-pagination .fd-link-btn:disabled {
+  color: var(--parchment-dim);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fd-pagination__status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--parchment-dim);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .fd-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    text-align: center;
+  }
 }
 
 .fd-log-row {
@@ -1752,19 +1794,40 @@ button {
   letter-spacing: 0.05em;
 }
 
+.fd-deadline-card__status--focus-green { color: var(--focus-green); }
+.fd-deadline-card__status--brass { color: var(--brass); }
+.fd-deadline-card__status--dim { color: var(--parchment-dim); }
+.fd-deadline-card__status--rust { color: var(--rust); }
+
+/* Live dd:hh:mm:ss countdown in the card meta line. Tabular-nums keeps
+   the seconds column from jittering the surrounding text width as it
+   ticks every second. */
 .fd-countdown {
   font-variant-numeric: tabular-nums;
-  color: var(--brass);
 }
 
 .fd-countdown--overdue {
   color: var(--rust);
 }
 
-.fd-deadline-card__status--focus-green { color: var(--focus-green); }
-.fd-deadline-card__status--brass { color: var(--brass); }
-.fd-deadline-card__status--dim { color: var(--parchment-dim); }
-.fd-deadline-card__status--rust { color: var(--rust); }
+/* Small pulsing dot next to the countdown when a timer is actively
+   running on this deadline's own tag -- signals "the hours you see are
+   climbing live right now," not just a static snapshot. */
+.fd-countdown__live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--focus-green);
+  vertical-align: middle;
+  animation: fd-countdown-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes fd-countdown-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
 
 .fd-log-progress {
   display: flex;

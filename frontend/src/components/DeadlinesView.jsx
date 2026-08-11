@@ -1,10 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createDeadline, deleteDeadline, updateDeadline, logDeadlineProgress } from "../api.js";
+import { createDeadline, deleteDeadline, updateDeadline, logDeadlineProgress, getRunningSession } from "../api.js";
 import { formatDuration, formatCountdown } from "../format.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import Dropdown from "./Dropdown.jsx";
+
+// How often to re-check whether a timer is running, while this tab is
+// open. Independent of TimerPanel's own state (which lives on the Today
+// tab and may not even be mounted right now) -- this is what lets a
+// deadline's hours tick up live from here without needing that panel on
+// screen at the same time.
+const RUNNING_POLL_MS = 15000;
+
+// Live countdown + "is a matching session running right now" ticker,
+// shared by every card in the list rather than one interval per card.
+function useLiveNow() {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return nowMs;
+}
+
+function useRunningSession() {
+  const [running, setRunning] = useState(null);
+  const pollRef = useRef(null);
+  useEffect(() => {
+    function refresh() {
+      getRunningSession()
+        .then((s) => setRunning(s || null))
+        .catch(() => {});
+    }
+    refresh();
+    pollRef.current = setInterval(refresh, RUNNING_POLL_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(pollRef.current);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+  return running;
+}
+
+// Live ticking dd:hh:mm:ss to the deadline's exact due moment (see
+// dueAt in analytics.js), independent of the day-granularity "daysLeft"
+// used for the pace/status read elsewhere on the card.
+function Countdown({ dueAt, nowMs }) {
+  const { overdue, text } = formatCountdown(dueAt, nowMs);
+  return (
+    <span className={`fd-countdown ${overdue ? "fd-countdown--overdue" : ""}`}>
+      {overdue ? `Overdue by ${text}` : `${text} left`}
+    </span>
+  );
+}
 
 // Same flag glyph as the Deadlines tab icon, tinted with the deadline
 // category accent so every deadline card reads as one visual family.
@@ -26,27 +76,6 @@ const STATUS_COPY = {
   behind: { label: "Behind pace", tone: "rust" },
   unknown: { label: "Not enough history yet", tone: "dim" },
 };
-
-// Ticks on its own 1-second interval, independent of the rest of the
-// app's slower (60s) clock -- so the countdown feels alive without
-// forcing every other card, or the whole tab, to re-render every second.
-function Countdown({ dueDate }) {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const due = new Date(dueDate);
-  const overdue = due.getTime() < now.getTime();
-
-  return (
-    <span className={`fd-countdown${overdue ? " fd-countdown--overdue" : ""}`}>
-      {formatCountdown(due, now)}
-    </span>
-  );
-}
 
 function LogProgressInline({ deadline, onLogged }) {
   const [value, setValue] = useState("");
@@ -80,12 +109,15 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
   const [title, setTitle] = useState("");
   const [tagId, setTagId] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [estHours, setEstHours] = useState(10);
   const [addAsTask, setAddAsTask] = useState(false);
   const [error, setError] = useState(null);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
+  const nowMs = useLiveNow();
+  const runningSession = useRunningSession();
 
   const avgHours = avgDailyFocusSeconds / 3600;
   const active = deadlines.filter((d) => d.status !== "done" && d.status !== "archived" && !pendingIds.has(d.id));
@@ -98,12 +130,14 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
       await createDeadline({
         title: title.trim(),
         tag_id: tagId || null,
-        due_date: new Date(dueDate).toISOString(),
+        due_date: dueDate,
+        due_time: dueTime || null,
         estimated_hours: Number(estHours),
         add_as_task: addAsTask,
       });
       setTitle("");
       setDueDate("");
+      setDueTime("");
       setAddAsTask(false);
       setFormOpen(false);
       onDataChanged();
@@ -177,13 +211,12 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
             </div>
             <div className="fd-manual-form__row fd-manual-form__row--dates">
               <label>
-                Due date &amp; time
-                <input
-                  type="datetime-local"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  required
-                />
+                Due date
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+              </label>
+              <label>
+                Due time (optional)
+                <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
               </label>
               <label>
                 Estimated hours needed
@@ -234,7 +267,19 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
         <AnimatePresence initial={false}>
           {active.map((d) => {
             const status = STATUS_COPY[d.status] || STATUS_COPY.unknown;
-            const pct = d.remainingHours <= 0 ? 1 : Math.min(1, d.completedHours / Number(d.estimated_hours));
+            // If a timer is running right now on this deadline's own tag,
+            // add the still-in-progress elapsed time on top of the saved
+            // completedHours from analytics.js (which only counts sessions
+            // that have already been stopped) -- purely a display-time
+            // addition, so it doesn't touch the actual data until the
+            // session is stopped and saved for real.
+            const liveHours =
+              d.tag_id && runningSession?.tag_id === d.tag_id
+                ? (nowMs - new Date(runningSession.started_at).getTime()) / 3_600_000
+                : 0;
+            const completedHours = d.completedHours + liveHours;
+            const remainingHours = Math.max(0, Number(d.estimated_hours) - completedHours);
+            const pct = remainingHours <= 0 ? 1 : Math.min(1, completedHours / Number(d.estimated_hours));
             return (
               <motion.div
                 key={d.id}
@@ -252,13 +297,12 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                   <div className="fd-check-card__body">
                     <span className="fd-check-card__title">{d.title}</span>
                     <span className="fd-check-card__meta">
-                      ★ {d.daysLeft >= 0 ? `${d.daysLeft} days left` : `${-d.daysLeft} days overdue`}
-                      {" · "}
-                      <Countdown dueDate={d.due_date} />
+                      ★ <Countdown dueAt={d.dueAt} nowMs={nowMs} />
+                      {liveHours > 0 && <span className="fd-countdown__live-dot" title="Timer running on this tag" />}
                     </span>
                   </div>
                   <div className="fd-check-card__value">
-                    <span className="fd-check-card__value-num">{d.completedHours.toFixed(1)}h</span>
+                    <span className="fd-check-card__value-num">{completedHours.toFixed(1)}h</span>
                     <span className="fd-check-card__value-unit">of {Number(d.estimated_hours).toFixed(1)}h</span>
                   </div>
                   <div className="fd-deadline-card__actions">
@@ -281,9 +325,13 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                   />
                 </div>
 
-                {d.remainingHours > 0 && (
+                {remainingHours > 0 && (
                   <div className="fd-deadline-card__pace">
-                    Need <strong>{d.hoursPerDayNeeded.toFixed(1)}h/day</strong> to finish in time
+                    Need{" "}
+                    <strong>
+                      {(d.daysLeft > 0 ? remainingHours / d.daysLeft : remainingHours).toFixed(1)}h/day
+                    </strong>{" "}
+                    to finish in time
                     {avgHours > 0 && ` (you average ${avgHours.toFixed(1)}h/day)`}.
                   </div>
                 )}

@@ -138,6 +138,15 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
     const daysLeft = Math.round((dueDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
     const hoursPerDayNeeded = daysLeft > 0 ? remainingHours / daysLeft : remainingHours;
 
+    // Exact moment the countdown counts down to. With no due_time, that's
+    // end-of-day on due_date -- so the deadline isn't "overdue" for the
+    // live countdown until the day itself has actually passed, matching
+    // the day-granularity status logic below rather than flipping over at
+    // local midnight of the due date.
+    const dueAt = d.due_time
+      ? new Date(`${d.due_date}T${d.due_time}`)
+      : new Date(dueDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+
     let status;
     if (d.status === "done" || d.status === "archived") {
       // Manually set (e.g. the checkmark in DeadlinesView) — this is a
@@ -164,6 +173,7 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
       remainingHours,
       daysLeft,
       hoursPerDayNeeded,
+      dueAt,
       status,
     };
   });

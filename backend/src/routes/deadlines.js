@@ -29,15 +29,15 @@ deadlinesRouter.get("/deadlines", async (req, res) => {
 });
 
 deadlinesRouter.post("/deadlines", async (req, res) => {
-  const { title, tag_id, due_date, estimated_hours, add_as_task } = req.body;
+  const { title, tag_id, due_date, due_time, estimated_hours, add_as_task } = req.body;
   if (!title || !title.trim() || !due_date || !estimated_hours) {
     return res.status(400).json({ error: "title, due_date, and estimated_hours are required" });
   }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO deadlines (title, tag_id, due_date, estimated_hours, user_id)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [title.trim(), tag_id || null, due_date, estimated_hours, req.userId]
+      `INSERT INTO deadlines (title, tag_id, due_date, due_time, estimated_hours, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [title.trim(), tag_id || null, due_date, due_time || null, estimated_hours, req.userId]
     );
     if (add_as_task) {
       await pool.query(
@@ -54,19 +54,36 @@ deadlinesRouter.post("/deadlines", async (req, res) => {
 });
 
 deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
-  const { title, tag_id, due_date, estimated_hours, status } = req.body;
+  const { title, tag_id, due_date, due_time, estimated_hours, status } = req.body;
   const hasTagField = Object.prototype.hasOwnProperty.call(req.body, "tag_id");
+  // due_time needs the same "was this field even sent" treatment as
+  // tag_id (rather than plain COALESCE) so a request that wants to clear
+  // the time back to "just a date" can send due_time: null and have it
+  // stick, instead of COALESCE silently keeping the old value.
+  const hasDueTimeField = Object.prototype.hasOwnProperty.call(req.body, "due_time");
   try {
     const { rows } = await pool.query(
       `UPDATE deadlines SET
          title = COALESCE($3, title),
          tag_id = CASE WHEN $4 THEN $5 ELSE tag_id END,
          due_date = COALESCE($6, due_date),
-         estimated_hours = COALESCE($7, estimated_hours),
-         status = COALESCE($8, status),
+         due_time = CASE WHEN $7 THEN $8 ELSE due_time END,
+         estimated_hours = COALESCE($9, estimated_hours),
+         status = COALESCE($10, status),
          updated_at = now()
        WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [req.params.id, req.userId, title, hasTagField, hasTagField ? tag_id : null, due_date, estimated_hours, status]
+      [
+        req.params.id,
+        req.userId,
+        title,
+        hasTagField,
+        hasTagField ? tag_id : null,
+        due_date,
+        hasDueTimeField,
+        hasDueTimeField ? due_time : null,
+        estimated_hours,
+        status,
+      ]
     );
     if (rows.length === 0) return res.status(404).json({ error: "deadline not found" });
     // Mirror completion onto a linked task (from "Add as task" at

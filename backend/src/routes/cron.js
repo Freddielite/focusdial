@@ -405,7 +405,7 @@ async function checkGoogleCalendarSync(userId) {
     }
 
     if (link.item_type === "deadline") {
-      const dueDate = event.start?.dateTime; // timed event (see lib/google.js)
+      const dueDate = event.start?.date; // all-day event
       if (dueDate) {
         await pool.query(`UPDATE deadlines SET title = $2, due_date = $3, updated_at = now() WHERE id = $1`, [
           link.item_id,
