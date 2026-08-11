@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createDeadline, deleteDeadline, updateDeadline, logDeadlineProgress } from "../api.js";
-import { formatDuration } from "../format.js";
+import { formatDuration, formatCountdown } from "../format.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import Dropdown from "./Dropdown.jsx";
@@ -26,6 +26,27 @@ const STATUS_COPY = {
   behind: { label: "Behind pace", tone: "rust" },
   unknown: { label: "Not enough history yet", tone: "dim" },
 };
+
+// Ticks on its own 1-second interval, independent of the rest of the
+// app's slower (60s) clock -- so the countdown feels alive without
+// forcing every other card, or the whole tab, to re-render every second.
+function Countdown({ dueDate }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const due = new Date(dueDate);
+  const overdue = due.getTime() < now.getTime();
+
+  return (
+    <span className={`fd-countdown${overdue ? " fd-countdown--overdue" : ""}`}>
+      {formatCountdown(due, now)}
+    </span>
+  );
+}
 
 function LogProgressInline({ deadline, onLogged }) {
   const [value, setValue] = useState("");
@@ -77,7 +98,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
       await createDeadline({
         title: title.trim(),
         tag_id: tagId || null,
-        due_date: dueDate,
+        due_date: new Date(dueDate).toISOString(),
         estimated_hours: Number(estHours),
         add_as_task: addAsTask,
       });
@@ -156,8 +177,13 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
             </div>
             <div className="fd-manual-form__row fd-manual-form__row--dates">
               <label>
-                Due date
-                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+                Due date &amp; time
+                <input
+                  type="datetime-local"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  required
+                />
               </label>
               <label>
                 Estimated hours needed
@@ -227,6 +253,8 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                     <span className="fd-check-card__title">{d.title}</span>
                     <span className="fd-check-card__meta">
                       ★ {d.daysLeft >= 0 ? `${d.daysLeft} days left` : `${-d.daysLeft} days overdue`}
+                      {" · "}
+                      <Countdown dueDate={d.due_date} />
                     </span>
                   </div>
                   <div className="fd-check-card__value">

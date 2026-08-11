@@ -1752,6 +1752,15 @@ button {
   letter-spacing: 0.05em;
 }
 
+.fd-countdown {
+  font-variant-numeric: tabular-nums;
+  color: var(--brass);
+}
+
+.fd-countdown--overdue {
+  color: var(--rust);
+}
+
 .fd-deadline-card__status--focus-green { color: var(--focus-green); }
 .fd-deadline-card__status--brass { color: var(--brass); }
 .fd-deadline-card__status--dim { color: var(--parchment-dim); }

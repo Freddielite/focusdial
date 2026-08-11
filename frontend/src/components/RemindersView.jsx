@@ -39,6 +39,9 @@ function toLocalInputValue(date) {
 
 function ConvertPanel({ reminder, tags, onDone, onDelete }) {
   const [mode, setMode] = useState(null); // 'deadline' | 'task' | null
+  // Deadlines carry a real due date+time (see DeadlinesView), tasks stay
+  // date-only -- so this one field is reused across both modes but
+  // reformatted per-mode by the two "→ X" buttons below.
   const [dueDate, setDueDate] = useState("");
   const [estHours, setEstHours] = useState(5);
   const [tagId, setTagId] = useState("");
@@ -50,7 +53,7 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
     setError(null);
     try {
       await convertReminderToDeadline(reminder.id, {
-        due_date: dueDate,
+        due_date: new Date(dueDate).toISOString(),
         estimated_hours: Number(estHours),
         tag_id: tagId || null,
       });
@@ -74,10 +77,22 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
   if (!mode) {
     return (
       <div className="fd-reminder-actions">
-        <button className="fd-link-btn" onClick={() => setMode("deadline")}>
+        <button
+          className="fd-link-btn"
+          onClick={() => {
+            setDueDate("");
+            setMode("deadline");
+          }}
+        >
           → Deadline
         </button>
-        <button className="fd-link-btn" onClick={() => setMode("task")}>
+        <button
+          className="fd-link-btn"
+          onClick={() => {
+            setDueDate("");
+            setMode("task");
+          }}
+        >
           → Task
         </button>
         <button className="fd-link-btn" onClick={() => dismissReminder(reminder.id).then(onDone)}>
@@ -116,8 +131,13 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
     <form className="fd-manual-form" onSubmit={submitDeadline}>
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
-          Due date
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+          Due date &amp; time
+          <input
+            type="datetime-local"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            required
+          />
         </label>
         <label>
           Estimated hours

@@ -128,7 +128,7 @@ export async function initSchema() {
       id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title                 TEXT NOT NULL,
       tag_id                UUID REFERENCES tags(id) ON DELETE SET NULL,
-      due_date              DATE NOT NULL,
+      due_date              TIMESTAMPTZ NOT NULL,
       estimated_hours       NUMERIC NOT NULL,
       manual_hours_logged   NUMERIC NOT NULL DEFAULT 0,
       status                TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done', 'archived')),
@@ -139,6 +139,26 @@ export async function initSchema() {
     ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
     CREATE INDEX IF NOT EXISTS idx_deadlines_status ON deadlines(status);
     CREATE INDEX IF NOT EXISTS idx_deadlines_user_id ON deadlines(user_id);
+
+    -- due_date used to be a bare DATE (no time-of-day), which is all the
+    -- live countdown feature needs to change: a deadline now carries an
+    -- exact moment, not just a day. Guarded on the column's *current*
+    -- type (not just "run once") so this block is safe to leave in
+    -- initSchema permanently -- on a fresh DB the CREATE TABLE above
+    -- already creates TIMESTAMPTZ, so this simply no-ops there, and it
+    -- only ever fires the real ALTER once, the first time it finds the
+    -- old DATE column on an existing DB. Pre-existing rows had no time
+    -- component, so they're backfilled to end-of-day (23:59:59, server
+    -- local time) rather than midnight -- that matches what a bare date
+    -- due date implied before this feature existed.
+    DO $$
+    BEGIN
+      IF (SELECT data_type FROM information_schema.columns
+          WHERE table_name = 'deadlines' AND column_name = 'due_date') = 'date' THEN
+        ALTER TABLE deadlines ALTER COLUMN due_date TYPE TIMESTAMPTZ
+          USING (due_date::timestamp + interval '23 hours 59 minutes 59 seconds');
+      END IF;
+    END $$;
 
     -- Added for reminders/automation. last_notified_status lets the cron
     -- job (see routes/cron.js) detect when a deadline's pace status

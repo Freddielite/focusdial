@@ -26,6 +26,28 @@ export function toLocalInputValue(date) {
   )}:${pad(date.getMinutes())}`;
 }
 
+// Formats the gap between now and a due Date as a live countdown string.
+// Shows seconds only once things get close (under an hour left) so the
+// display doesn't jitter with a ticking seconds digit when the deadline
+// is days out -- e.g. "3d 4h", "42m 10s", or once past due "2h 5m overdue".
+export function formatCountdown(dueDate, now = new Date()) {
+  const diffMs = dueDate.getTime() - now.getTime();
+  const overdue = diffMs < 0;
+  const totalSeconds = Math.floor(Math.abs(diffMs) / 1000);
+
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  let text;
+  if (days > 0) text = `${days}d ${hours}h`;
+  else if (hours > 0) text = `${hours}h ${minutes}m`;
+  else text = `${minutes}m ${seconds}s`;
+
+  return overdue ? `${text} overdue` : text;
+}
+
 export function formatHour(hour) {
   const period = hour < 12 ? "AM" : "PM";
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
