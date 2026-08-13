@@ -340,12 +340,23 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
   const [startingId, setStartingId] = useState(null);
   const [startError, setStartError] = useState(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  const COMPLETED_PER_PAGE = 5;
+  const [completedPage, setCompletedPage] = useState(1);
 
   const avgHours = avgDailyFocusSeconds / 3600;
   const active = deadlines.filter((d) => d.status !== "done" && d.status !== "archived" && !pendingIds.has(d.id));
   const completed = deadlines
     .filter((d) => d.status === "done")
     .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  const completedTotalPages = Math.max(1, Math.ceil(completed.length / COMPLETED_PER_PAGE));
+  // Clamped rather than reset outright -- if the list shrinks (e.g. one
+  // of these gets deleted elsewhere) while sitting on a now-out-of-range
+  // page, this lands on the new last page instead of an empty one.
+  const completedPageClamped = Math.min(completedPage, completedTotalPages);
+  const completedPageItems = completed.slice(
+    (completedPageClamped - 1) * COMPLETED_PER_PAGE,
+    completedPageClamped * COMPLETED_PER_PAGE
+  );
 
   // The whole point of linking a deadline to a tag is that time logged
   // under that tag counts toward it -- so if you're about to work on
@@ -744,7 +755,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                {completed.map((d) => {
+                {completedPageItems.map((d) => {
                   // Same approximation computeDeadlineTrackRecord uses:
                   // updated_at at the moment the checkmark set status to
                   // "done" is the closest thing to a real completed_at
@@ -770,6 +781,29 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                     </div>
                   );
                 })}
+                {completedTotalPages > 1 && (
+                  <div className="fd-pagination">
+                    <button
+                      type="button"
+                      className="fd-link-btn"
+                      onClick={() => setCompletedPage((p) => Math.max(1, p - 1))}
+                      disabled={completedPageClamped <= 1}
+                    >
+                      ← Prev
+                    </button>
+                    <span className="fd-pagination__status">
+                      Page {completedPageClamped} of {completedTotalPages} · {completed.length} completed
+                    </span>
+                    <button
+                      type="button"
+                      className="fd-link-btn"
+                      onClick={() => setCompletedPage((p) => Math.min(completedTotalPages, p + 1))}
+                      disabled={completedPageClamped >= completedTotalPages}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

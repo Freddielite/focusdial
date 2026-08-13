@@ -2013,6 +2013,7 @@ button {
 .fd-timer-tag-live {
   width: 100%;
   max-width: 260px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
