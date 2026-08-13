@@ -358,7 +358,6 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
       <div className="fd-deadline-list">
         <AnimatePresence initial={false}>
           {active.map((d) => {
-            const status = STATUS_COPY[d.status] || STATUS_COPY.unknown;
             // If a timer is running right now on this deadline's own tag,
             // add the still-in-progress elapsed time on top of the saved
             // completedHours from analytics.js (which only counts sessions
@@ -380,6 +379,28 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
             const hoursLeftLive = (d.dueAt.getTime() - nowMs) / 3_600_000;
             const daysLeftLive = hoursLeftLive / 24;
             const pacePerDay = daysLeftLive > 0 ? remainingHours / daysLeftLive : remainingHours;
+            // The status pill (Ahead/On Track/Tight/Behind/Overdue) used
+            // to come straight from analytics.js's d.status, which is
+            // only recomputed the next time the app refetches its data --
+            // so the countdown could already be sitting at 00:00:00 while
+            // the pill still said "Ahead of pace" for a while after. This
+            // recomputes it every second from the same live numbers above
+            // (same thresholds as computeDeadlineProgress), so it flips
+            // the instant the countdown reaches zero, not some indeterminate
+            // time later. A manually-set status (done/archived) still wins.
+            let liveStatusKey;
+            if (d.status === "done" || d.status === "archived") liveStatusKey = d.status;
+            else if (remainingHours <= 0) liveStatusKey = "done";
+            else if (hoursLeftLive <= 0) liveStatusKey = "overdue";
+            else if (avgHours <= 0) liveStatusKey = "unknown";
+            else {
+              const ratio = pacePerDay / avgHours;
+              if (ratio <= 0.7) liveStatusKey = "ahead";
+              else if (ratio <= 1.05) liveStatusKey = "onTrack";
+              else if (ratio <= 1.5) liveStatusKey = "tight";
+              else liveStatusKey = "behind";
+            }
+            const status = STATUS_COPY[liveStatusKey] || STATUS_COPY.unknown;
             return (
               <motion.div
                 key={d.id}

@@ -144,8 +144,18 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
     // disagree with the live countdown by up to 24 hours -- e.g. showing
     // "Overdue" first thing in the morning on the due date, while the
     // countdown (which does use dueAt) still had hours left to go.
+    // due_date comes back from the database as a full timestamp string
+    // (e.g. "2026-08-13T00:00:00.000Z"), not a plain "2026-08-13" -- so
+    // gluing due_time directly onto it (the old code) produced a
+    // malformed string like "2026-08-13T00:00:00.000ZT14:30:00", which
+    // is an invalid date (NaN). That NaN then propagated two different,
+    // contradictory ways into the countdown and the status calculation
+    // below, which is why they could disagree with each other. Extract
+    // just the date part first, same as DeadlineEditForm already does
+    // when pre-filling its own date field.
+    const dueDatePart = String(d.due_date).slice(0, 10);
     const dueAt = d.due_time
-      ? new Date(`${d.due_date}T${d.due_time}`)
+      ? new Date(`${dueDatePart}T${d.due_time}`)
       : new Date(dueDate.getTime() + 24 * 60 * 60 * 1000 - 1);
 
     const hoursLeft = (dueAt.getTime() - Date.now()) / 3_600_000;
