@@ -372,6 +372,14 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
             const completedHours = d.completedHours + liveHours;
             const remainingHours = Math.max(0, Number(d.estimated_hours) - completedHours);
             const pct = remainingHours <= 0 ? 1 : Math.min(1, completedHours / Number(d.estimated_hours));
+            // Same dueAt the countdown above is ticking against, so this
+            // can never show a different "time left" than the countdown
+            // does -- previously this recomputed pace from analytics.js's
+            // separately-derived (and coarser, whole-day) daysLeft, which
+            // is what let the two numbers drift apart and disagree.
+            const hoursLeftLive = (d.dueAt.getTime() - nowMs) / 3_600_000;
+            const daysLeftLive = hoursLeftLive / 24;
+            const pacePerDay = daysLeftLive > 0 ? remainingHours / daysLeftLive : remainingHours;
             return (
               <motion.div
                 key={d.id}
@@ -426,12 +434,17 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
 
                 {remainingHours > 0 && (
                   <div className="fd-deadline-card__pace">
-                    Need{" "}
-                    <strong>
-                      {(d.daysLeft > 0 ? remainingHours / d.daysLeft : remainingHours).toFixed(1)}h/day
-                    </strong>{" "}
-                    to finish in time
-                    {avgHours > 0 && ` (you average ${avgHours.toFixed(1)}h/day)`}.
+                    {hoursLeftLive > 0 ? (
+                      <>
+                        Need <strong>{pacePerDay.toFixed(1)}h/day</strong> to finish in time
+                        {avgHours > 0 && ` (you average ${avgHours.toFixed(1)}h/day)`}.
+                      </>
+                    ) : (
+                      <>
+                        <strong>{remainingHours.toFixed(1)}h</strong> of estimated work still remaining,
+                        past the deadline.
+                      </>
+                    )}
                   </div>
                 )}
 

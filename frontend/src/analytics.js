@@ -115,7 +115,6 @@ export function computeBudgetProgress(budgets, sessions) {
 // this is the "does the thinking for you" part: it's not just a countdown,
 // it's telling you whether the plan is realistic given how you actually work.
 export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSeconds) {
-  const today = startOfLocalDay(new Date());
   const avgDailyFocusHours = avgDailyFocusSeconds / 3600;
 
   return deadlines.map((d) => {
@@ -136,17 +135,22 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
     const estimatedHours = Number(d.estimated_hours);
     const remainingHours = Math.max(0, estimatedHours - completedHours);
     const dueDate = startOfLocalDay(new Date(d.due_date));
-    const daysLeft = Math.round((dueDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-    const hoursPerDayNeeded = daysLeft > 0 ? remainingHours / daysLeft : remainingHours;
 
-    // Exact moment the countdown counts down to. With no due_time, that's
-    // end-of-day on due_date -- so the deadline isn't "overdue" for the
-    // live countdown until the day itself has actually passed, matching
-    // the day-granularity status logic below rather than flipping over at
-    // local midnight of the due date.
+    // Exact moment the deadline is due. With no due_time, that's
+    // end-of-day on due_date. This is now the single number everything
+    // below (daysLeft, hoursPerDayNeeded, and the overdue check) is
+    // derived from, instead of pace/status being computed from a
+    // separate whole-calendar-day count. That used to be able to
+    // disagree with the live countdown by up to 24 hours -- e.g. showing
+    // "Overdue" first thing in the morning on the due date, while the
+    // countdown (which does use dueAt) still had hours left to go.
     const dueAt = d.due_time
       ? new Date(`${d.due_date}T${d.due_time}`)
       : new Date(dueDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+    const hoursLeft = (dueAt.getTime() - Date.now()) / 3_600_000;
+    const daysLeft = hoursLeft / 24; // fractional now, not rounded to whole days
+    const hoursPerDayNeeded = daysLeft > 0 ? remainingHours / daysLeft : remainingHours;
 
     let status;
     if (d.status === "done" || d.status === "archived") {
@@ -156,7 +160,7 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
       status = d.status;
     } else if (remainingHours <= 0) {
       status = "done";
-    } else if (daysLeft <= 0) {
+    } else if (hoursLeft <= 0) {
       status = "overdue";
     } else if (avgDailyFocusHours <= 0) {
       status = "unknown"; // not enough history yet to judge feasibility

@@ -114,13 +114,24 @@ async function checkDeadlinePaceChanges(userId, offsetMinutes) {
       completedHours = Number(d.manual_hours_logged) || 0;
     }
     const remainingHours = Math.max(0, Number(d.estimated_hours) - completedHours);
-    const dueDate = new Date(d.due_date);
-    const daysLeft = Math.round((dueDate.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000));
+
+    // Same fix as computeDeadlineProgress on the frontend: derive
+    // days/hours left from the exact due moment (date + optional
+    // time-of-day), not a whole-calendar-day count -- the old version
+    // ignored due_time entirely, so it could mark a deadline "overdue"
+    // (and push a notification saying so) first thing in the morning on
+    // its due date, many hours before it was actually due.
+    const [dY, dM, dD] = String(d.due_date).slice(0, 10).split("-").map(Number);
+    const dueAtLocal = d.due_time
+      ? new Date(Date.UTC(dY, dM - 1, dD, ...String(d.due_time).split(":").map(Number)))
+      : new Date(Date.UTC(dY, dM - 1, dD, 23, 59, 59, 999));
+    const hoursLeft = (dueAtLocal.getTime() - nowLocal.getTime()) / 3_600_000;
+    const daysLeft = hoursLeft / 24;
     const hoursPerDayNeeded = daysLeft > 0 ? remainingHours / daysLeft : remainingHours;
 
     let status;
     if (remainingHours <= 0) status = "done";
-    else if (daysLeft <= 0) status = "overdue";
+    else if (hoursLeft <= 0) status = "overdue";
     else if (avgDailyFocusHours <= 0) status = "unknown";
     else {
       const ratio = hoursPerDayNeeded / avgDailyFocusHours;
