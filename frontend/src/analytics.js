@@ -11,6 +11,20 @@ function formatHoursShort(hours) {
   return formatDuration(Math.max(0, hours) * 3600);
 }
 
+// Same fix as the Deadlines tab's card: a "per day" rate stops meaning
+// anything once less than a day is left before the deadline -- dividing
+// a large chunk of remaining work by a sliver of a day produces a
+// number like "157h/day", which is technically correct but reads as
+// broken. Below a day left, this switches to stating remaining work
+// against remaining time directly instead.
+function deadlinePaceFragment(d) {
+  const hoursLeft = d.daysLeft * 24;
+  if (hoursLeft > 0 && hoursLeft < 24) {
+    return `${formatHoursShort(d.remainingHours)}, with only ${formatHoursShort(hoursLeft)} left`;
+  }
+  return `${formatHoursShort(d.hoursPerDayNeeded)}/day`;
+}
+
 function durationSeconds(session) {
   return (new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000;
 }
@@ -539,7 +553,7 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
   if (behind.length > 0) {
     candidates.push({
       tone: "warning",
-      message: `"${behind[0].title}" is behind pace. You need ${formatHoursShort(behind[0].hoursPerDayNeeded)}/day to catch up.`,
+      message: `"${behind[0].title}" is behind pace. You need ${deadlinePaceFragment(behind[0])} to catch up.`,
     });
   }
 
@@ -632,7 +646,7 @@ export function computeRiskDigest({ budgetsProgress = [], deadlinesProgress = []
         message:
           d.status === "overdue"
             ? `"${d.title}" is overdue.`
-            : `"${d.title}" is ${d.status} on pace, needs ${formatHoursShort(d.hoursPerDayNeeded)}/day to finish in time.`,
+            : `"${d.title}" is ${d.status} on pace, needs ${deadlinePaceFragment(d)} to finish in time.`,
       });
     }
   }

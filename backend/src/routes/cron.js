@@ -146,12 +146,28 @@ async function checkDeadlinePaceChanges(userId, offsetMinutes) {
     // for, but "tight"/"behind"/"overdue" are.
     const worthNotifying = ["tight", "behind", "overdue"].includes(status);
     if (status !== d.last_notified_status && worthNotifying) {
+      // Same fix as the frontend's deadline card: a "per day" rate
+      // stops meaning anything once less than a day is left (it can
+      // work out to something like "157h/day"), so below a day left
+      // this states remaining work vs. remaining time directly instead.
+      const formatHoursShort = (hrs) => {
+        const totalMinutes = Math.round(Math.max(0, hrs) * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+        if (h === 0 && m === 0) return "0m";
+        if (h === 0) return `${m}m`;
+        return `${h}h ${m}m`;
+      };
+      const paceText =
+        hoursLeft > 0 && hoursLeft < 24
+          ? `you need ${formatHoursShort(remainingHours)}, with only ${formatHoursShort(hoursLeft)} left`
+          : `you need ${formatHoursShort(hoursPerDayNeeded)}/day`;
       await sendPushToUser(userId, {
         title: `Deadline update: ${d.title}`,
         body:
           status === "overdue"
             ? "This deadline is now overdue."
-            : `You need ${hoursPerDayNeeded.toFixed(1)}h/day to finish in time, that's ${status === "tight" ? "tight" : "behind"} your usual pace.`,
+            : `${paceText[0].toUpperCase()}${paceText.slice(1)} to finish in time, that's ${status === "tight" ? "tight" : "behind"} your usual pace.`,
         tag: `deadline-${d.id}`,
         url: "/",
       });
