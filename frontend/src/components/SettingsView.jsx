@@ -549,7 +549,7 @@ export default function SettingsView({
                     disabled={!pushOn}
                   >
                     {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h}>
+                      <option key={h} value={String(h)}>
                         {formatHour(h)}
                       </option>
                     ))}
