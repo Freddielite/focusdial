@@ -16,9 +16,9 @@ export default function InsightsView({ summary, riskDigest }) {
       transition={{ duration: 0.12 }}
       className="fd-view"
     >
-      <RiskDigestCard digest={riskDigest} />
       <div className="fd-main__insights">
         <HourDial hourly={summary.hourly} bestHour={summary.bestHour} />
+        <RiskDigestCard digest={riskDigest} />
         <CalendarHeatmap daily={summary.daily} streakDays={summary.streakDays} />
         <TagBreakdown byTag={summary.byTag} mostSustainedTag={summary.mostSustainedTag} />
         <WeekdayBreakdown weekday={summary.weekday} bestWeekday={summary.bestWeekday} />

@@ -486,7 +486,8 @@ button {
 }
 
 .fd-risk-card {
-  margin-bottom: 18px;
+  /* No margin-bottom here — this card lives inside .fd-main__insights'
+     grid now, which already spaces items via `gap`. */
 }
 
 .fd-risk-card__list {
