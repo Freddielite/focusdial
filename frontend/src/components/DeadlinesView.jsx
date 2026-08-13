@@ -554,10 +554,18 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                 {remainingHours > 0 && (
                   <div className="fd-deadline-card__pace">
                     {hoursLeftLive > 0 ? (
-                      <>
-                        Need <strong>{formatHours(pacePerDay)}/day</strong> to finish in time
-                        {avgHours > 0 && ` (you average ${formatHours(avgHours)}/day)`}.
-                      </>
+                      hoursLeftLive < 24 ? (
+                        <>
+                          Need <strong>{formatHours(remainingHours)}</strong> of work, with only{" "}
+                          <strong>{formatHours(hoursLeftLive)}</strong> left before it's due.
+                        </>
+                      ) : (
+                        <>
+                          Need <strong>{formatHours(pacePerDay)}/day</strong> ({formatHours(remainingHours)}{" "}
+                          total) to finish in time
+                          {avgHours > 0 && ` (you average ${formatHours(avgHours)}/day)`}.
+                        </>
+                      )
                     ) : (
                       <>
                         <strong>{formatHours(remainingHours)}</strong> of estimated work still remaining,
