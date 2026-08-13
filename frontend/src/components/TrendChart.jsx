@@ -6,6 +6,15 @@ import { formatDuration } from "../format.js";
 // scrolls horizontally instead of squeezing columns to fit.
 const COLUMN_WIDTH = 44;
 
+// Must match .fd-trend-chart's padding-top in App.css. Bar heights are
+// percentages of the chart's USABLE height (below this padding), but
+// the average line's "bottom" offset — being a plain CSS percentage —
+// resolves against the chart's FULL height (padding included). Same
+// percentage value, two different rulers, so the line floated above
+// where it should sit relative to the bars. Reusing this constant in a
+// calc() below (100% - CHART_TOP_PADDING) puts both on the same ruler.
+const CHART_TOP_PADDING = 20;
+
 function weekLabel(date) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -90,11 +99,16 @@ export default function TrendChart({ weeklyTotals, monthlyTotals, weekOverWeek }
           {average > 0 && (
             <div
               className="fd-trend-average-line"
-              // Clamped so the line (and its label, offset further above
-              // it) never sits low enough to overlap the axis labels
-              // under the bars, and never gets pushed past the top of
-              // the chart on the flip side.
-              style={{ bottom: `${Math.min(Math.max((average / maxSeconds) * 100, 10), 92)}%` }}
+              // Clamped (in fraction terms, before the calc) so the line
+              // never sits low enough to overlap the axis labels under
+              // the bars, and never gets pushed past the top of the
+              // chart on the flip side. The calc() puts this on the same
+              // 140px-usable-height ruler the bars use — see
+              // CHART_TOP_PADDING above — instead of a bare percentage
+              // of the chart's full padded height.
+              style={{
+                bottom: `calc((100% - ${CHART_TOP_PADDING}px) * ${Math.min(Math.max(average / maxSeconds, 0.1), 0.92)})`,
+              }}
             >
               <span className="fd-trend-average-label">avg {formatDuration(average)}</span>
             </div>
