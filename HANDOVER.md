@@ -1562,5 +1562,33 @@ day, fresh chance. No backend involved; this is deliberately a
 device-local, low-stakes preference, same reasoning as `useNotifications`'
 localStorage log.
 
+## Session 15 — in-app Weekly Review
+
+The Sunday-evening digest (`checkWeeklyDigest`, `routes/cron.js`) only
+ever existed as a push notification — "X hours this week, best day was
+Y" — and only if push was configured and permission granted. This adds
+the same "how was this week" answer as a real panel on the Insights tab,
+always there rather than a one-shot notification you either saw or
+missed.
+
+**`computeWeeklyReview({ sessions, deadlinesProgress, reminders })`**
+(new export in `analytics.js`) is deliberately its own self-contained
+function, not folded into `computeSummary`. It reuses the same
+Monday-start week walk and `qualityRate` helper already in the module,
+but takes deadlines/reminders as input for the "coming up" section —
+`computeSummary`'s signature (sessions + `restDayOfWeek` only) didn't
+need to grow just to answer a question only this one card asks. Wired
+in `App.jsx` as its own `useMemo`, alongside (not merged into) the
+existing `insightOfTheDay`/`riskDigest` memos.
+
+**Content:** total hours logged this week so far vs. the same point
+last week (percentage delta, same fairness convention as the existing
+`weekOverWeek` — equal day-count spans, not a partial week against a
+full one), best day, top tag, this week's focus-rate, and up to 5 each
+of upcoming deadlines/reminders due in the next 7 days. Renders a plain
+"no sessions yet" / "nothing due" empty state rather than an intimidating
+wall of zeros when either half has nothing to show.
+
+
 
 

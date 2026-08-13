@@ -618,3 +618,86 @@ export function computeRiskDigest({ budgetsProgress = [], deadlinesProgress = []
   return { items, allClear: items.length === 0 };
 }
 
+const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// The in-app counterpart to the Sunday-evening push digest
+// (routes/cron.js's checkWeeklyDigest) -- richer than that push (which
+// only has room for "X hours, best day was Y"), since this reuses
+// everything already computed for Insights instead of being limited to
+// what fits in a notification. Deliberately a separate, self-contained
+// function (own Monday-start week walk, own quality tally) rather than
+// bolted onto computeSummary -- it answers "how was this week"
+// specifically, not "give me every angle on all-time history," and
+// keeping it separate means it can take deadlines/reminders as input
+// without computeSummary's signature (sessions + restDayOfWeek only)
+// having to grow to accommodate it.
+export function computeWeeklyReview({ sessions, deadlinesProgress = [], reminders = [] }) {
+  const now = new Date();
+  const thisMonday = mondayOf(now);
+  const daysElapsed = Math.floor((startOfLocalDay(now) - thisMonday) / 86400000) + 1;
+  const lastWeekStart = new Date(thisMonday.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const lastWeekEnd = new Date(lastWeekStart.getTime() + daysElapsed * 24 * 60 * 60 * 1000);
+
+  const thisWeekSessions = sessions.filter((s) => new Date(s.started_at) >= thisMonday);
+  const lastWeekSessions = sessions.filter((s) => {
+    const started = new Date(s.started_at);
+    return started >= lastWeekStart && started < lastWeekEnd;
+  });
+
+  const totalSeconds = thisWeekSessions.reduce((sum, s) => sum + durationSeconds(s), 0);
+  const lastWeekSeconds = lastWeekSessions.reduce((sum, s) => sum + durationSeconds(s), 0);
+  const deltaPct = lastWeekSeconds > 0 ? (totalSeconds - lastWeekSeconds) / lastWeekSeconds : null;
+
+  const dayTotals = new Map();
+  for (const s of thisWeekSessions) {
+    const key = localDayKey(new Date(s.started_at));
+    dayTotals.set(key, (dayTotals.get(key) || 0) + durationSeconds(s));
+  }
+  let bestDay = null;
+  for (let i = 0; i < daysElapsed; i++) {
+    const day = new Date(thisMonday.getTime() + i * 24 * 60 * 60 * 1000);
+    const seconds = dayTotals.get(localDayKey(day)) || 0;
+    if (!bestDay || seconds > bestDay.seconds) {
+      bestDay = { label: WEEKDAY_LONG[day.getDay()], seconds };
+    }
+  }
+  if (bestDay && bestDay.seconds === 0) bestDay = null; // no sessions at all yet this week
+
+  const tagTotals = new Map();
+  for (const s of thisWeekSessions) {
+    if (!s.tag_id) continue;
+    const existing = tagTotals.get(s.tag_id) || { name: s.tag_name, color: s.tag_color, seconds: 0 };
+    existing.seconds += durationSeconds(s);
+    tagTotals.set(s.tag_id, existing);
+  }
+  const topTag = [...tagTotals.values()].sort((a, b) => b.seconds - a.seconds)[0] || null;
+
+  const weekQuality = qualityRate(thisWeekSessions);
+
+  const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const upcomingDeadlines = deadlinesProgress
+    .filter((d) => d.status !== "done" && d.status !== "archived" && d.dueAt >= now && d.dueAt <= weekFromNow)
+    .sort((a, b) => a.dueAt - b.dueAt)
+    .slice(0, 5);
+  const upcomingReminders = reminders
+    .filter((r) => {
+      const remindAt = new Date(r.remind_at);
+      return remindAt >= now && remindAt <= weekFromNow;
+    })
+    .sort((a, b) => new Date(a.remind_at) - new Date(b.remind_at))
+    .slice(0, 5);
+
+  return {
+    totalSeconds,
+    lastWeekSeconds,
+    deltaPct,
+    bestDay,
+    topTag,
+    qualityRatePct: weekQuality.ratePct,
+    qualityRatedCount: weekQuality.rated,
+    qualityTotalCount: thisWeekSessions.length,
+    upcomingDeadlines,
+    upcomingReminders,
+  };
+}
+
