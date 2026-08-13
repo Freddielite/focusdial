@@ -26,23 +26,38 @@ export function setUnauthorizedHandler(fn) {
 }
 
 const SLOW_REQUEST_MS = 2500;
-const REQUEST_TIMEOUT_MS = 20000;
+// Render's free tier spins the backend down after idle and can take
+// 20-50s to wake back up on the next request -- the old 20s timeout
+// routinely fired mid-wake, right before the server would've actually
+// responded, which is what made requests look like they "took time to
+// work most of the time" (first attempt times out, a manual retry a
+// moment later succeeds because the server's warm by then).
+const REQUEST_TIMEOUT_MS = 45000;
+const RETRY_DELAY_MS = 800;
 let slowCount = 0;
 
-async function apiFetch(path, options = {}) {
-  let countedSlow = false;
-  const timer = setTimeout(() => {
-    countedSlow = true;
-    slowCount += 1;
-    slowRequestHandler?.(true);
-  }, SLOW_REQUEST_MS);
-  // Without this, a stalled connection (weak mobile signal, a
-  // firewalled LAN IP, etc.) leaves the fetch pending forever — no
-  // error, no timeout, nothing for a caller's .catch() to ever run. An
-  // action like Sign out would just look like it silently did nothing
-  // instead of failing visibly.
+function isIdempotentMethod(options) {
+  const method = (options.method || "GET").toUpperCase();
+  return method === "GET" || method === "HEAD";
+}
+
+// A bare network failure (DNS hiccup, connection refused while the
+// backend is still asleep) surfaces as a generic TypeError from fetch
+// itself, before any response exists -- the request never reached the
+// server, so retrying it is always safe regardless of method. Our own
+// timeout (AbortError) is different: the server may well have already
+// received and started acting on it, so it's only safe to silently
+// retry for read-only (GET/HEAD) calls; a POST/PATCH/DELETE that times
+// out surfaces the error normally rather than risk a duplicate write.
+function isRetryable(err, options) {
+  if (err instanceof TypeError) return true;
+  if (err.name === "AbortError") return isIdempotentMethod(options);
+  return false;
+}
+
+async function attemptFetch(path, options, timeoutMs) {
   const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       ...options,
@@ -60,12 +75,40 @@ async function apiFetch(path, options = {}) {
     }
     if (res.status === 204) return null;
     return await res.json();
-  } catch (err) {
-    if (err.name === "AbortError") throw new Error("Request timed out. Check your connection and try again.");
-    throw err;
+  } finally {
+    clearTimeout(abortTimer);
+  }
+}
+
+async function apiFetch(path, options = {}) {
+  let countedSlow = false;
+  const timer = setTimeout(() => {
+    countedSlow = true;
+    slowCount += 1;
+    slowRequestHandler?.(true);
+  }, SLOW_REQUEST_MS);
+  try {
+    try {
+      return await attemptFetch(path, options, REQUEST_TIMEOUT_MS);
+    } catch (err) {
+      if (!isRetryable(err, options)) {
+        if (err.name === "AbortError") throw new Error("Request timed out. Check your connection and try again.");
+        throw err;
+      }
+      // One retry only, after a short pause — a sleeping backend is
+      // usually awake by now; a second failure means something's
+      // actually wrong rather than just cold-starting, so that one is
+      // surfaced to the caller as normal.
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      try {
+        return await attemptFetch(path, options, REQUEST_TIMEOUT_MS);
+      } catch (err2) {
+        if (err2.name === "AbortError") throw new Error("Request timed out. Check your connection and try again.");
+        throw err2;
+      }
+    }
   } finally {
     clearTimeout(timer);
-    clearTimeout(abortTimer);
     if (countedSlow) {
       slowCount = Math.max(0, slowCount - 1);
       if (slowCount === 0) slowRequestHandler?.(false);

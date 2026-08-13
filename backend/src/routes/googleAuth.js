@@ -50,7 +50,13 @@ googleAuthRouter.get("/auth/google/start", (req, res) => {
 
 googleAuthRouter.get("/auth/google/callback", async (req, res) => {
   const frontendUrl = (process.env.FRONTEND_URL || "").replace(/\/$/, "");
-  const redirectTo = (status) => res.redirect(`${frontendUrl}/?googleAuth=${status}`);
+  // &tab=settings is safe to hardcode here (rather than round-tripping
+  // the tab the user actually started from) because Connect/Disconnect
+  // only ever appears in Settings — there's no other page this flow can
+  // begin from. Without it, App.jsx's initial-tab logic defaults back to
+  // "today", so a successful connect looked like it silently did nothing
+  // since the confirmation lives on a tab the user was no longer on.
+  const redirectTo = (status) => res.redirect(`${frontendUrl}/?googleAuth=${status}&tab=settings`);
 
   if (!googleConfigured) return res.status(503).send("Google Calendar linking is not configured");
   const { code, error, state } = req.query;

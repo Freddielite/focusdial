@@ -6,7 +6,11 @@
 // same-origin assets use a cache-first, update-in-background strategy so
 // repeat loads feel instant.
 
-const CACHE_NAME = "focusdial-shell-v1";
+// v2: navigation requests (the page shell) are now network-first (see
+// the fetch handler below) -- bumping the cache name so any shell
+// entries cached under the old cache-first behavior get dropped by the
+// activate handler instead of lingering forever under the same key.
+const CACHE_NAME = "focusdial-shell-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -28,6 +32,27 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) {
     return; // let the browser handle API calls and cross-origin requests normally
+  }
+
+  // The page shell (any top-level navigation) always goes network-first.
+  // Its URL never changes between deploys the way the hashed /assets/*.js
+  // it references does, so cache-first here means a stale shell -- and
+  // the stale JS bundle it points at -- can get served indefinitely,
+  // including right after landing back from a Google OAuth redirect
+  // (the exact moment freshness matters most). A network failure still
+  // falls back to whatever's cached, so this stays offline-friendly.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+          }
+          return response;
+        })
+        .catch(() => caches.open(CACHE_NAME).then((cache) => cache.match(request)))
+    );
+    return;
   }
 
   event.respondWith(
