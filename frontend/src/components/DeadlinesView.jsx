@@ -5,6 +5,7 @@ import { formatDuration, formatCountdown } from "../format.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import Dropdown from "./Dropdown.jsx";
+import { DatePicker, TimePicker } from "./DateTimeField.jsx";
 
 // How often to re-check whether a timer is running, while this tab is
 // open. Independent of TimerPanel's own state (which lives on the Today
@@ -104,6 +105,96 @@ function LogProgressInline({ deadline, onLogged }) {
   );
 }
 
+// Inline edit form for a deadline card -- same fields as creation
+// (title/tag/due date/time/estimated hours), pre-filled from the
+// deadline being edited. Lives inside the card itself (expand/collapse)
+// rather than a modal, matching how the create form already expands
+// inline above the list.
+function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
+  const [title, setTitle] = useState(deadline.title);
+  const [tagId, setTagId] = useState(deadline.tag_id || "");
+  const [dueDate, setDueDate] = useState(deadline.due_date?.slice(0, 10) || "");
+  const [dueTime, setDueTime] = useState(deadline.due_time || "");
+  const [estHours, setEstHours] = useState(Number(deadline.estimated_hours));
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim() || !dueDate) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateDeadline(deadline.id, {
+        title: title.trim(),
+        tag_id: tagId || null,
+        due_date: dueDate,
+        due_time: dueTime || null,
+        estimated_hours: Number(estHours),
+      });
+      onSaved(updated);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <motion.form
+      className="fd-manual-form fd-inline-edit-form"
+      onSubmit={handleSubmit}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="fd-manual-form__row">
+        <label>
+          Title
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} required />
+        </label>
+      </div>
+      <div className="fd-manual-form__row fd-manual-form__row--dates">
+        <label>
+          Due date
+          <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+        </label>
+        <label>
+          Due time (optional)
+          <TimePicker value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+        </label>
+        <label>
+          Estimated hours
+          <input type="number" min="0.5" step="0.5" value={estHours} onChange={(e) => setEstHours(e.target.value)} required />
+        </label>
+      </div>
+      <div className="fd-manual-form__row">
+        <label>
+          Track via tag (optional)
+          <Dropdown className="fd-select" value={tagId} onChange={(e) => setTagId(e.target.value)}>
+            <option value="">No tag, I'll log progress manually</option>
+            {tags.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </Dropdown>
+        </label>
+      </div>
+      {error && <div className="fd-inline-error">{error}</div>}
+      <div className="fd-manual-form__actions">
+        <button type="button" className="fd-link-btn" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+        <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </motion.form>
+  );
+}
+
 export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, onDataChanged }) {
   const [formOpen, setFormOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -114,6 +205,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
   const [addAsTask, setAddAsTask] = useState(false);
   const [error, setError] = useState(null);
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
   const nowMs = useLiveNow();
@@ -212,11 +304,11 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
             <div className="fd-manual-form__row fd-manual-form__row--dates">
               <label>
                 Due date
-                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+                <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
               </label>
               <label>
                 Due time (optional)
-                <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+                <TimePicker value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
               </label>
               <label>
                 Estimated hours needed
@@ -306,6 +398,13 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                     <span className="fd-check-card__value-unit">of {Number(d.estimated_hours).toFixed(1)}h</span>
                   </div>
                   <div className="fd-deadline-card__actions">
+                    <button
+                      className="fd-icon-btn"
+                      onClick={() => setEditingId((id) => (id === d.id ? null : d.id))}
+                      aria-label="Edit deadline"
+                    >
+                      ✎
+                    </button>
                     <button className="fd-icon-btn" onClick={() => handleMarkDone(d.id)} aria-label="Mark done">
                       ✓
                     </button>
@@ -343,6 +442,20 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                 {!d.tag_id && d.status !== "done" && (
                   <LogProgressInline deadline={d} onLogged={onDataChanged} />
                 )}
+
+                <AnimatePresence initial={false}>
+                  {editingId === d.id && (
+                    <DeadlineEditForm
+                      deadline={d}
+                      tags={tags}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={() => {
+                        setEditingId(null);
+                        onDataChanged();
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
               </motion.div>
             );
           })}

@@ -48,3 +48,57 @@ export function formatHour(hour) {
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${h12}${period}`;
 }
+
+// ---- Shared parsing/formatting for the custom Date/Time/DateTime
+// pickers (DateTimeField.jsx). These keep the exact same string
+// contracts native inputs use, so every call site that already does
+// `new Date(value)` or `value.split("T")` keeps working untouched --
+// only the widget rendering the field changes, not what value it
+// produces.
+
+// "YYYY-MM-DD" -> local Date at midnight. Parsing manually (not
+// `new Date("YYYY-MM-DD")`) avoids that string being read as UTC
+// midnight, which would then display as the previous day in any
+// timezone behind UTC.
+export function parseDateValue(value) {
+  if (!value) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+export function formatDateValue(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// "HH:MM" (24h, what a native time input stores) -> { hour24, minute }
+export function parseTimeValue(value) {
+  if (!value) return null;
+  const [h, m] = value.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return { hour24: h, minute: m };
+}
+
+export function formatTimeValue(hour24, minute) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(hour24)}:${pad(minute)}`;
+}
+
+export function formatDateDisplay(value, opts = {}) {
+  const date = parseDateValue(value);
+  if (!date) return "";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: opts.withYear === false ? undefined : "numeric",
+  });
+}
+
+export function formatTimeDisplay(value) {
+  const t = parseTimeValue(value);
+  if (!t) return "";
+  const period = t.hour24 < 12 ? "AM" : "PM";
+  const h12 = t.hour24 % 12 === 0 ? 12 : t.hour24 % 12;
+  return `${h12}:${String(t.minute).padStart(2, "0")} ${period}`;
+}

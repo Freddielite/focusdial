@@ -36,6 +36,36 @@ remindersRouter.post("/reminders", async (req, res) => {
   }
 });
 
+// Edits a pending reminder's own fields (title/note/remind_at/
+// recurrence) -- distinct from dismiss/convert above, which change its
+// status/lifecycle instead of its content. due_time has no equivalent
+// here since remind_at already carries both date and time in one
+// timestamp column.
+remindersRouter.patch("/reminders/:id", async (req, res) => {
+  const { title, note, remind_at, recurrence } = req.body;
+  const hasNoteField = Object.prototype.hasOwnProperty.call(req.body, "note");
+  try {
+    const { rows } = await pool.query(
+      `UPDATE reminders SET
+         title = COALESCE($3, title),
+         note = CASE WHEN $4 THEN $5 ELSE note END,
+         remind_at = COALESCE($6, remind_at),
+         recurrence = COALESCE($7, recurrence),
+         updated_at = now()
+       WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [req.params.id, req.userId, title, hasNoteField, hasNoteField ? note : null, remind_at, recurrence]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "reminder not found" });
+    if (rows[0].status === "pending") {
+      await pushItemToGoogle(req.userId, "reminder", rows[0]);
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "failed to update reminder" });
+  }
+});
+
 // Converts a fired reminder into a Deadline. The reminder's own note (if
 // any) isn't carried over automatically — estimated_hours has to come
 // from the person converting it, since a reminder has no sense of how

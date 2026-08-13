@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { createBudget, deleteBudget, assignTagToBudget } from "../api.js";
+import { createBudget, updateBudget, deleteBudget, assignTagToBudget } from "../api.js";
 import { formatDuration } from "../format.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
@@ -12,12 +12,88 @@ const SWATCHES = ["#E0A93D", "#4DA3FF", "#FF7A5C", "#4CD37D", "#FF6FA3"];
 // weekly goal. The Budgets tab stays read-only (progress bars); this is
 // where the goals actually get set up, living in Settings alongside tag
 // management so all the "configure my tracking" controls are together.
+// Inline edit form for a budget row -- name/weekly target/color,
+// pre-filled from the budget being edited. Expands within the row
+// itself rather than a modal, matching the create form just above it
+// in this same manager.
+function BudgetEditForm({ budget, onCancel, onSaved }) {
+  const currentSeconds = budget.targetSeconds ?? budget.weekly_target_seconds;
+  const [name, setName] = useState(budget.name);
+  const [hours, setHours] = useState(currentSeconds / 3600);
+  const [color, setColor] = useState(budget.color);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateBudget(budget.id, {
+        name: name.trim(),
+        weekly_target_hours: Number(hours),
+        color,
+      });
+      onSaved(updated);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <motion.form
+      className="fd-budget-manager__form fd-inline-edit-form"
+      onSubmit={handleSubmit}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="fd-manual-form__row">
+        <label>
+          Budget name
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required />
+        </label>
+        <label>
+          Weekly target (hours)
+          <input type="number" min="0.5" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} required />
+        </label>
+      </div>
+      <div className="fd-swatches">
+        {SWATCHES.map((sw) => (
+          <button
+            key={sw}
+            type="button"
+            className={`fd-swatch ${color === sw ? "fd-swatch--selected" : ""}`}
+            style={{ background: sw }}
+            onClick={() => setColor(sw)}
+            aria-label={`Select color ${sw}`}
+          />
+        ))}
+      </div>
+      {error && <div className="fd-inline-error">{error}</div>}
+      <div className="fd-manual-form__actions">
+        <button type="button" className="fd-link-btn" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+        <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </motion.form>
+  );
+}
+
 export default function BudgetManager({ budgets, tags, onDataChanged }) {
   const [name, setName] = useState("");
   const [hours, setHours] = useState(10);
   const [color, setColor] = useState(SWATCHES[0]);
   const [error, setError] = useState(null);
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
 
@@ -109,6 +185,13 @@ export default function BudgetManager({ budgets, tags, onDataChanged }) {
                   <span className="fd-tag-dot" style={{ background: b.color }} />
                   <span className="fd-budget-manager__name">{b.name}</span>
                   <span className="fd-budget-manager__target">{formatDuration(b.targetSeconds ?? b.weekly_target_seconds)}/wk</span>
+                  <button
+                    className="fd-icon-btn"
+                    onClick={() => setEditingId((id) => (id === b.id ? null : b.id))}
+                    aria-label={`Edit ${b.name}`}
+                  >
+                    ✎
+                  </button>
                   <button className="fd-icon-btn" onClick={() => handleDeleteBudget(b)} aria-label={`Delete ${b.name}`}>✕</button>
                 </div>
                 <div className="fd-budget-card__tags">
@@ -132,6 +215,18 @@ export default function BudgetManager({ budgets, tags, onDataChanged }) {
                     </Dropdown>
                   )}
                 </div>
+                <AnimatePresence initial={false}>
+                  {editingId === b.id && (
+                    <BudgetEditForm
+                      budget={b}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={() => {
+                        setEditingId(null);
+                        onDataChanged();
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
               </motion.div>
             ))}
           </AnimatePresence>

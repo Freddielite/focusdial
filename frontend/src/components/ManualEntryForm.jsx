@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createManualSession } from "../api.js";
 import { toLocalInputValue } from "../format.js";
 import Dropdown from "./Dropdown.jsx";
+import { DateTimePicker } from "./DateTimeField.jsx";
 
 const QUALITY_OPTIONS = [
   { value: "focused", label: "Focused" },
@@ -68,21 +69,11 @@ export default function ManualEntryForm({ tags, onSessionCreated }) {
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Start
-          <input
-            type="datetime-local"
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            required
-          />
+          <DateTimePicker value={start} onChange={(e) => setStart(e.target.value)} required />
         </label>
         <label>
           End
-          <input
-            type="datetime-local"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-            required
-          />
+          <DateTimePicker value={end} onChange={(e) => setEnd(e.target.value)} required />
         </label>
       </div>
       <div className="fd-manual-form__row">

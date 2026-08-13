@@ -150,6 +150,8 @@ export const unsubscribeFromPush = (endpoint) =>
 export const listReminders = () => apiFetch("/reminders");
 export const createReminder = (payload) =>
   apiFetch("/reminders", { method: "POST", body: JSON.stringify(payload) });
+export const updateReminder = (id, payload) =>
+  apiFetch(`/reminders/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const convertReminderToDeadline = (id, payload) =>
   apiFetch(`/reminders/${id}/convert-to-deadline`, { method: "POST", body: JSON.stringify(payload) });
 export const convertReminderToTask = (id, payload) =>

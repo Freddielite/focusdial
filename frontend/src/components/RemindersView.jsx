@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   createReminder,
+  updateReminder,
   dismissReminder,
   deleteReminder,
   convertReminderToDeadline,
@@ -10,6 +11,7 @@ import {
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import Dropdown from "./Dropdown.jsx";
+import { DatePicker, DateTimePicker } from "./DateTimeField.jsx";
 
 // Same bell glyph as the Reminders tab icon and the notification bell,
 // tinted with the reminder category accent.
@@ -37,7 +39,7 @@ function toLocalInputValue(date) {
   )}:${pad(date.getMinutes())}`;
 }
 
-function ConvertPanel({ reminder, tags, onDone, onDelete }) {
+function ConvertPanel({ reminder, tags, onDone, onDelete, onEdit }) {
   const [mode, setMode] = useState(null); // 'deadline' | 'task' | null
   const [dueDate, setDueDate] = useState("");
   const [estHours, setEstHours] = useState(5);
@@ -83,6 +85,9 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
         <button className="fd-link-btn" onClick={() => dismissReminder(reminder.id).then(onDone)}>
           Dismiss
         </button>
+        <button className="fd-icon-btn" onClick={onEdit} aria-label="Edit reminder">
+          ✎
+        </button>
         <button className="fd-icon-btn" onClick={() => onDelete(reminder)} aria-label="Delete">
           ✕
         </button>
@@ -96,7 +101,7 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
         <div className="fd-manual-form__row">
           <label>
             Due date (optional)
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           </label>
         </div>
         {error && <div className="fd-inline-error">{error}</div>}
@@ -117,7 +122,7 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Due date
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+          <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
         </label>
         <label>
           Estimated hours
@@ -157,6 +162,87 @@ function ConvertPanel({ reminder, tags, onDone, onDelete }) {
   );
 }
 
+// Inline edit form for a reminder card -- title/remind-at/repeat/note,
+// pre-filled from the reminder being edited. Expands within the card
+// itself, same pattern as the deadline edit form and the create form
+// above.
+function ReminderEditForm({ reminder, onCancel, onSaved }) {
+  const [title, setTitle] = useState(reminder.title);
+  const [remindAt, setRemindAt] = useState(toLocalInputValue(new Date(reminder.remind_at)));
+  const [note, setNote] = useState(reminder.note || "");
+  const [recurrence, setRecurrence] = useState(reminder.recurrence || "none");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim() || !remindAt) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateReminder(reminder.id, {
+        title: title.trim(),
+        note: note || null,
+        remind_at: new Date(remindAt).toISOString(),
+        recurrence,
+      });
+      onSaved(updated);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <motion.form
+      className="fd-manual-form fd-inline-edit-form"
+      onSubmit={handleSubmit}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="fd-manual-form__row">
+        <label>
+          Title
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} required />
+        </label>
+      </div>
+      <div className="fd-manual-form__row fd-manual-form__row--dates">
+        <label>
+          Remind me at
+          <DateTimePicker value={remindAt} onChange={(e) => setRemindAt(e.target.value)} required />
+        </label>
+        <label>
+          Repeat
+          <Dropdown className="fd-select" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+            <option value="none">Doesn't repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </Dropdown>
+        </label>
+      </div>
+      <div className="fd-manual-form__row">
+        <label>
+          Note (optional)
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
+        </label>
+      </div>
+      {error && <div className="fd-inline-error">{error}</div>}
+      <div className="fd-manual-form__actions">
+        <button type="button" className="fd-link-btn" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+        <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </motion.form>
+  );
+}
+
 export default function RemindersView({ reminders, tags, onDataChanged }) {
   const [formOpen, setFormOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -165,6 +251,7 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
   const [recurrence, setRecurrence] = useState("none");
   const [error, setError] = useState(null);
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
 
@@ -249,12 +336,7 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
             <div className="fd-manual-form__row fd-manual-form__row--dates">
               <label>
                 Remind me at
-                <input
-                  type="datetime-local"
-                  value={remindAt}
-                  onChange={(e) => setRemindAt(e.target.value)}
-                  required
-                />
+                <DateTimePicker value={remindAt} onChange={(e) => setRemindAt(e.target.value)} required />
               </label>
               <label>
                 Repeat
@@ -310,7 +392,25 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
                     </div>
                   </div>
                   {r.note && <div className="fd-reminder-card__note">{r.note}</div>}
-                  <ConvertPanel reminder={r} tags={tags} onDone={onDataChanged} onDelete={handleDeleteReminder} />
+                  <ConvertPanel
+                    reminder={r}
+                    tags={tags}
+                    onDone={onDataChanged}
+                    onDelete={handleDeleteReminder}
+                    onEdit={() => setEditingId((id) => (id === r.id ? null : r.id))}
+                  />
+                  <AnimatePresence initial={false}>
+                    {editingId === r.id && (
+                      <ReminderEditForm
+                        reminder={r}
+                        onCancel={() => setEditingId(null)}
+                        onSaved={() => {
+                          setEditingId(null);
+                          onDataChanged();
+                        }}
+                      />
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -351,12 +451,31 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
                 <div className="fd-reminder-actions">
                   <button
                     className="fd-icon-btn"
+                    onClick={() => setEditingId((id) => (id === r.id ? null : r.id))}
+                    aria-label="Edit reminder"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    className="fd-icon-btn"
                     onClick={() => handleDeleteReminder(r)}
                     aria-label="Delete"
                   >
                     ✕
                   </button>
                 </div>
+                <AnimatePresence initial={false}>
+                  {editingId === r.id && (
+                    <ReminderEditForm
+                      reminder={r}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={() => {
+                        setEditingId(null);
+                        onDataChanged();
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
               </motion.div>
             ))}
           </AnimatePresence>
