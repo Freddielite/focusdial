@@ -613,7 +613,10 @@ button {
 /* ---------- Weekly Review card (Insights tab) ---------- */
 
 .fd-weekly-review {
-  margin-bottom: 18px;
+  /* No margin-bottom here — this is a direct child of .fd-view, which
+     already spaces its children via `gap`. A margin here on top of that
+     gap was doubling up, leaving a visibly bigger gap below this card
+     than appears anywhere else in the app. */
 }
 
 .fd-weekly-review__headline {
