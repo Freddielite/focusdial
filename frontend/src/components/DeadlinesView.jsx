@@ -183,7 +183,14 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!title.trim() || !dueDate) return;
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    if (!dueDate) {
+      setError("Due date is required.");
+      return;
+    }
     if (!estHours || Number(estHours) <= 0) {
       setError("Estimated time must be more than 0 minutes.");
       return;
@@ -303,7 +310,14 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
 
   async function handleCreate(e) {
     e.preventDefault();
-    if (!title.trim() || !dueDate) return;
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    if (!dueDate) {
+      setError("Due date is required.");
+      return;
+    }
     if (!estHours || Number(estHours) <= 0) {
       setError("Estimated time must be more than 0 minutes.");
       return;
