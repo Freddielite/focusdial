@@ -248,8 +248,17 @@ function qualityRate(sessions) {
 export function computeSummary(sessions, restDayOfWeek = null) {
   const now = new Date();
   const todayKey = localDayKey(now);
-  const weekAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-  const weekAgoStart = startOfLocalDay(weekAgo);
+  // Monday-start calendar week, matching the convention used everywhere
+  // else in this file (mondayOf(), weekOverWeek, computeBudgetProgress,
+  // computeWeeklyTotals, computeWeeklyReview) — this used to be a
+  // trailing 7-day rolling window instead (today back through 6 days
+  // ago), which quietly disagreed with all of those any day that isn't
+  // a Monday, worst by Sunday (up to 6 extra days of the *previous*
+  // calendar week counted as "this week"). That's what made the Today
+  // tab's "This week" stat and the Insights tab's Weekly Review total
+  // show two different numbers for what's supposed to be the same
+  // question.
+  const thisWeekStart = mondayOf(now);
 
   let todaySeconds = 0;
   let weekSeconds = 0;
@@ -278,7 +287,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     dayTotals.set(dayKey, (dayTotals.get(dayKey) || 0) + seconds);
 
     if (dayKey === todayKey) todaySeconds += seconds;
-    if (started >= weekAgoStart) weekSeconds += seconds;
+    if (started >= thisWeekStart) weekSeconds += seconds;
 
     // Attributes the whole session to the hour it started in, rather than
     // splitting a session that crosses an hour boundary proportionally —
@@ -336,13 +345,15 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   // full 7-day totals, since comparing a partial current week against a
   // complete previous one would always show a misleading drop, worse the
   // earlier in the week it is. Both slices cover the same day count, so
-  // the comparison is fair at any point in the week.
-  const thisMonday = mondayOf(now);
-  const daysElapsedThisWeek = Math.floor((startOfLocalDay(now) - thisMonday) / 86400000) + 1;
+  // the comparison is fair at any point in the week. Reuses
+  // `thisWeekStart` from the top of this function rather than a second
+  // `mondayOf(now)` call — that's also what `weekSeconds` above is now
+  // scoped to, so this and the hero card's "This week" stat agree.
+  const daysElapsedThisWeek = Math.floor((startOfLocalDay(now) - thisWeekStart) / 86400000) + 1;
   let thisWeekSoFarSeconds = 0;
   let lastWeekSameSpanSeconds = 0;
   for (let i = 0; i < daysElapsedThisWeek; i++) {
-    const day = new Date(thisMonday.getTime() + i * 24 * 60 * 60 * 1000);
+    const day = new Date(thisWeekStart.getTime() + i * 24 * 60 * 60 * 1000);
     thisWeekSoFarSeconds += dayTotals.get(localDayKey(day)) || 0;
     const lastWeekDay = new Date(day.getTime() - 7 * 24 * 60 * 60 * 1000);
     lastWeekSameSpanSeconds += dayTotals.get(localDayKey(lastWeekDay)) || 0;
@@ -376,10 +387,10 @@ export function computeSummary(sessions, restDayOfWeek = null) {
 
   // Quality (focus-rate) trend, same "this week so far vs. the same
   // number of days last week" fairness rule as weekOverWeek above —
-  // reusing thisMonday/daysElapsedThisWeek rather than a second
+  // reusing thisWeekStart/daysElapsedThisWeek rather than a second
   // definition of "this week."
-  const thisWeekQuality = qualityRate(sessions.filter((s) => new Date(s.started_at) >= thisMonday));
-  const lastWeekQualityStart = new Date(thisMonday.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thisWeekQuality = qualityRate(sessions.filter((s) => new Date(s.started_at) >= thisWeekStart));
+  const lastWeekQualityStart = new Date(thisWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
   const lastWeekQualityEnd = new Date(lastWeekQualityStart.getTime() + daysElapsedThisWeek * 24 * 60 * 60 * 1000);
   const lastWeekQuality = qualityRate(
     sessions.filter((s) => {

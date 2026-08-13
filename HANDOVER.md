@@ -1623,6 +1623,32 @@ than a new picker — a weekday + hour-of-day is exactly what `Dropdown`
 already handles well, no need for `DateTimeField`'s calendar/time-wheel
 machinery here.
 
+## Session 17 — "This week" disagreed with itself across tabs
 
+Real bug, caught by comparing two screenshots side by side: the Today
+tab's "This week" stat (`StatsStrip`/`HeroCard`, both reading
+`summary.weekSeconds`) and the Insights tab's Weekly Review total
+disagreed by several hours at the same moment, for the same account.
 
+**Root cause:** `computeSummary`'s `weekSeconds` was a trailing 7-day
+*rolling* window (today back through 6 days ago) — a leftover from
+before this app had a "weeks start Monday" convention at all. Every
+other weekly figure added since (`weekOverWeek`, `computeBudgetProgress`,
+`computeWeeklyTotals`, and Session 15's `computeWeeklyReview`) uses a
+Monday-start calendar week instead. The two only agree on Mondays; by
+Sunday, the rolling window could include up to 6 days from the
+*previous* calendar week that none of the Monday-start figures would
+ever count — which is exactly the gap in the screenshots (a Thursday,
+partway through a Monday-start week that had barely gotten going, vs. a
+rolling window still carrying most of last week).
+
+**Fix:** `weekSeconds` now uses the same `mondayOf(now)` cutoff as
+everything else, computed once at the top of `computeSummary` as
+`thisWeekStart` and reused for `weekOverWeek`'s calculation too (which
+previously had its own separate `mondayOf(now)` call a few dozen lines
+later in the same function — consolidated into one, both to fix this
+and so there's only one definition of "this week" to keep in sync
+going forward). Nothing downstream of `weekSeconds` needed to change —
+`HeroCard` and `StatsStrip` just read whatever `summary.weekSeconds` is,
+same as before.
 
