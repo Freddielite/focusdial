@@ -93,6 +93,13 @@ export async function showRunningSessionNotification(session) {
       tag: "running-session", // replaces itself rather than stacking on repeated calls
       renotify: false,
       silent: true, // this is a status indicator, not an alert — no sound/vibration on (re)show
+      // Anchors the OS's own "posted X ago" display to when the session
+      // actually started, not to whenever this call happened to run —
+      // without this, that indicator effectively restarts every time
+      // this is re-called (page reload, tab refocus, etc.) instead of
+      // ticking up correctly for the session's true duration, no polling
+      // required to keep it accurate.
+      timestamp: new Date(session.started_at).getTime(),
       actions: [{ action: "stop", title: "Stop" }], // ignored harmlessly on iOS/WebKit, see comment above
       data: {
         type: "running-session",

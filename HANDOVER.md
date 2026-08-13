@@ -1652,3 +1652,38 @@ going forward). Nothing downstream of `weekSeconds` needed to change —
 `HeroCard` and `StatsStrip` just read whatever `summary.weekSeconds` is,
 same as before.
 
+## Session 18 — running-session notification: "Untitled session" + no timer
+
+Two real bugs in the persistent "Session running" notification, both
+present since it first shipped.
+
+**"Untitled session" even with a tag set.** `showRunningSessionNotification`
+(`push.js`) decides the body text from `session.tag_name` — but
+`POST /sessions/start`, `POST /sessions/:id/stop`, `POST /sessions`
+(manual), and `PATCH /sessions/:id` all used a plain
+`INSERT/UPDATE ... RETURNING *`, which can only return columns from
+`sessions` itself. `tag_name` was never actually on the object handed
+back from any of them — only the list endpoints (`GET /sessions`,
+`GET /sessions/history`) ever joined against `tags` at all, and none of
+those are what feeds the notification. It showed "Untitled session"
+unconditionally, regardless of what tag was picked.
+
+**Fix:** wrapped each of those four queries' INSERT/UPDATE in a
+data-modifying CTE, then SELECT + LEFT JOIN tags (and tasks, for
+`task_title`) off of it — one round trip, same as a bare `RETURNING *`,
+now with the joined columns actually present. `GET /sessions/running`
+got the same tags join added directly (it's a plain SELECT, no CTE
+needed there).
+
+**No live timer on the notification.** The "1 min" shown next to the
+notification's title is the browser's own "posted X ago" indicator —
+anchored to whenever `showNotification` was actually called, not to the
+session's real `started_at`. Every time it got re-shown (tab refocus,
+page reload while a session was already running) that indicator
+effectively reset instead of reflecting true elapsed time. Fixed by
+passing `timestamp: new Date(session.started_at).getTime()` — the
+Notification API's own field for exactly this ("the time this
+notification is *about*, not when it was posted"), so the OS renders and
+keeps ticking up an accurate relative time on its own. No polling/
+interval needed on our side to keep it live.
+

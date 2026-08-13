@@ -10,8 +10,8 @@ export const sessionsRouter = Router();
 sessionsRouter.get("/sessions/running", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT s.*, tk.title AS task_title
-       FROM sessions s LEFT JOIN tasks tk ON tk.id = s.task_id
+      `SELECT s.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
        WHERE s.user_id = $1 AND s.ended_at IS NULL ORDER BY s.started_at DESC LIMIT 1`,
       [req.userId]
     );
@@ -32,9 +32,22 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
     if (existing.length > 0) {
       return res.status(409).json({ error: "a session is already running" });
     }
+    // A plain `INSERT ... RETURNING *` can only return columns from
+    // `sessions` itself, not a joined tag/task name — which is exactly
+    // what left the running-session notification (see frontend's
+    // push.js) always showing "Untitled session" even when a tag was
+    // set, since it had nothing else to go on. Wrapping the insert in a
+    // CTE and joining against it is the standard way to get both in one
+    // round trip rather than a bare insert followed by a second lookup.
     const { rows } = await pool.query(
-      `INSERT INTO sessions (tag_id, started_at, note, source, task_id, user_id)
-       VALUES ($1, now(), $2, 'timer', $3, $4) RETURNING *`,
+      `WITH inserted AS (
+         INSERT INTO sessions (tag_id, started_at, note, source, task_id, user_id)
+         VALUES ($1, now(), $2, 'timer', $3, $4) RETURNING *
+       )
+       SELECT inserted.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+       FROM inserted
+       LEFT JOIN tags t ON t.id = inserted.tag_id
+       LEFT JOIN tasks tk ON tk.id = inserted.task_id`,
       [tag_id || null, note || null, task_id || null, req.userId]
     );
     res.status(201).json(rows[0]);
@@ -53,8 +66,14 @@ sessionsRouter.post("/sessions/:id/stop", async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `UPDATE sessions SET ended_at = now(), note = COALESCE($3, note), quality = COALESCE($4, quality), updated_at = now()
-       WHERE id = $1 AND user_id = $2 AND ended_at IS NULL RETURNING *`,
+      `WITH updated AS (
+         UPDATE sessions SET ended_at = now(), note = COALESCE($3, note), quality = COALESCE($4, quality), updated_at = now()
+         WHERE id = $1 AND user_id = $2 AND ended_at IS NULL RETURNING *
+       )
+       SELECT updated.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+       FROM updated
+       LEFT JOIN tags t ON t.id = updated.tag_id
+       LEFT JOIN tasks tk ON tk.id = updated.task_id`,
       [req.params.id, req.userId, note || null, quality || null]
     );
     if (rows.length === 0) {
@@ -83,8 +102,14 @@ sessionsRouter.post("/sessions", async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO sessions (tag_id, started_at, ended_at, note, quality, source, task_id, user_id)
-       VALUES ($1, $2, $3, $4, $5, 'manual', $6, $7) RETURNING *`,
+      `WITH inserted AS (
+         INSERT INTO sessions (tag_id, started_at, ended_at, note, quality, source, task_id, user_id)
+         VALUES ($1, $2, $3, $4, $5, 'manual', $6, $7) RETURNING *
+       )
+       SELECT inserted.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+       FROM inserted
+       LEFT JOIN tags t ON t.id = inserted.tag_id
+       LEFT JOIN tasks tk ON tk.id = inserted.task_id`,
       [tag_id || null, started_at, ended_at, note || null, quality || null, task_id || null, req.userId]
     );
     res.status(201).json(rows[0]);
@@ -246,15 +271,21 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `UPDATE sessions SET
-         tag_id = CASE WHEN $7 THEN $3 ELSE tag_id END,
-         started_at = COALESCE($4, started_at),
-         ended_at = COALESCE($5, ended_at),
-         note = CASE WHEN $8 THEN $6 ELSE note END,
-         quality = CASE WHEN $9 THEN $10 ELSE quality END,
-         task_id = CASE WHEN $11 THEN $12 ELSE task_id END,
-         updated_at = now()
-       WHERE id = $1 AND user_id = $2 RETURNING *`,
+      `WITH updated AS (
+         UPDATE sessions SET
+           tag_id = CASE WHEN $7 THEN $3 ELSE tag_id END,
+           started_at = COALESCE($4, started_at),
+           ended_at = COALESCE($5, ended_at),
+           note = CASE WHEN $8 THEN $6 ELSE note END,
+           quality = CASE WHEN $9 THEN $10 ELSE quality END,
+           task_id = CASE WHEN $11 THEN $12 ELSE task_id END,
+           updated_at = now()
+         WHERE id = $1 AND user_id = $2 RETURNING *
+       )
+       SELECT updated.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+       FROM updated
+       LEFT JOIN tags t ON t.id = updated.tag_id
+       LEFT JOIN tasks tk ON tk.id = updated.task_id`,
       [
         req.params.id,
         req.userId,
