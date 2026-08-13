@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createTask, updateTask, deleteTask } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
-import { DatePicker } from "./DateTimeField.jsx";
+import { DatePicker, CalendarGlyph } from "./DateTimeField.jsx";
 
 // Same flag glyph used in DeadlinesView, so a task created from a
 // deadline (see "Also add to my task list") is instantly recognizable
@@ -98,7 +98,7 @@ export default function TasksWidget({ tasks, onDataChanged }) {
           aria-label="Set due date"
           title="Set due date"
         >
-          📅
+          <CalendarGlyph />
         </button>
         <button type="submit" className="fd-link-btn">
           Add

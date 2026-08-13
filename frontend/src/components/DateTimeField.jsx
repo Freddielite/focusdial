@@ -356,7 +356,7 @@ export function DateTimePicker({ value, onChange, required, className = "", plac
   );
 }
 
-function CalendarGlyph() {
+export function CalendarGlyph() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="3" y="5" width="18" height="16" rx="2" />
