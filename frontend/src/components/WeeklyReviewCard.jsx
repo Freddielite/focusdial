@@ -68,7 +68,7 @@ export default function WeeklyReviewCard({ review }) {
             )}
             {review.qualityRatePct != null && (
               <div className="fd-weekly-review__stat">
-                <span className="fd-weekly-review__stat-label">Focus rate</span>
+                <span className="fd-weekly-review__stat-label">This week's focus rate</span>
                 <span className="fd-weekly-review__stat-value">
                   {Math.round(review.qualityRatePct)}% ({review.qualityRatedCount}/{review.qualityTotalCount} rated)
                 </span>

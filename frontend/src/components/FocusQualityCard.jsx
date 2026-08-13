@@ -29,7 +29,7 @@ export default function FocusQualityCard({ quality }) {
         <>
           <div className="fd-quality-panel__headline">
             <span className="fd-quality-panel__rate">{Math.round(quality.focusRatePct)}%</span>
-            <span className="fd-quality-panel__rate-label">of rated sessions were Focused</span>
+            <span className="fd-quality-panel__rate-label">of all-time rated sessions were Focused</span>
           </div>
           {quality.deltaPct != null && (
             <div className={`fd-quality-panel__trend fd-quality-panel__trend--${trendTone(quality.deltaPct)}`}>
