@@ -21,6 +21,26 @@ const RUNAWAY_THRESHOLD_SECONDS = 4 * 60 * 60;
 // check. Below this, the away-time prompt would just be noise.
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
+// Same "at least 3" bar used elsewhere in analytics.js (mostSustainedTag,
+// bestFocusHour) for the same reason: one session that happened to land
+// in this hour once isn't a real pattern worth interrupting someone
+// for. Below this, the suggestion still quietly pre-selects the tag
+// dropdown (see the effect below) but doesn't earn the more assertive
+// nudge card.
+const MIN_NUDGE_SESSIONS = 3;
+
+// "2026-8-13-14" -- current calendar hour as a plain string key, used
+// only to remember "already dismissed the nudge for this specific
+// hour" in localStorage. Deliberately date+hour, not just hour: dismiss
+// it now and it stays gone for the rest of *this* hour, but the same
+// hour tomorrow is a fresh chance to show it again.
+function currentHourBucketKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
+}
+
+const NUDGE_DISMISS_KEY = "fd-timer-nudge-dismissed-hour";
+
 export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessionCompleted, onDataChanged }) {
   const [running, setRunning] = useState(null); // the running session row, or null
   const [selectedTag, setSelectedTag] = useState("");
@@ -46,6 +66,9 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   const [quality, setQuality] = useState(null);
   // { awayMs } while the "you were away" prompt is showing, else null.
   const [awayPrompt, setAwayPrompt] = useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = useState(
+    () => typeof window !== "undefined" && localStorage.getItem(NUDGE_DISMISS_KEY) === currentHourBucketKey()
+  );
   const tickRef = useRef(null);
   const hiddenAtRef = useRef(null);
 
@@ -62,7 +85,32 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hourlyTagSuggestions, tags]);
 
-  const suggestedTagId = !userPickedTag ? hourlyTagSuggestions?.[new Date().getHours()]?.tagId : null;
+  const suggestion = hourlyTagSuggestions?.[new Date().getHours()];
+  const suggestedTagId =
+    !userPickedTag && suggestion && tags.some((t) => t.id === suggestion.tagId) ? suggestion.tagId : null;
+  // The stronger, actionable card only earns its place with real
+  // confidence behind it (see MIN_NUDGE_SESSIONS) -- a lower-confidence
+  // suggestion still pre-selects the dropdown above, just without the
+  // "start now?" prompt on top of it.
+  const showNudge =
+    !running &&
+    !nudgeDismissed &&
+    suggestion &&
+    suggestion.count >= MIN_NUDGE_SESSIONS &&
+    tags.some((t) => t.id === suggestion.tagId);
+
+  function dismissNudge() {
+    setNudgeDismissed(true);
+    try {
+      localStorage.setItem(NUDGE_DISMISS_KEY, currentHourBucketKey());
+    } catch {
+      // Storage full/unavailable (private browsing) -- the dismiss still
+      // works for the rest of this render, it just won't stick past a
+      // reload, which is a fine fallback rather than something worth
+      // erroring over.
+    }
+  }
+
   const openTasks = (tasks || []).filter((t) => t.status === "open");
   // Looked up fresh on every render (not stored) so a title edited or a
   // task deleted elsewhere while this timer is running is still shown
@@ -147,12 +195,15 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
     return () => clearInterval(tickRef.current);
   }, [running]);
 
-  async function handleStart() {
+  async function handleStart(tagIdOverride) {
     setBusy(true);
     setError(null);
     setAwayPrompt(null);
+    const tagToUse = tagIdOverride !== undefined ? tagIdOverride : selectedTag || null;
     try {
-      const s = await startSession(selectedTag || null, null, selectedTask || null);
+      const s = await startSession(tagToUse, null, selectedTask || null);
+      setSelectedTag(tagToUse || "");
+      setUserPickedTag(true);
       setRunning(s);
       showRunningSessionNotification(s);
     } catch (err) {
@@ -222,6 +273,26 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
           </div>
         </div>
       )}
+      {showNudge && (
+        <div className="fd-timer-nudge">
+          <span className="fd-timer-nudge__text">
+            You usually work on <strong>{suggestion.name}</strong> around this time.
+          </span>
+          <div className="fd-timer-nudge__actions">
+            <button
+              type="button"
+              className="fd-btn fd-btn--start fd-btn--sm"
+              onClick={() => handleStart(suggestion.tagId)}
+              disabled={busy}
+            >
+              Start now
+            </button>
+            <button type="button" className="fd-icon-btn" onClick={dismissNudge} aria-label="Dismiss suggestion">
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <Dropdown
         className="fd-select"
         value={selectedTag}
@@ -238,7 +309,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
           </option>
         ))}
       </Dropdown>
-      {suggestedTagId && !running && (
+      {suggestedTagId && !running && !showNudge && (
         <div className="fd-timer-suggestion">
           Suggested based on what you usually work on now
         </div>
@@ -293,7 +364,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
       )}
       <button
         className={`fd-btn ${running ? "fd-btn--stop" : "fd-btn--start"}`}
-        onClick={running ? handleStop : handleStart}
+        onClick={() => (running ? handleStop() : handleStart())}
         disabled={busy}
       >
         {running ? "Stop" : "Start Session"}

@@ -1532,4 +1532,35 @@ before it even finishes booting. If a future pass wants those gone too,
 they're easy to find: `grep -rn "—" backend frontend/src` (excluding
 `node_modules`) turns up every remaining instance, comment or not.
 
+## Session 14 — proactive "start session?" nudge
+
+Follow-up to Session 12's hourly tag suggestion, which only ever
+quietly pre-selected the Timer's tag dropdown — easy to miss, and not
+actually "proactive" the way it was originally pitched.
+
+**`computeHourlyTagSuggestions` now tracks `count`** (how many past
+sessions contributed to that hour's best tag), not just `seconds`. This
+is what lets a consumer tell "this is a real pattern" apart from "one
+session happened to land in this hour once" — same `>= 3` bar already
+used elsewhere (`mostSustainedTag`, `bestFocusHour`), reused rather than
+inventing a new threshold.
+
+**`TimerPanel` now shows an actual card, not just a pre-filled dropdown**,
+once that count clears `MIN_NUDGE_SESSIONS` (3): "You usually work on X
+around this time," with a **Start now** button that starts the timer
+with that tag in one tap (`handleStart` takes an optional tag-id
+override for this — the main Start button still calls it with no
+override, using whatever's in the dropdown). Below that bar, the old
+quiet pre-fill-plus-caption behavior is untouched, so a thin/early
+history doesn't get an assertive card with too little evidence behind it.
+
+**Dismiss is scoped to "this hour, today," not forever.** `localStorage`
+stores a single `"YYYY-M-D-H"` key on dismiss; the card re-checks that
+key against the *current* hour-bucket on every mount, so dismissing it
+at 2pm today doesn't suppress it at 2pm tomorrow — same hour, different
+day, fresh chance. No backend involved; this is deliberately a
+device-local, low-stakes preference, same reasoning as `useNotifications`'
+localStorage log.
+
+
 

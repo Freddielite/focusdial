@@ -181,40 +181,49 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
 }
 
 // For each hour of day (0-23), which tag has the most historical seconds
-// logged starting in that hour — used to pre-select a tag when starting
-// a new timer around that time. Returns a plain object keyed by hour
-// (0-23) to { tagId, name } or null for hours with no clear tag history.
+// logged starting in that hour — used both to pre-select a tag when
+// starting a new timer around that time, and (see TimerPanel's
+// proactive nudge) to actively suggest starting one. Returns a plain
+// object keyed by hour (0-23) to { tagId, name, color, seconds, count }
+// or null for hours with no clear tag history. `count` (how many past
+// sessions contributed) is what lets a consumer distinguish "this is a
+// real pattern" from "one session happened to land in this hour once."
 export function computeHourlyTagSuggestions(sessions) {
-  // hour -> tagId -> seconds
-  const perHourTagSeconds = Array.from({ length: 24 }, () => new Map());
+  // hour -> tagId -> { seconds, count }
+  const perHourTagStats = Array.from({ length: 24 }, () => new Map());
   const tagInfo = new Map(); // tagId -> { name, color }
 
   for (const s of sessions) {
     if (!s.tag_id) continue;
     const hour = new Date(s.started_at).getHours();
     const seconds = durationSeconds(s);
-    const bucket = perHourTagSeconds[hour];
-    bucket.set(s.tag_id, (bucket.get(s.tag_id) || 0) + seconds);
+    const bucket = perHourTagStats[hour];
+    const existing = bucket.get(s.tag_id) || { seconds: 0, count: 0 };
+    existing.seconds += seconds;
+    existing.count += 1;
+    bucket.set(s.tag_id, existing);
     if (!tagInfo.has(s.tag_id)) {
       tagInfo.set(s.tag_id, { name: s.tag_name, color: s.tag_color });
     }
   }
 
   const suggestions = {};
-  perHourTagSeconds.forEach((bucket, hour) => {
+  perHourTagStats.forEach((bucket, hour) => {
     if (bucket.size === 0) {
       suggestions[hour] = null;
       return;
     }
     let bestTagId = null;
-    let bestSeconds = 0;
-    bucket.forEach((seconds, tagId) => {
-      if (seconds > bestSeconds) {
-        bestSeconds = seconds;
+    let bestStats = { seconds: 0, count: 0 };
+    bucket.forEach((stats, tagId) => {
+      if (stats.seconds > bestStats.seconds) {
+        bestStats = stats;
         bestTagId = tagId;
       }
     });
-    suggestions[hour] = bestTagId ? { tagId: bestTagId, ...tagInfo.get(bestTagId) } : null;
+    suggestions[hour] = bestTagId
+      ? { tagId: bestTagId, ...tagInfo.get(bestTagId), seconds: bestStats.seconds, count: bestStats.count }
+      : null;
   });
   return suggestions;
 }
