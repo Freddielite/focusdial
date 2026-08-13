@@ -259,6 +259,24 @@ export async function initSchema() {
     -- dropping it is a destructive migration for zero functional gain.
     ALTER TABLE settings ADD COLUMN IF NOT EXISTS ics_token TEXT UNIQUE;
 
+    -- A simple daily focus-time target, separate from weekly Budgets
+    -- (which are tag-scoped and week-long) -- this is a single
+    -- unscoped "aim for N hours today" number surfaced on the Today
+    -- tab's hero card. NULL (the default) means the feature is off, not
+    -- "goal of zero" -- HeroCard.jsx treats those very differently (no
+    -- progress bar at all vs. a bar that's already "met" at 0 logged).
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS daily_focus_goal_seconds INTEGER;
+
+    -- When the Sunday-evening weekly digest push actually fires (see
+    -- routes/cron.js's checkWeeklyDigest) -- previously hardcoded to
+    -- Sunday/7pm-local for everyone. day_of_week matches JS's getDay()
+    -- (0 = Sunday ... 6 = Saturday) for consistency with rest_day_of_week
+    -- above; hour is 0-23, local to the user via the same
+    -- timezone_offset_minutes approximation cron.js already uses for
+    -- everything else time-based.
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_digest_day_of_week INTEGER NOT NULL DEFAULT 0 CHECK (weekly_digest_day_of_week BETWEEN 0 AND 6);
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_digest_hour INTEGER NOT NULL DEFAULT 19 CHECK (weekly_digest_hour BETWEEN 0 AND 23);
+
     CREATE TABLE IF NOT EXISTS tasks (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title       TEXT NOT NULL,

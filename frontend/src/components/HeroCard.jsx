@@ -6,15 +6,19 @@ import FocusMark from "./FocusMark.jsx";
 // number that answers "how's today going"), with this-week and streak
 // as the supporting stats, and a status pill that reads the way "In the
 // black" does: a plain-language verdict, not a metric.
-function statusPill(summary, streakAtRisk) {
+function statusPill(summary, streakAtRisk, goalMet) {
   if (streakAtRisk) return { label: "Streak at risk", tone: "warn" };
+  if (goalMet) return { label: "Goal met", tone: "good" };
   if (summary.todaySeconds > 0) return { label: "In focus today", tone: "good" };
   if (summary.streakDays > 0) return { label: "Streak alive", tone: "brass" };
   return { label: "Fresh start", tone: "dim" };
 }
 
-export default function HeroCard({ summary, streakAtRisk }) {
-  const pill = statusPill(summary, streakAtRisk);
+export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds }) {
+  const hasGoal = dailyGoalSeconds != null && dailyGoalSeconds > 0;
+  const goalPct = hasGoal ? Math.min(1, summary.todaySeconds / dailyGoalSeconds) : 0;
+  const goalMet = hasGoal && summary.todaySeconds >= dailyGoalSeconds;
+  const pill = statusPill(summary, streakAtRisk, goalMet);
   const streakText =
     summary.streakDays > 0 ? `${summary.streakDays}-day streak` : "No streak yet";
 
@@ -30,6 +34,21 @@ export default function HeroCard({ summary, streakAtRisk }) {
         </div>
 
         <div className="fd-hero__value">{formatDuration(summary.todaySeconds)}</div>
+
+        {hasGoal && (
+          <div className="fd-hero__goal">
+            <div className="fd-hero__goal-track">
+              <div
+                className={`fd-hero__goal-fill ${goalMet ? "fd-hero__goal-fill--met" : ""}`}
+                style={{ width: `${goalPct * 100}%` }}
+              />
+            </div>
+            <span className="fd-hero__goal-label">
+              {goalMet ? "Goal met, " : ""}
+              {formatDuration(summary.todaySeconds)} of {formatDuration(dailyGoalSeconds)} today
+            </span>
+          </div>
+        )}
 
         <div className="fd-hero__divider" />
 

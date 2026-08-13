@@ -233,13 +233,15 @@ function localMondayKey(localDate) {
   return localDateISO(monday);
 }
 
-// Sunday evening: "here's your week" — reuses the same push
-// infrastructure as the other automations, just on a weekly cadence
-// instead of reacting to an event.
+// Configurable "here's your week" push (day/hour come from Settings —
+// see the db.js column comments on weekly_digest_day_of_week/hour —
+// defaulting to Sunday evening for anyone who hasn't touched the
+// setting) — reuses the same push infrastructure as the other
+// automations, just on a weekly cadence instead of reacting to an event.
 async function checkWeeklyDigest(userId, offsetMinutes, settings) {
   const nowLocal = shiftToLocal(new Date(), offsetMinutes);
-  if (nowLocal.getUTCDay() !== 0) return false; // only fires on Sundays, locally
-  if (localHour(nowLocal) < 19) return false;
+  if (nowLocal.getUTCDay() !== settings.weekly_digest_day_of_week) return false;
+  if (localHour(nowLocal) < settings.weekly_digest_hour) return false;
 
   const weekKey = localMondayKey(nowLocal);
   if (settings.last_weekly_digest_week === weekKey) return false; // already sent this week

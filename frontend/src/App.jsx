@@ -40,6 +40,9 @@ const DEFAULT_SETTINGS = {
   notify_deadline_completed: true,
   notify_budget_reached: true,
   rest_day_of_week: null,
+  daily_focus_goal_seconds: null,
+  weekly_digest_day_of_week: 0,
+  weekly_digest_hour: 19,
 };
 
 const WORSENING_PACE = new Set(["tight", "behind", "overdue"]);
@@ -429,6 +432,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     sessionsVersion={sessionsVersion}
                     tasks={tasks}
                     insightOfTheDay={insightOfTheDay}
+                    dailyGoalSeconds={settings.daily_focus_goal_seconds}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
                     onSessionDeleted={handleSessionDeleted}

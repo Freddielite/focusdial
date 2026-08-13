@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import TagManager from "./TagManager.jsx";
 import BudgetManager from "./BudgetManager.jsx";
@@ -7,6 +7,7 @@ import Dropdown from "./Dropdown.jsx";
 import { resetData, sessionsExportUrl, getGoogleAuthStatus, googleAuthStartUrl, disconnectGoogleAccount, updateProfile } from "../api.js";
 import { isPushSupported, getPushStatus, enablePush, disablePush } from "../push.js";
 import { useToast } from "./Toast.jsx";
+import { formatHour } from "../format.js";
 
 const THEME_LABEL = { system: "Auto", light: "Light", dark: "Dark" };
 
@@ -41,12 +42,60 @@ function Row({ title, desc, muted, children }) {
   );
 }
 
+// A single "aim for N hours today" number, separate from weekly Budgets
+// (tag-scoped, week-long) -- this is unscoped and shown on the Today
+// tab's hero card (see HeroCard.jsx). Local `hours` state buffers the
+// text input while typing (committed on blur, not on every keystroke,
+// same reasoning as any other free-typed numeric field) -- everything
+// else in Settings is a toggle/dropdown that can update on every change
+// without that concern.
+function DailyGoalRow({ settings, onUpdateSetting }) {
+  const enabled = settings?.daily_focus_goal_seconds != null;
+  const [hours, setHours] = useState(enabled ? settings.daily_focus_goal_seconds / 3600 : 4);
+
+  useEffect(() => {
+    if (settings?.daily_focus_goal_seconds != null) setHours(settings.daily_focus_goal_seconds / 3600);
+  }, [settings?.daily_focus_goal_seconds]);
+
+  function commit(value) {
+    const n = Number(value);
+    if (!n || n <= 0) return;
+    onUpdateSetting("daily_focus_goal_seconds", Math.round(n * 3600));
+  }
+
+  function handleToggle(v) {
+    onUpdateSetting("daily_focus_goal_seconds", v ? Math.round((Number(hours) || 4) * 3600) : null);
+  }
+
+  return (
+    <Row title="Daily focus goal" desc="A simple daily target on the Today tab, separate from weekly Budgets.">
+      <div className="fd-daily-goal-row">
+        <Toggle checked={enabled} onChange={handleToggle} label="Daily focus goal" />
+        {enabled && (
+          <>
+            <input
+              type="number"
+              min="0.5"
+              step="0.5"
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+              onBlur={(e) => commit(e.target.value)}
+              className="fd-daily-goal-input"
+            />
+            <span className="fd-daily-goal-suffix">h/day</span>
+          </>
+        )}
+      </div>
+    </Row>
+  );
+}
+
 const AUTOMATION_ROWS = [
   { key: "automation_reminders", title: "Reminders", desc: "Ping me when a reminder is due, even if the app is closed." },
   { key: "automation_deadline_pace", title: "Deadline pace changes", desc: "Warn me when a deadline slips to tight, behind, or overdue." },
   { key: "automation_streak", title: "Streak at risk", desc: "Nudge me in the evening if I haven't logged a session yet." },
   { key: "automation_runaway_timer", title: "Runaway timer", desc: "Warn me if a running session goes past 4 hours, probably forgot to stop it." },
-  { key: "automation_weekly_digest", title: "Weekly digest", desc: "Sunday evening: total hours logged and your best day, in one push." },
+  { key: "automation_weekly_digest", title: "Weekly digest", desc: "Total hours logged and your best day, in one push. Timing is configurable below." },
 ];
 
 const EVENT_ROWS = [
@@ -467,14 +516,48 @@ export default function SettingsView({
         )}
         <div className="fd-set-card__subhead">Automations (while the app is closed)</div>
         {AUTOMATION_ROWS.map((r) => (
-          <Row key={r.key} title={r.title} desc={r.desc} muted={!pushOn}>
-            <Toggle
-              checked={settings?.[r.key] !== false}
-              onChange={(v) => onUpdateSetting(r.key, v)}
-              label={r.title}
-              disabled={!pushOn}
-            />
-          </Row>
+          <Fragment key={r.key}>
+            <Row title={r.title} desc={r.desc} muted={!pushOn}>
+              <Toggle
+                checked={settings?.[r.key] !== false}
+                onChange={(v) => onUpdateSetting(r.key, v)}
+                label={r.title}
+                disabled={!pushOn}
+              />
+            </Row>
+            {r.key === "automation_weekly_digest" && settings?.automation_weekly_digest !== false && (
+              <Row title="Digest timing" desc="Which day and hour it fires, in your local time." muted={!pushOn}>
+                <div className="fd-digest-timing">
+                  <Dropdown
+                    className="fd-select fd-select--inline"
+                    value={String(settings?.weekly_digest_day_of_week ?? 0)}
+                    onChange={(e) => onUpdateSetting("weekly_digest_day_of_week", Number(e.target.value))}
+                    disabled={!pushOn}
+                  >
+                    <option value="1">Mon</option>
+                    <option value="2">Tue</option>
+                    <option value="3">Wed</option>
+                    <option value="4">Thu</option>
+                    <option value="5">Fri</option>
+                    <option value="6">Sat</option>
+                    <option value="0">Sun</option>
+                  </Dropdown>
+                  <Dropdown
+                    className="fd-select fd-select--inline"
+                    value={String(settings?.weekly_digest_hour ?? 19)}
+                    onChange={(e) => onUpdateSetting("weekly_digest_hour", Number(e.target.value))}
+                    disabled={!pushOn}
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>
+                        {formatHour(h)}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </div>
+              </Row>
+            )}
+          </Fragment>
         ))}
         <div className="fd-set-card__subhead">In-app events</div>
         {EVENT_ROWS.map((r) => (
@@ -489,7 +572,8 @@ export default function SettingsView({
       </section>
 
       <section className="fd-panel fd-set-card">
-        <div className="fd-set-card__head">Streak</div>
+        <div className="fd-set-card__head">Daily &amp; Streak</div>
+        <DailyGoalRow settings={settings} onUpdateSetting={onUpdateSetting} />
         <Row
           title="Rest day"
           desc="A day off that doesn't break your streak, even with nothing logged."

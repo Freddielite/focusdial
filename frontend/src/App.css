@@ -2594,6 +2594,34 @@ button {
   color: var(--parchment);
 }
 
+.fd-hero__goal {
+  margin-top: 12px;
+}
+
+.fd-hero__goal-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.fd-hero__goal-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--grad-brass);
+  transition: width 0.6s ease;
+}
+
+.fd-hero__goal-fill--met {
+  background: var(--grad-green);
+}
+
+.fd-hero__goal-label {
+  font-size: 12px;
+  color: var(--parchment-dim);
+}
+
 .fd-hero__divider {
   height: 1px;
   margin: 16px 0 14px;
@@ -2871,6 +2899,39 @@ button {
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
+}
+
+.fd-digest-timing {
+  display: flex;
+  gap: 8px;
+}
+
+.fd-digest-timing .fd-select {
+  margin-bottom: 0;
+  width: auto;
+  min-width: 76px;
+}
+
+.fd-daily-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fd-daily-goal-input {
+  width: 56px;
+  padding: 6px 8px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  color: var(--parchment);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  text-align: right;
+}
+
+.fd-daily-goal-suffix {
+  font-size: 12px;
+  color: var(--parchment-dim);
 }
 
 .fd-set-static {

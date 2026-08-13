@@ -14,6 +14,7 @@ export default function TodayView({
   sessionsVersion,
   tasks,
   insightOfTheDay,
+  dailyGoalSeconds,
   onSessionCompleted,
   onSessionCreated,
   onSessionDeleted,
@@ -27,7 +28,7 @@ export default function TodayView({
       transition={{ duration: 0.12 }}
       className="fd-view"
     >
-      <HeroCard summary={summary} streakAtRisk={streakAtRisk} />
+      <HeroCard summary={summary} streakAtRisk={streakAtRisk} dailyGoalSeconds={dailyGoalSeconds} />
       <InsightCard insight={insightOfTheDay} />
 
       <div className="fd-main__top">

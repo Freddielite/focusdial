@@ -75,6 +75,37 @@ settingsRouter.put("/settings", async (req, res) => {
     values.push(v);
   }
 
+  // NULL turns the daily goal off entirely (see the db.js column
+  // comment) -- 0 is a different, valid state (a goal of zero, already
+  // "met"), so this only rejects genuinely invalid input, not falsy
+  // values.
+  if ("daily_focus_goal_seconds" in req.body) {
+    const v = req.body.daily_focus_goal_seconds;
+    if (v !== null && (typeof v !== "number" || v < 0 || !Number.isFinite(v))) {
+      return res.status(400).json({ error: "daily_focus_goal_seconds must be a non-negative number, or null" });
+    }
+    updates.push(`daily_focus_goal_seconds = $${i++}`);
+    values.push(v === null ? null : Math.round(v));
+  }
+
+  if ("weekly_digest_day_of_week" in req.body) {
+    const v = req.body.weekly_digest_day_of_week;
+    if (typeof v !== "number" || v < 0 || v > 6 || !Number.isInteger(v)) {
+      return res.status(400).json({ error: "weekly_digest_day_of_week must be an integer 0-6" });
+    }
+    updates.push(`weekly_digest_day_of_week = $${i++}`);
+    values.push(v);
+  }
+
+  if ("weekly_digest_hour" in req.body) {
+    const v = req.body.weekly_digest_hour;
+    if (typeof v !== "number" || v < 0 || v > 23 || !Number.isInteger(v)) {
+      return res.status(400).json({ error: "weekly_digest_hour must be an integer 0-23" });
+    }
+    updates.push(`weekly_digest_hour = $${i++}`);
+    values.push(v);
+  }
+
   for (const field of BOOLEAN_FIELDS) {
     if (field in req.body) {
       if (typeof req.body[field] !== "boolean") {

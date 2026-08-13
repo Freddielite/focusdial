@@ -1589,6 +1589,40 @@ of upcoming deadlines/reminders due in the next 7 days. Renders a plain
 "no sessions yet" / "nothing due" empty state rather than an intimidating
 wall of zeros when either half has nothing to show.
 
+## Session 16 — daily focus goal + configurable digest timing
+
+Two independent Settings additions, both new nullable/defaulted columns
+on the per-user `settings` row (same `ALTER TABLE ... ADD COLUMN IF NOT
+EXISTS` pattern as every other schema change in this project).
+
+**`daily_focus_goal_seconds`** (nullable INTEGER, NULL = off). A single
+unscoped "aim for N hours today" number, deliberately separate from
+weekly Budgets (which are tag-scoped and week-long, a different
+question). Surfaced on `HeroCard.jsx` as a thin progress bar under
+today's total, switching to green + a "Goal met" status pill once
+`todaySeconds` clears it — same tone system already used for streak/
+budget status elsewhere, not a new color vocabulary. NULL vs. 0 matters
+here: NULL means the feature's off (no bar rendered at all), 0 would be
+a real, already-met goal — `routes/settings.js`'s validator only
+rejects genuinely invalid input, not falsy values, to keep that
+distinction intact. `SettingsView.jsx`'s `DailyGoalRow` buffers the
+hours input in local state and commits on blur (not every keystroke),
+the same reasoning any free-typed numeric field needs — everything else
+in Settings is a toggle/dropdown that can commit immediately without
+that concern.
+
+**`weekly_digest_day_of_week`/`weekly_digest_hour`** (defaults: Sunday,
+19 — the old hardcoded behavior, so nobody's existing digest silently
+moved). `routes/cron.js`'s `checkWeeklyDigest` now reads both from
+`settings` instead of literal `0`/`19`. The per-week dedupe
+(`last_weekly_digest_week`) is untouched — it still fires at most once
+per calendar week regardless of which day/hour is configured. UI lives
+right under the existing "Weekly digest" toggle in Settings (only shown
+while that automation's actually on), two `Dropdown`s (day, hour) rather
+than a new picker — a weekday + hour-of-day is exactly what `Dropdown`
+already handles well, no need for `DateTimeField`'s calendar/time-wheel
+machinery here.
+
 
 
 
