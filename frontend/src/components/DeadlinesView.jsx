@@ -726,10 +726,14 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
         <div className="fd-deadline-completed">
           <button
             type="button"
-            className="fd-link-btn"
+            className="fd-deadline-completed__toggle"
             onClick={() => setShowCompleted((v) => !v)}
+            aria-expanded={showCompleted}
           >
-            {showCompleted ? "Hide" : "Show"} completed ({completed.length})
+            <span>{showCompleted ? "Hide" : "Show"} completed ({completed.length})</span>
+            <span className={`fd-deadline-completed__chevron ${showCompleted ? "fd-deadline-completed__chevron--open" : ""}`}>
+              ▾
+            </span>
           </button>
           <AnimatePresence initial={false}>
             {showCompleted && (

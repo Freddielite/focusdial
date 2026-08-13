@@ -1335,6 +1335,31 @@ button {
   margin-top: 4px;
 }
 
+.fd-deadline-completed__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--grad-panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: left;
+}
+
+.fd-deadline-completed__chevron {
+  color: var(--parchment-dim);
+  transition: transform 0.2s ease;
+}
+
+.fd-deadline-completed__chevron--open {
+  transform: rotate(180deg);
+}
+
 .fd-deadline-completed__list {
   display: flex;
   flex-direction: column;
@@ -1986,6 +2011,8 @@ button {
    apply while something's already going, so this shows what's actually
    being tracked plus an explicit action to change it. */
 .fd-timer-tag-live {
+  width: 100%;
+  max-width: 260px;
   display: flex;
   align-items: center;
   justify-content: space-between;

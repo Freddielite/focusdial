@@ -653,9 +653,16 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
   }
 
   if (q.bestHour && q.bestHour.ratePct >= 70) {
+    // Names the actual tag you tend to work on at this hour when
+    // there's a real pattern behind it (same >=3 "not a fluke" bar
+    // used elsewhere), rather than a generic "deep work" -- that read
+    // like a named category/slot you were supposed to already have,
+    // which isn't what it meant.
+    const tagAtBestHour = summary.hourlyTagSuggestions?.[q.bestHour.hour];
+    const activityText = tagAtBestHour && tagAtBestHour.count >= 3 ? tagAtBestHour.name : "your most demanding work";
     candidates.push({
       tone: "neutral",
-      message: `You're focused most often around ${hourLabel(q.bestHour.hour)} (${Math.round(q.bestHour.ratePct)}% of rated sessions). Worth protecting that slot for deep work.`,
+      message: `You're focused most often around ${hourLabel(q.bestHour.hour)} (${Math.round(q.bestHour.ratePct)}% of rated sessions). Worth protecting that slot for ${activityText}.`,
     });
   }
 
