@@ -155,6 +155,10 @@ function ExportSection() {
 function GoogleCalendarSection({ settings, onUpdateSetting }) {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Same reasoning as AuthGate's Google button -- this is a plain <a>
+  // (real navigation, nothing to await), so this is purely a visual
+  // "yes, that registered" cue set on click, not a request state.
+  const [connectRedirecting, setConnectRedirecting] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -192,8 +196,20 @@ function GoogleCalendarSection({ settings, onUpdateSetting }) {
         title="Connect Google Calendar"
         desc="Two-way sync: deadlines and reminders mirror to a real Google Calendar, and edits made there sync back on the next check."
       >
-        <a className="fd-btn fd-btn--start fd-btn--sm" href={googleAuthStartUrl()}>
-          Connect
+        <a
+          className={`fd-btn fd-btn--start fd-btn--sm ${connectRedirecting ? "fd-btn--busy" : ""}`}
+          href={googleAuthStartUrl()}
+          onClick={(e) => {
+            if (connectRedirecting) {
+              e.preventDefault();
+              return;
+            }
+            setConnectRedirecting(true);
+          }}
+          aria-disabled={connectRedirecting}
+        >
+          {connectRedirecting && <span className="fd-btn-spinner fd-btn-spinner--dark" aria-hidden="true" />}
+          {connectRedirecting ? "Redirecting…" : "Connect"}
         </a>
       </Row>
     );
