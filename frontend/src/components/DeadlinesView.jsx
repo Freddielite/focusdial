@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createDeadline, deleteDeadline, updateDeadline, logDeadlineProgress, getRunningSession } from "../api.js";
+import {
+  createDeadline,
+  deleteDeadline,
+  updateDeadline,
+  logDeadlineProgress,
+  getRunningSession,
+  startSession,
+} from "../api.js";
 import { formatDuration, formatCountdown } from "../format.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
@@ -28,21 +35,76 @@ function useLiveNow() {
 function useRunningSession() {
   const [running, setRunning] = useState(null);
   const pollRef = useRef(null);
+  const refresh = useRef(() => {});
   useEffect(() => {
-    function refresh() {
+    refresh.current = () => {
       getRunningSession()
         .then((s) => setRunning(s || null))
         .catch(() => {});
-    }
-    refresh();
-    pollRef.current = setInterval(refresh, RUNNING_POLL_MS);
-    document.addEventListener("visibilitychange", refresh);
+    };
+    refresh.current();
+    pollRef.current = setInterval(refresh.current, RUNNING_POLL_MS);
+    document.addEventListener("visibilitychange", refresh.current);
     return () => {
       clearInterval(pollRef.current);
-      document.removeEventListener("visibilitychange", refresh);
+      document.removeEventListener("visibilitychange", refresh.current);
     };
   }, []);
-  return running;
+  // Exposing this lets a card that just started a session (see
+  // handleStartOnTag below) update the running-session indicator/live
+  // hours right away, instead of waiting up to RUNNING_POLL_MS for the
+  // next scheduled poll to notice.
+  return [running, () => refresh.current()];
+}
+
+// Displays a decimal-hours number the same "Xh Ym" way session durations
+// already are elsewhere in the app (formatDuration works in seconds),
+// instead of a raw decimal like "0.3h" -- matters a lot more now that a
+// deadline's estimate/pace can be a small fraction of an hour.
+function formatHours(hours) {
+  return formatDuration(Math.max(0, hours) * 3600);
+}
+
+// Lets estimated/logged time be entered as separate Hours + Minutes
+// fields instead of one decimal number -- typing "0.25" for a
+// 15-minute task, or being blocked by a 30-minute step/minimum, isn't a
+// natural way to set a short deadline. Still reads/writes a single
+// decimal-hours number underneath, so nothing downstream (the DB
+// column, the pace math) needs to change.
+function HoursMinutesInput({ value, onChange }) {
+  const totalMinutes = Math.round((Number(value) || 0) * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+
+  function commit(newH, newM) {
+    const clampedH = Math.max(0, newH);
+    const clampedM = Math.max(0, Math.min(59, newM));
+    onChange(clampedH + clampedM / 60);
+  }
+
+  return (
+    <div className="fd-hm-input">
+      <input
+        type="number"
+        min="0"
+        step="1"
+        value={h}
+        onChange={(e) => commit(Number(e.target.value) || 0, m)}
+        aria-label="Hours"
+      />
+      <span className="fd-hm-input__unit">h</span>
+      <input
+        type="number"
+        min="0"
+        max="59"
+        step="5"
+        value={m}
+        onChange={(e) => commit(h, Number(e.target.value) || 0)}
+        aria-label="Minutes"
+      />
+      <span className="fd-hm-input__unit">m</span>
+    </div>
+  );
 }
 
 // Live ticking dd:hh:mm:ss to the deadline's exact due moment (see
@@ -122,6 +184,10 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!title.trim() || !dueDate) return;
+    if (!estHours || Number(estHours) <= 0) {
+      setError("Estimated time must be more than 0 minutes.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -165,8 +231,8 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
           <TimePicker value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
         </label>
         <label>
-          Estimated hours
-          <input type="number" min="0.5" step="0.5" value={estHours} onChange={(e) => setEstHours(e.target.value)} required />
+          Estimated time needed
+          <HoursMinutesInput value={estHours} onChange={setEstHours} />
         </label>
       </div>
       <div className="fd-manual-form__row">
@@ -209,14 +275,39 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
   const nowMs = useLiveNow();
-  const runningSession = useRunningSession();
+  const [runningSession, refreshRunningSession] = useRunningSession();
+  const [startingId, setStartingId] = useState(null);
+  const [startError, setStartError] = useState(null);
 
   const avgHours = avgDailyFocusSeconds / 3600;
   const active = deadlines.filter((d) => d.status !== "done" && d.status !== "archived" && !pendingIds.has(d.id));
 
+  // The whole point of linking a deadline to a tag is that time logged
+  // under that tag counts toward it -- so if you're about to work on
+  // this deadline specifically, you shouldn't have to go to the Today
+  // tab and manually pick the matching tag from a dropdown yourself.
+  // This starts a real session with that tag already applied.
+  async function handleStartOnTag(d) {
+    setStartError(null);
+    setStartingId(d.id);
+    try {
+      await startSession(d.tag_id);
+      refreshRunningSession();
+      onDataChanged();
+    } catch (err) {
+      setStartError({ id: d.id, message: err.message || "Could not start a session." });
+    } finally {
+      setStartingId(null);
+    }
+  }
+
   async function handleCreate(e) {
     e.preventDefault();
     if (!title.trim() || !dueDate) return;
+    if (!estHours || Number(estHours) <= 0) {
+      setError("Estimated time must be more than 0 minutes.");
+      return;
+    }
     setError(null);
     try {
       await createDeadline({
@@ -311,15 +402,8 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                 <TimePicker value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
               </label>
               <label>
-                Estimated hours needed
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.5"
-                  value={estHours}
-                  onChange={(e) => setEstHours(e.target.value)}
-                  required
-                />
+                Estimated time needed
+                <HoursMinutesInput value={estHours} onChange={setEstHours} />
               </label>
             </div>
             <div className="fd-manual-form__row">
@@ -423,8 +507,8 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                     </span>
                   </div>
                   <div className="fd-check-card__value">
-                    <span className="fd-check-card__value-num">{completedHours.toFixed(1)}h</span>
-                    <span className="fd-check-card__value-unit">of {Number(d.estimated_hours).toFixed(1)}h</span>
+                    <span className="fd-check-card__value-num">{formatHours(completedHours)}</span>
+                    <span className="fd-check-card__value-unit">of {formatHours(Number(d.estimated_hours))}</span>
                   </div>
                   <div className="fd-deadline-card__actions">
                     <button
@@ -457,12 +541,12 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                   <div className="fd-deadline-card__pace">
                     {hoursLeftLive > 0 ? (
                       <>
-                        Need <strong>{pacePerDay.toFixed(1)}h/day</strong> to finish in time
-                        {avgHours > 0 && ` (you average ${avgHours.toFixed(1)}h/day)`}.
+                        Need <strong>{formatHours(pacePerDay)}/day</strong> to finish in time
+                        {avgHours > 0 && ` (you average ${formatHours(avgHours)}/day)`}.
                       </>
                     ) : (
                       <>
-                        <strong>{remainingHours.toFixed(1)}h</strong> of estimated work still remaining,
+                        <strong>{formatHours(remainingHours)}</strong> of estimated work still remaining,
                         past the deadline.
                       </>
                     )}
@@ -475,6 +559,29 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
 
                 {!d.tag_id && d.status !== "done" && (
                   <LogProgressInline deadline={d} onLogged={onDataChanged} />
+                )}
+
+                {d.tag_id && d.status !== "done" && (
+                  <>
+                    {runningSession ? (
+                      runningSession.tag_id !== d.tag_id && (
+                        <div className="fd-deadline-card__start-hint">
+                          A timer's already running on a different tag — stop it to start one on{" "}
+                          {d.tag_name || "this tag"}.
+                        </div>
+                      )
+                    ) : (
+                      <button
+                        type="button"
+                        className="fd-btn fd-btn--start fd-deadline-card__start"
+                        onClick={() => handleStartOnTag(d)}
+                        disabled={startingId === d.id}
+                      >
+                        {startingId === d.id ? "Starting…" : `▶ Start session on ${d.tag_name || "this tag"}`}
+                      </button>
+                    )}
+                    {startError?.id === d.id && <div className="fd-inline-error">{startError.message}</div>}
+                  </>
                 )}
 
                 <AnimatePresence initial={false}>

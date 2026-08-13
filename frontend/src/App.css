@@ -1295,6 +1295,44 @@ button {
   }
 }
 
+/* Two small number inputs (hours / minutes) styled as one compact unit,
+   replacing a single decimal-hours field so short deadlines (e.g. "20
+   minutes") don't need typing an awkward decimal into a field that used
+   to have a 30-minute step/minimum anyway. */
+.fd-hm-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fd-hm-input input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  color: var(--parchment);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  text-align: right;
+}
+
+.fd-hm-input__unit {
+  font-size: 12px;
+  color: var(--parchment-dim);
+  flex-shrink: 0;
+}
+
+.fd-deadline-card__start {
+  margin-top: 10px;
+}
+
+.fd-deadline-card__start-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--parchment-dim);
+}
+
 .fd-manual-form__actions {
   display: flex;
   justify-content: flex-end;

@@ -3,6 +3,14 @@
 // on GET /sessions/history in the backend for why (timezone correctness).
 import { formatDuration } from "./format.js";
 
+// Formats a decimal-hours number the same "Xh Ym" way session durations
+// are shown elsewhere (formatDuration works in seconds), instead of a
+// raw decimal like "0.3h" -- matters once a deadline's pace can be a
+// small fraction of an hour (a short, minutes-scale deadline).
+function formatHoursShort(hours) {
+  return formatDuration(Math.max(0, hours) * 3600);
+}
+
 function durationSeconds(session) {
   return (new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000;
 }
@@ -531,7 +539,7 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
   if (behind.length > 0) {
     candidates.push({
       tone: "warning",
-      message: `"${behind[0].title}" is behind pace. You need ${behind[0].hoursPerDayNeeded.toFixed(1)}h/day to catch up.`,
+      message: `"${behind[0].title}" is behind pace. You need ${formatHoursShort(behind[0].hoursPerDayNeeded)}/day to catch up.`,
     });
   }
 
@@ -624,7 +632,7 @@ export function computeRiskDigest({ budgetsProgress = [], deadlinesProgress = []
         message:
           d.status === "overdue"
             ? `"${d.title}" is overdue.`
-            : `"${d.title}" is ${d.status} on pace, needs ${d.hoursPerDayNeeded.toFixed(1)}h/day to finish in time.`,
+            : `"${d.title}" is ${d.status} on pace, needs ${formatHoursShort(d.hoursPerDayNeeded)}/day to finish in time.`,
       });
     }
   }
