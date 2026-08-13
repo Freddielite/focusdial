@@ -66,6 +66,21 @@ settingsRouter.put("/settings", async (req, res) => {
     values.push(req.body.timezone_offset_minutes);
   }
 
+  // Real IANA zone name (e.g. "Africa/Lagos"), registered alongside the
+  // offset above -- cron.js prefers this when present (see db.js's
+  // comment on the column for why). No format validation beyond "it's a
+  // non-empty string": an invalid/unrecognized zone name just fails
+  // gracefully at the point cron.js tries to use it (falls back to the
+  // offset), rather than needing a bundled list of valid IANA names here
+  // to validate against.
+  if ("timezone" in req.body) {
+    if (req.body.timezone !== null && typeof req.body.timezone !== "string") {
+      return res.status(400).json({ error: "timezone must be a string or null" });
+    }
+    updates.push(`timezone = $${i++}`);
+    values.push(req.body.timezone || null);
+  }
+
   if ("rest_day_of_week" in req.body) {
     const v = req.body.rest_day_of_week;
     if (v !== null && (typeof v !== "number" || v < 0 || v > 6 || !Number.isInteger(v))) {

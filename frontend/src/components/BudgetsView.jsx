@@ -93,6 +93,22 @@ export default function BudgetsView({ budgets, onGoToSettings }) {
                   />
                 </div>
 
+                {b.remainingSeconds > 0 && b.hoursLeftInWeek > 0 && (
+                  <div className="fd-deadline-card__pace">
+                    {b.hoursLeftInWeek < 24 ? (
+                      <>
+                        Need <strong>{formatDuration(b.remainingSeconds)}</strong> today to hit this week's
+                        goal.
+                      </>
+                    ) : (
+                      <>
+                        Need <strong>{formatDuration(b.secondsPerDayNeeded)}/day</strong> for the rest of the
+                        week ({formatDuration(b.remainingSeconds)} total) to hit this week's goal.
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {(b.tags || []).length > 0 && (
                   <div className="fd-budget-card__tags">
                     {b.tags.map((t) => (

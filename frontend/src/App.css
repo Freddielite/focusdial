@@ -1925,6 +1925,10 @@ button {
   color: var(--rust);
 }
 
+.fd-icon-btn--active {
+  color: var(--brass);
+}
+
 /* ---------- Tag manager ---------- */
 
 .fd-tag-manager {
@@ -2255,6 +2259,30 @@ button {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--parchment-dim);
+}
+
+.fd-quick-task-due {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* Overdue tasks get the same rust tone the rest of the app already uses
+   for "needs attention" (overdue deadlines, danger toasts) instead of a
+   new color vocabulary -- a slightly tinted row background plus a red
+   due-date badge, rather than anything so loud it competes with the
+   checkbox as the primary action. */
+.fd-task-row--overdue {
+  background: color-mix(in srgb, var(--rust) 8%, transparent);
+  margin: 0 -8px;
+  padding: 8px 8px;
+  border-radius: 4px;
+}
+
+.fd-task-row__due--overdue {
+  color: var(--rust);
+  font-weight: 600;
 }
 
 .fd-task-row--deadline .fd-task-checkbox {

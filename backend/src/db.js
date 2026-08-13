@@ -277,6 +277,18 @@ export async function initSchema() {
     ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_digest_day_of_week INTEGER NOT NULL DEFAULT 0 CHECK (weekly_digest_day_of_week BETWEEN 0 AND 6);
     ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_digest_hour INTEGER NOT NULL DEFAULT 19 CHECK (weekly_digest_hour BETWEEN 0 AND 23);
 
+    -- Real IANA timezone name (e.g. "Africa/Lagos"), registered from
+    -- the browser (Intl.DateTimeFormat().resolvedOptions().timeZone)
+    -- alongside the existing timezone_offset_minutes on every app load.
+    -- cron.js now prefers this -- Node's built-in Intl API can compute
+    -- a fully DST-aware local time from a real zone name with no extra
+    -- dependency, which timezone_offset_minutes alone never could (a
+    -- fixed offset silently drifts by an hour for ~2 weeks twice a year
+    -- in any DST-observing region). timezone_offset_minutes stays as
+    -- the fallback for a row that hasn't been touched by a browser
+    -- since this shipped.
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS timezone TEXT;
+
     CREATE TABLE IF NOT EXISTS tasks (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title       TEXT NOT NULL,

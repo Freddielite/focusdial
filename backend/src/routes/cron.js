@@ -6,19 +6,45 @@ import { googleConfigured, getAuthedClient, getCalendarClient, fetchSyncTokenBas
 
 export const cronRouter = Router();
 
-// --- Local-time approximation helpers -------------------------------
-// The backend has no idea what timezone a user is actually in — only the
-// fixed UTC offset they reported once via PUT /api/settings (see
-// routes/settings.js). Shifting a UTC timestamp by that offset and then
-// reading its UTC-calendar fields back off is the standard trick for
-// approximating local wall-clock time without pulling in a full IANA
-// timezone database. This is an approximation with a real limitation:
-// it doesn't account for daylight saving time shifts, so it can be an
-// hour off for users in DST-observing regions part of the year. Fine for
-// "is it evening" / "which day is this" checks used here; would need a
-// real timezone library (e.g. `date-fns-tz` or `luxon`) if more precision
-// is ever needed.
-function shiftToLocal(date, offsetMinutes) {
+// --- Local-time helpers ----------------------------------------------
+// Historically the backend only had a fixed UTC offset the browser
+// reported once via PUT /api/settings -- shifting a timestamp by that
+// offset and reading its UTC-calendar fields back off approximates
+// local wall-clock time, but doesn't account for DST transitions, so it
+// could be an hour off for ~2 weeks twice a year in DST-observing
+// regions. Now that the browser also registers a real IANA zone name
+// (settings.timezone, e.g. "Africa/Lagos"), this prefers using that via
+// Node's built-in Intl API -- which is fully DST-aware with no extra
+// dependency -- and only falls back to the raw offset for a settings
+// row that predates the zone name being registered (or if the stored
+// name is somehow invalid/unrecognized).
+function shiftToLocal(date, tz) {
+  const timezone = tz?.timezone;
+  const offsetMinutes = tz?.offsetMinutes ?? 0;
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).formatToParts(date);
+      const map = {};
+      for (const p of parts) map[p.type] = p.value;
+      let hour = Number(map.hour);
+      if (hour === 24) hour = 0; // midnight can format as "24" with hour12:false in some engines
+      return new Date(
+        Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day), hour, Number(map.minute), Number(map.second))
+      );
+    } catch {
+      // Unrecognized/invalid zone name -- fall through to the offset
+      // rather than failing the whole check over one bad stored value.
+    }
+  }
   return new Date(date.getTime() + offsetMinutes * 60000);
 }
 // Zero-padded ISO date (YYYY-MM-DD) from an already-shifted "local" Date,
@@ -79,7 +105,7 @@ async function checkDueReminders(userId) {
 // the module comment above). Keeping them as separate implementations
 // means the frontend's calculation doesn't need to compromise its
 // accuracy to stay identical to this approximation, and vice versa.
-async function checkDeadlinePaceChanges(userId, offsetMinutes) {
+async function checkDeadlinePaceChanges(userId, tz) {
   const { rows: deadlines } = await pool.query(`SELECT * FROM deadlines WHERE user_id = $1 AND status = 'active'`, [
     userId,
   ]);
@@ -90,14 +116,14 @@ async function checkDeadlinePaceChanges(userId, offsetMinutes) {
     [userId]
   );
 
-  const nowLocal = shiftToLocal(new Date(), offsetMinutes);
+  const nowLocal = shiftToLocal(new Date(), tz);
   const todayStart = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate()));
 
   // Average daily focus over the last 30 local days, same "include
   // zero-session days" reasoning as the frontend version.
   const thirtyDaysAgo = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
   const recentSeconds = sessions
-    .filter((s) => shiftToLocal(new Date(s.started_at), offsetMinutes) >= thirtyDaysAgo)
+    .filter((s) => shiftToLocal(new Date(s.started_at), tz) >= thirtyDaysAgo)
     .reduce((sum, s) => sum + (new Date(s.ended_at) - new Date(s.started_at)) / 1000, 0);
   const avgDailyFocusHours = recentSeconds / 30 / 3600;
 
@@ -180,8 +206,8 @@ async function checkDeadlinePaceChanges(userId, offsetMinutes) {
   return changed;
 }
 
-async function checkStreakAtRisk(userId, offsetMinutes, settings) {
-  const nowLocal = shiftToLocal(new Date(), offsetMinutes);
+async function checkStreakAtRisk(userId, tz, settings) {
+  const nowLocal = shiftToLocal(new Date(), tz);
   if (localHour(nowLocal) < 19) return false; // not evening yet, locally
 
   // A configured rest day never breaks the streak, so there's nothing at
@@ -200,9 +226,9 @@ async function checkStreakAtRisk(userId, offsetMinutes, settings) {
   const yesterdayLocal = new Date(nowLocal.getTime() - 24 * 60 * 60 * 1000);
   const yesterdayKey = localDateISO(yesterdayLocal);
 
-  const hasToday = sessions.some((s) => localDateISO(shiftToLocal(new Date(s.started_at), offsetMinutes)) === todayKey);
+  const hasToday = sessions.some((s) => localDateISO(shiftToLocal(new Date(s.started_at), tz)) === todayKey);
   const hasYesterday = sessions.some(
-    (s) => localDateISO(shiftToLocal(new Date(s.started_at), offsetMinutes)) === yesterdayKey
+    (s) => localDateISO(shiftToLocal(new Date(s.started_at), tz)) === yesterdayKey
   );
 
   if (hasToday || !hasYesterday) return false; // no risk, or no streak to protect
@@ -265,8 +291,8 @@ function localMondayKey(localDate) {
 // defaulting to Sunday evening for anyone who hasn't touched the
 // setting) — reuses the same push infrastructure as the other
 // automations, just on a weekly cadence instead of reacting to an event.
-async function checkWeeklyDigest(userId, offsetMinutes, settings) {
-  const nowLocal = shiftToLocal(new Date(), offsetMinutes);
+async function checkWeeklyDigest(userId, tz, settings) {
+  const nowLocal = shiftToLocal(new Date(), tz);
   if (nowLocal.getUTCDay() !== settings.weekly_digest_day_of_week) return false;
   if (localHour(nowLocal) < settings.weekly_digest_hour) return false;
 
@@ -282,7 +308,7 @@ async function checkWeeklyDigest(userId, offsetMinutes, settings) {
   const dayTotals = new Map();
   let totalSeconds = 0;
   for (const s of sessions) {
-    const key = localDateISO(shiftToLocal(new Date(s.started_at), offsetMinutes));
+    const key = localDateISO(shiftToLocal(new Date(s.started_at), tz));
     const secs = (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
     dayTotals.set(key, (dayTotals.get(key) || 0) + secs);
     totalSeconds += secs;
@@ -498,7 +524,7 @@ async function handleTick(req, res) {
     const perUser = [];
     for (const settings of allSettings) {
       const userId = settings.user_id;
-      const offsetMinutes = settings.timezone_offset_minutes;
+      const tz = { timezone: settings.timezone, offsetMinutes: settings.timezone_offset_minutes };
 
       // Each automation can be turned off independently from the
       // Settings tab. A disabled check is skipped entirely here rather
@@ -508,14 +534,14 @@ async function handleTick(req, res) {
       // enforced separately in lib/push.js as the catch-all master mute.
       const remindersFired = settings.automation_reminders ? await checkDueReminders(userId) : 0;
       const paceChanges = settings.automation_deadline_pace
-        ? await checkDeadlinePaceChanges(userId, offsetMinutes)
+        ? await checkDeadlinePaceChanges(userId, tz)
         : 0;
       const streakNudged = settings.automation_streak
-        ? await checkStreakAtRisk(userId, offsetMinutes, settings)
+        ? await checkStreakAtRisk(userId, tz, settings)
         : false;
       const runawayNudged = settings.automation_runaway_timer ? await checkRunawayTimer(userId) : false;
       const digestSent = settings.automation_weekly_digest
-        ? await checkWeeklyDigest(userId, offsetMinutes, settings)
+        ? await checkWeeklyDigest(userId, tz, settings)
         : false;
       const googleSync = settings.automation_google_sync
         ? await checkGoogleCalendarSync(userId)

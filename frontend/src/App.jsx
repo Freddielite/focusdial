@@ -138,7 +138,23 @@ export default function App({ user, onLogout, onUserUpdated }) {
     // deadline checks made while the app itself is closed. Sign is
     // flipped because JS's getTimezoneOffset() is backwards from the
     // usual +N convention (returns -60 for UTC+1, not +60).
-    updateSettings({ timezone_offset_minutes: -new Date().getTimezoneOffset() }).catch(() => {});
+    //
+    // Also registers the real IANA zone name (e.g. "Africa/Lagos") when
+    // the browser exposes one (universally supported in evergreen
+    // browsers at this point) -- cron.js prefers this over the raw
+    // offset, since a fixed offset alone can't account for DST
+    // transitions. Both are sent; the offset stays as a fallback for
+    // whatever cron.js can't resolve the zone name for.
+    let resolvedTimezone = null;
+    try {
+      resolvedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch {
+      // Intl unavailable/misconfigured -- offset-only fallback below.
+    }
+    updateSettings({
+      timezone_offset_minutes: -new Date().getTimezoneOffset(),
+      timezone: resolvedTimezone,
+    }).catch(() => {});
 
     // Backend's OAuth callback (routes/googleAuth.js) redirects back
     // here with this query param rather than the frontend polling for

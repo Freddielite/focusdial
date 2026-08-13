@@ -116,18 +116,38 @@ export function computeAvgDailyFocusSeconds(sessions) {
 // target have I actually logged," using the same Monday-start week
 // convention as the weekly trend chart.
 export function computeBudgetProgress(budgets, sessions) {
-  const weekStart = mondayOf(new Date());
+  const now = new Date();
+  const weekStart = mondayOf(now);
+  // End of the current Monday-start week (i.e. end of Sunday), same
+  // "end of the last day" convention computeDueAt uses for a deadline
+  // with no time-of-day set.
+  const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+  const hoursLeftInWeek = (weekEnd.getTime() - now.getTime()) / 3_600_000;
+
   return budgets.map((b) => {
     const tagIds = new Set((b.tags || []).map((t) => t.id));
     const actualSeconds = sessions
       .filter((s) => s.tag_id && tagIds.has(s.tag_id) && new Date(s.started_at) >= weekStart)
       .reduce((sum, s) => sum + durationSeconds(s), 0);
     const targetSeconds = b.weekly_target_seconds;
+    const remainingSeconds = Math.max(0, targetSeconds - actualSeconds);
+
+    // Same fractional-day math as Deadlines (see computeDeadlineProgress
+    // below) rather than rounding "days left in the week" to a whole
+    // number, for the same reason: that rounding is what let a
+    // deadline's countdown and pace figure disagree with each other.
+    const daysLeftInWeek = hoursLeftInWeek / 24;
+    const secondsPerDayNeeded =
+      remainingSeconds <= 0 ? 0 : daysLeftInWeek > 0 ? remainingSeconds / daysLeftInWeek : remainingSeconds;
+
     return {
       ...b,
       actualSeconds,
       targetSeconds,
       pct: targetSeconds ? actualSeconds / targetSeconds : 0,
+      remainingSeconds,
+      hoursLeftInWeek,
+      secondsPerDayNeeded,
     };
   });
 }
