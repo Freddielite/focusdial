@@ -26,7 +26,18 @@ export default function TrendChart({ weeklyTotals, monthlyTotals, weekOverWeek }
   // half-finished week against completed ones would be misleading, and
   // the visual distinction makes that obvious at a glance rather than
   // needing a caption to explain it.
-  const completed = data.filter((d) => !d.isCurrent);
+  //
+  // computeWeeklyTotals/computeMonthlyTotals always zero-fill a fixed
+  // window (12 weeks / 6 months) regardless of when the account was
+  // first used, so a new account shows mostly empty leading periods.
+  // Averaging over those dragged the line down near 0%, which visually
+  // collided with the axis labels below it. Average only from the
+  // first period that actually has time logged, same "since you
+  // started" reasoning computeAvgDailyFocusSeconds already uses.
+  const firstUsedIndex = data.findIndex((d) => d.seconds > 0);
+  const completed = data
+    .filter((d) => !d.isCurrent)
+    .filter((d) => firstUsedIndex === -1 || data.indexOf(d) >= firstUsedIndex);
   const average = completed.length
     ? completed.reduce((sum, d) => sum + d.seconds, 0) / completed.length
     : 0;
@@ -79,7 +90,11 @@ export default function TrendChart({ weeklyTotals, monthlyTotals, weekOverWeek }
           {average > 0 && (
             <div
               className="fd-trend-average-line"
-              style={{ bottom: `${(average / maxSeconds) * 100}%` }}
+              // Clamped so the line (and its label, offset further above
+              // it) never sits low enough to overlap the axis labels
+              // under the bars, and never gets pushed past the top of
+              // the chart on the flip side.
+              style={{ bottom: `${Math.min(Math.max((average / maxSeconds) * 100, 10), 92)}%` }}
             >
               <span className="fd-trend-average-label">avg {formatDuration(average)}</span>
             </div>
