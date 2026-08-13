@@ -27,7 +27,7 @@ import {
   updateSettings,
   setSlowRequestHandler,
 } from "./api.js";
-import { computeSummary, computeBudgetProgress, computeDeadlineProgress } from "./analytics.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest } from "./analytics.js";
 
 const DEFAULT_SETTINGS = {
   push_enabled: true,
@@ -209,6 +209,14 @@ export default function App({ user, onLogout, onUserUpdated }) {
   const deadlinesWithProgress = useMemo(
     () => computeDeadlineProgress(deadlines, history, summary.avgDailyFocusSeconds),
     [deadlines, history, summary.avgDailyFocusSeconds]
+  );
+  const insightOfTheDay = useMemo(
+    () => computeInsightOfTheDay({ summary, budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
+    [summary, budgetsWithProgress, deadlinesWithProgress]
+  );
+  const riskDigest = useMemo(
+    () => computeRiskDigest({ budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
+    [budgetsWithProgress, deadlinesWithProgress]
   );
 
   // In-app version of the same "streak at risk" check the backend cron
@@ -416,6 +424,8 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     streakAtRisk={streakAtRisk}
                     sessionsVersion={sessionsVersion}
                     tasks={tasks}
+                    insightOfTheDay={insightOfTheDay}
+                    riskDigest={riskDigest}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
                     onSessionDeleted={handleSessionDeleted}

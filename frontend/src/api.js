@@ -135,8 +135,8 @@ export const createTag = (name, color) =>
 export const deleteTag = (id) => apiFetch(`/tags/${id}`, { method: "DELETE" });
 
 export const getRunningSession = () => apiFetch("/sessions/running");
-export const startSession = (tag_id, note) =>
-  apiFetch("/sessions/start", { method: "POST", body: JSON.stringify({ tag_id, note }) });
+export const startSession = (tag_id, note, task_id) =>
+  apiFetch("/sessions/start", { method: "POST", body: JSON.stringify({ tag_id, note, task_id }) });
 export const stopSession = (id, note, quality) =>
   apiFetch(`/sessions/${id}/stop`, { method: "POST", body: JSON.stringify({ note, quality }) });
 

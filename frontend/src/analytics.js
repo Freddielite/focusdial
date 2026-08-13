@@ -1,6 +1,7 @@
 // All the "does the thinking for you" logic lives here, computed from raw
 // session history rather than as a server-side aggregate — see the comment
 // on GET /sessions/history in the backend for why (timezone correctness).
+import { formatDuration } from "./format.js";
 
 function durationSeconds(session) {
   return (new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000;
@@ -218,6 +219,23 @@ export function computeHourlyTagSuggestions(sessions) {
   return suggestions;
 }
 
+// Focused-count / rated-count over a subset of sessions, ignoring
+// sessions with no quality rating at all (there's no "neutral default"
+// to fall back on — an unrated session simply doesn't count toward the
+// rate either way). ratePct is null (not 0) when there's no rated
+// session in the subset, so callers can tell "0% focused" apart from
+// "no data yet."
+function qualityRate(sessions) {
+  let focused = 0;
+  let rated = 0;
+  for (const s of sessions) {
+    if (!s.quality) continue;
+    rated += 1;
+    if (s.quality === "focused") focused += 1;
+  }
+  return { focused, rated, ratePct: rated > 0 ? (focused / rated) * 100 : null };
+}
+
 export function computeSummary(sessions, restDayOfWeek = null) {
   const now = new Date();
   const todayKey = localDayKey(now);
@@ -230,6 +248,11 @@ export function computeSummary(sessions, restDayOfWeek = null) {
 
   const dayTotals = new Map(); // localDayKey -> seconds, for streak + heatmap
   const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, seconds: 0 }));
+  // Parallel to `hourly` above but tallying quality ratings instead of
+  // duration — "which hour do I log the most time in" and "which hour
+  // do I actually focus best in" are different questions, and only the
+  // first one was answerable before this existed.
+  const hourlyQuality = Array.from({ length: 24 }, () => ({ focused: 0, rated: 0 }));
   // Indexed by JS's native getDay() (0 = Sunday ... 6 = Saturday) so the
   // accumulation loop below can write straight into it, same shape as
   // `hourly` above. Reordered to Monday-first only for display, right
@@ -254,6 +277,12 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     // focused in" insight, not a billing system.
     hourly[started.getHours()].seconds += seconds;
     weekdayByGetDay[started.getDay()].seconds += seconds;
+
+    if (s.quality) {
+      const bucket = hourlyQuality[started.getHours()];
+      bucket.rated += 1;
+      if (s.quality === "focused") bucket.focused += 1;
+    }
 
     const tagKey = s.tag_id || "untagged";
     const existing = tagTotals.get(tagKey) || {
@@ -320,6 +349,52 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   };
 
   const bestHour = hourly.reduce((best, h) => (h.seconds > best.seconds ? h : best), hourly[0]);
+
+  // Same "at least 3 rated sessions" bar as mostSustainedTag below, for
+  // the same reason — one lucky/unlucky rating in an otherwise-empty
+  // hour shouldn't crown it "best" or "worst." Null (not hour 0) when
+  // nothing clears that bar, so callers can tell "no confident answer
+  // yet" apart from a real result at midnight.
+  const MIN_RATED_FOR_HOUR = 3;
+  let bestFocusHour = null;
+  hourlyQuality.forEach((bucket, hour) => {
+    if (bucket.rated < MIN_RATED_FOR_HOUR) return;
+    const ratePct = (bucket.focused / bucket.rated) * 100;
+    if (!bestFocusHour || ratePct > bestFocusHour.ratePct) {
+      bestFocusHour = { hour, ratePct, rated: bucket.rated };
+    }
+  });
+
+  // Quality (focus-rate) trend, same "this week so far vs. the same
+  // number of days last week" fairness rule as weekOverWeek above —
+  // reusing thisMonday/daysElapsedThisWeek rather than a second
+  // definition of "this week."
+  const thisWeekQuality = qualityRate(sessions.filter((s) => new Date(s.started_at) >= thisMonday));
+  const lastWeekQualityStart = new Date(thisMonday.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const lastWeekQualityEnd = new Date(lastWeekQualityStart.getTime() + daysElapsedThisWeek * 24 * 60 * 60 * 1000);
+  const lastWeekQuality = qualityRate(
+    sessions.filter((s) => {
+      const started = new Date(s.started_at);
+      return started >= lastWeekQualityStart && started < lastWeekQualityEnd;
+    })
+  );
+  const overallQuality = qualityRate(sessions);
+  const quality = {
+    ratedCount: overallQuality.rated,
+    totalCount: sessions.length,
+    focusRatePct: overallQuality.ratePct,
+    thisWeekFocusRatePct: thisWeekQuality.ratePct,
+    lastWeekFocusRatePct: lastWeekQuality.ratePct,
+    // Percentage-point change (not a ratio) — null unless both weeks
+    // have at least one rated session to compare, same reasoning as
+    // weekOverWeek's deltaPct null-vs-zero distinction above.
+    deltaPct:
+      thisWeekQuality.ratePct != null && lastWeekQuality.ratePct != null
+        ? thisWeekQuality.ratePct - lastWeekQuality.ratePct
+        : null,
+    bestHour: bestFocusHour,
+  };
+
   const bestWeekday = weekdayByGetDay.reduce(
     (best, d) => (d.seconds > best.seconds ? d : best),
     weekdayByGetDay[0]
@@ -366,6 +441,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     weekOverWeek,
     byTag,
     mostSustainedTag,
+    quality,
     daily,
     weeklyTotals: computeWeeklyTotals(sessions),
     monthlyTotals: computeMonthlyTotals(sessions),
@@ -373,3 +449,163 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     hourlyTagSuggestions: computeHourlyTagSuggestions(sessions),
   };
 }
+
+const HOUR_LABEL_OPTS = { hour: "numeric" };
+function hourLabel(hour) {
+  return new Date(2000, 0, 1, hour).toLocaleTimeString(undefined, HOUR_LABEL_OPTS);
+}
+
+// Picks the single most notable, actionable thing to surface right now
+// out of everything the app already knows — a prioritized list of
+// candidate observations, evaluated top-down, first one whose
+// condition actually holds wins. Order matters: it's roughly "most
+// urgent to act on" first (an overdue deadline) down to "just a nice
+// thing to know" last (your best-sustained tag), so the one thing shown
+// is the one most worth seeing today, not whichever happens to compute
+// first.
+export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadlinesProgress = [] }) {
+  const candidates = [];
+
+  const overdue = deadlinesProgress.filter((d) => d.status === "overdue");
+  if (overdue.length > 0) {
+    candidates.push({
+      tone: "danger",
+      message:
+        overdue.length === 1
+          ? `"${overdue[0].title}" is now overdue.`
+          : `${overdue.length} deadlines are now overdue, including "${overdue[0].title}."`,
+    });
+  }
+
+  // Compounding risk: a tag that's behind on both its weekly budget and
+  // a deadline riding on that same tag — worth calling out together
+  // since either alone might look manageable.
+  const behindBudgets = budgetsProgress.filter((b) => b.pct < 0.7);
+  for (const d of deadlinesProgress) {
+    if (!d.tag_id || !["tight", "behind"].includes(d.status)) continue;
+    const matchedBudget = behindBudgets.find((b) => (b.tags || []).some((t) => t.id === d.tag_id));
+    if (matchedBudget) {
+      candidates.push({
+        tone: "warning",
+        message: `"${d.title}" is behind pace, and its "${matchedBudget.name}" budget is behind too — this tag needs more time this week.`,
+      });
+      break; // one compounding example is enough to make the point
+    }
+  }
+
+  const behind = deadlinesProgress.filter((d) => d.status === "behind");
+  if (behind.length > 0) {
+    candidates.push({
+      tone: "warning",
+      message: `"${behind[0].title}" is behind pace — you need ${behind[0].hoursPerDayNeeded.toFixed(1)}h/day to catch up.`,
+    });
+  }
+
+  const q = summary.quality;
+  if (q.deltaPct != null && q.deltaPct <= -10) {
+    candidates.push({
+      tone: "warning",
+      message: `Your focus rate dropped ${Math.abs(Math.round(q.deltaPct))} points this week (${Math.round(q.thisWeekFocusRatePct)}% vs ${Math.round(q.lastWeekFocusRatePct)}% last week).`,
+    });
+  }
+  if (q.deltaPct != null && q.deltaPct >= 10) {
+    candidates.push({
+      tone: "positive",
+      message: `Your focus rate is up ${Math.round(q.deltaPct)} points this week (${Math.round(q.thisWeekFocusRatePct)}% vs ${Math.round(q.lastWeekFocusRatePct)}% last week). Whatever changed, keep it up.`,
+    });
+  }
+
+  if (q.bestHour && q.bestHour.ratePct >= 70) {
+    candidates.push({
+      tone: "neutral",
+      message: `You're focused most often around ${hourLabel(q.bestHour.hour)} (${Math.round(q.bestHour.ratePct)}% of rated sessions). Worth protecting that slot for deep work.`,
+    });
+  }
+
+  if (summary.streakDays >= 3) {
+    candidates.push({
+      tone: "positive",
+      message: `You're on a ${summary.streakDays}-day streak — keep it going.`,
+    });
+  }
+
+  if (summary.weekOverWeek.deltaPct != null && summary.weekOverWeek.deltaPct >= 0.15) {
+    candidates.push({
+      tone: "positive",
+      message: `You've logged ${Math.round(summary.weekOverWeek.deltaPct * 100)}% more focus time this week than the same point last week.`,
+    });
+  }
+
+  if (summary.mostSustainedTag) {
+    candidates.push({
+      tone: "neutral",
+      message: `Your longest average sessions are on "${summary.mostSustainedTag.name}" (${Math.round(summary.mostSustainedTag.avgSeconds / 60)}m each). That's where your focus holds up best.`,
+    });
+  }
+
+  if (candidates.length === 0) {
+    candidates.push({
+      tone: "neutral",
+      message:
+        summary.allTimeSeconds === 0
+          ? "Log a few sessions to start seeing personalized insights here."
+          : "Keep logging sessions (and rating them) to unlock more personalized insights.",
+    });
+  }
+
+  return candidates[0];
+}
+
+// Everything currently worth a "heads up" across Budgets and Deadlines,
+// in one list — cross-referencing by shared tag so a tag that's behind
+// on both fronts shows up as one combined line instead of two
+// disconnected ones. Severity order: overdue > behind > tight budget
+// alone, so the most urgent item leads.
+export function computeRiskDigest({ budgetsProgress = [], deadlinesProgress = [] }) {
+  const behindBudgets = budgetsProgress.filter((b) => b.pct < 0.7);
+  const riskyDeadlines = deadlinesProgress.filter((d) => ["tight", "behind", "overdue"].includes(d.status));
+  const crossMatchedBudgetIds = new Set();
+  const items = [];
+
+  const severityRank = { overdue: 0, behind: 1, tight: 2 };
+
+  for (const d of riskyDeadlines) {
+    const matchedBudget = d.tag_id ? behindBudgets.find((b) => (b.tags || []).some((t) => t.id === d.tag_id)) : null;
+    if (matchedBudget) {
+      crossMatchedBudgetIds.add(matchedBudget.id);
+      items.push({
+        key: `deadline-${d.id}-budget-${matchedBudget.id}`,
+        tone: d.status === "overdue" ? "danger" : "warning",
+        rank: severityRank[d.status],
+        message:
+          d.status === "overdue"
+            ? `"${d.title}" is overdue, and its "${matchedBudget.name}" budget is behind too.`
+            : `"${d.title}" is ${d.status} on pace, and its "${matchedBudget.name}" budget is behind (${Math.round(matchedBudget.pct * 100)}% of this week's goal).`,
+      });
+    } else {
+      items.push({
+        key: `deadline-${d.id}`,
+        tone: d.status === "overdue" ? "danger" : "warning",
+        rank: severityRank[d.status],
+        message:
+          d.status === "overdue"
+            ? `"${d.title}" is overdue.`
+            : `"${d.title}" is ${d.status} on pace — needs ${d.hoursPerDayNeeded.toFixed(1)}h/day to finish in time.`,
+      });
+    }
+  }
+
+  for (const b of behindBudgets) {
+    if (crossMatchedBudgetIds.has(b.id)) continue; // already surfaced above, combined with a deadline
+    items.push({
+      key: `budget-${b.id}`,
+      tone: "warning",
+      rank: 3,
+      message: `"${b.name}" is behind this week — ${Math.round(b.pct * 100)}% of its ${formatDuration(b.targetSeconds)} goal so far.`,
+    });
+  }
+
+  items.sort((a, b) => a.rank - b.rank);
+  return { items, allClear: items.length === 0 };
+}
+

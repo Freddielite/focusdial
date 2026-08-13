@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getRunningSession, startSession, stopSession, updateSession } from "../api.js";
+import { getRunningSession, startSession, stopSession, updateSession, updateTask } from "../api.js";
 import { formatClock, formatDuration } from "../format.js";
 import { showRunningSessionNotification, clearRunningSessionNotification } from "../push.js";
 import Dropdown from "./Dropdown.jsx";
@@ -21,10 +21,16 @@ const RUNAWAY_THRESHOLD_SECONDS = 4 * 60 * 60;
 // check. Below this, the away-time prompt would just be noise.
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
-export default function TimerPanel({ tags, hourlyTagSuggestions, onSessionCompleted }) {
+export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessionCompleted, onDataChanged }) {
   const [running, setRunning] = useState(null); // the running session row, or null
   const [selectedTag, setSelectedTag] = useState("");
   const [userPickedTag, setUserPickedTag] = useState(false);
+  const [selectedTask, setSelectedTask] = useState("");
+  // Defaults on whenever a task is linked -- most people linking a
+  // session to a specific task are doing that task right now, so "yes,
+  // mark it done" is the more common outcome than not; unchecking is
+  // one click if that's wrong this time.
+  const [markTaskDone, setMarkTaskDone] = useState(true);
   const [elapsed, setElapsed] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -57,6 +63,11 @@ export default function TimerPanel({ tags, hourlyTagSuggestions, onSessionComple
   }, [hourlyTagSuggestions, tags]);
 
   const suggestedTagId = !userPickedTag ? hourlyTagSuggestions?.[new Date().getHours()]?.tagId : null;
+  const openTasks = (tasks || []).filter((t) => t.status === "open");
+  // Looked up fresh on every render (not stored) so a title edited or a
+  // task deleted elsewhere while this timer is running is still shown
+  // correctly rather than a stale snapshot from whenever it was linked.
+  const linkedTask = running?.task_id ? tasks?.find((t) => t.id === running.task_id) : null;
 
   // On load, check whether a session is already running (e.g. the page
   // was refreshed mid-session) so the timer picks back up rather than
@@ -68,6 +79,7 @@ export default function TimerPanel({ tags, hourlyTagSuggestions, onSessionComple
         setRunning(s || null);
         if (s) {
           setSelectedTag(s.tag_id || "");
+          setSelectedTask(s.task_id || "");
           showRunningSessionNotification(s);
         } else {
           clearRunningSessionNotification();
@@ -140,7 +152,7 @@ export default function TimerPanel({ tags, hourlyTagSuggestions, onSessionComple
     setError(null);
     setAwayPrompt(null);
     try {
-      const s = await startSession(selectedTag || null, null);
+      const s = await startSession(selectedTag || null, null, selectedTask || null);
       setRunning(s);
       showRunningSessionNotification(s);
     } catch (err) {
@@ -156,10 +168,20 @@ export default function TimerPanel({ tags, hourlyTagSuggestions, onSessionComple
     setError(null);
     try {
       const completed = await stopSession(running.id, note.trim() || null, quality);
+      // Closes the loop the other direction from a Deadline's "add as
+      // task" -- finishing work linked to a Task can now mark it done
+      // right from the stop action, instead of that being a second,
+      // easy-to-forget trip to the Tasks list.
+      if (running.task_id && markTaskDone) {
+        await updateTask(running.task_id, { status: "done" }).catch(() => {});
+        onDataChanged?.();
+      }
       setRunning(null);
       setElapsed(0);
       setNote("");
       setQuality(null);
+      setSelectedTask("");
+      setMarkTaskDone(true);
       clearRunningSessionNotification();
       onSessionCompleted(completed);
     } catch (err) {
@@ -221,6 +243,16 @@ export default function TimerPanel({ tags, hourlyTagSuggestions, onSessionComple
           Suggested based on what you usually work on now
         </div>
       )}
+      {!running && openTasks.length > 0 && (
+        <Dropdown className="fd-select" value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)}>
+          <option value="">No linked task</option>
+          {openTasks.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title}
+            </option>
+          ))}
+        </Dropdown>
+      )}
       {running && (
         <input
           className="fd-timer-note"
@@ -246,6 +278,12 @@ export default function TimerPanel({ tags, hourlyTagSuggestions, onSessionComple
             </button>
           ))}
         </div>
+      )}
+      {running && linkedTask && (
+        <label className="fd-checkbox-row fd-timer-task-done">
+          <input type="checkbox" checked={markTaskDone} onChange={(e) => setMarkTaskDone(e.target.checked)} />
+          Mark "{linkedTask.title}" done when I stop
+        </label>
       )}
       {running && elapsed > RUNAWAY_THRESHOLD_SECONDS && (
         <div className="fd-timer-runaway-warning">

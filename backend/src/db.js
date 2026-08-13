@@ -281,6 +281,14 @@ export async function initSchema() {
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline_id UUID REFERENCES deadlines(id) ON DELETE CASCADE;
     CREATE INDEX IF NOT EXISTS idx_tasks_deadline_id ON tasks(deadline_id);
 
+    -- Lets a timer/manual session optionally point at a specific Task,
+    -- not just a Tag -- a Tag says "what kind of work," a Task says
+    -- "which specific thing." ON DELETE SET NULL rather than CASCADE:
+    -- deleting a task shouldn't delete the time you already logged
+    -- against it, just drop the now-meaningless link.
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS task_id UUID REFERENCES tasks(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_sessions_task_id ON sessions(task_id);
+
     -- A reminder can be converted into either a Deadline or a Task (or
     -- neither, if dismissed) -- both FKs are nullable and at most one is
     -- ever set, rather than a polymorphic reference, since Postgres has

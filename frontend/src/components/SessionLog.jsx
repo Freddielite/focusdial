@@ -22,7 +22,7 @@ function ClockIcon() {
 const QUALITY_LABEL = { focused: "Focused", neutral: "Neutral", distracted: "Distracted" };
 const PAGE_SIZE = 10;
 
-export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, onSessionUpdated }) {
+export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDeleted, onSessionUpdated }) {
   const [sessions, setSessions] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -152,6 +152,9 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
                     })}
                   </span>
                   {s.note && <span className="fd-check-card__note">{s.note}</span>}
+                  {s.task_title && (
+                    <span className="fd-check-card__note fd-log-row__task-badge">✓ {s.task_title}</span>
+                  )}
                 </div>
                 <div className="fd-check-card__value">
                   <span className="fd-check-card__value-num">
@@ -180,6 +183,7 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
                   <SessionEditModal
                     session={s}
                     tags={tags}
+                    tasks={tasks}
                     onCancel={() => setEditingId(null)}
                     onSaved={(updated) => {
                       setEditingId(null);

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createManualSession } from "../api.js";
+import { createManualSession, updateTask } from "../api.js";
 import { toLocalInputValue } from "../format.js";
 import Dropdown from "./Dropdown.jsx";
 import { DateTimePicker } from "./DateTimeField.jsx";
@@ -10,15 +10,18 @@ const QUALITY_OPTIONS = [
   { value: "distracted", label: "Distracted" },
 ];
 
-export default function ManualEntryForm({ tags, onSessionCreated }) {
+export default function ManualEntryForm({ tags, tasks, onSessionCreated, onDataChanged }) {
   const [open, setOpen] = useState(false);
   const [tagId, setTagId] = useState("");
+  const [taskId, setTaskId] = useState("");
+  const [markTaskDone, setMarkTaskDone] = useState(true);
   const [start, setStart] = useState(toLocalInputValue(new Date(Date.now() - 30 * 60 * 1000)));
   const [end, setEnd] = useState(toLocalInputValue(new Date()));
   const [note, setNote] = useState("");
   const [quality, setQuality] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const openTasks = (tasks || []).filter((t) => t.status === "open");
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -27,14 +30,21 @@ export default function ManualEntryForm({ tags, onSessionCreated }) {
     try {
       const created = await createManualSession({
         tag_id: tagId || null,
+        task_id: taskId || null,
         started_at: new Date(start).toISOString(),
         ended_at: new Date(end).toISOString(),
         note: note || null,
         quality: quality || null,
       });
+      if (taskId && markTaskDone) {
+        await updateTask(taskId, { status: "done" }).catch(() => {});
+        onDataChanged?.();
+      }
       onSessionCreated(created);
       setNote("");
       setQuality(null);
+      setTaskId("");
+      setMarkTaskDone(true);
       setOpen(false);
     } catch (err) {
       setError(err.message);
@@ -65,6 +75,19 @@ export default function ManualEntryForm({ tags, onSessionCreated }) {
             ))}
           </Dropdown>
         </label>
+        {openTasks.length > 0 && (
+          <label>
+            Linked task (optional)
+            <Dropdown className="fd-select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+              <option value="">No linked task</option>
+              {openTasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </Dropdown>
+          </label>
+        )}
       </div>
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
@@ -101,6 +124,14 @@ export default function ManualEntryForm({ tags, onSessionCreated }) {
           </div>
         </label>
       </div>
+      {taskId && (
+        <div className="fd-manual-form__row">
+          <label className="fd-checkbox-row">
+            <input type="checkbox" checked={markTaskDone} onChange={(e) => setMarkTaskDone(e.target.checked)} />
+            Mark the linked task done too
+          </label>
+        </div>
+      )}
       {error && <div className="fd-inline-error">{error}</div>}
       <div className="fd-manual-form__actions">
         <button type="button" className="fd-link-btn" onClick={() => setOpen(false)}>

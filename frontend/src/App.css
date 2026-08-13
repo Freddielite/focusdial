@@ -452,6 +452,69 @@ button {
   color: var(--brass);
 }
 
+/* ---------- Insight card + Risk digest card (Today tab) ---------- */
+
+.fd-insight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-left: 3px solid var(--brass);
+  margin-bottom: 18px;
+}
+
+.fd-insight-card--danger { border-left-color: var(--rust); }
+.fd-insight-card--warning { border-left-color: var(--brass); }
+.fd-insight-card--positive { border-left-color: var(--focus-green); }
+.fd-insight-card--neutral { border-left-color: var(--accent-session); }
+
+.fd-insight-card__icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: inherit;
+}
+
+.fd-insight-card--danger .fd-insight-card__icon { color: var(--rust); }
+.fd-insight-card--warning .fd-insight-card__icon { color: var(--brass); }
+.fd-insight-card--positive .fd-insight-card__icon { color: var(--focus-green); }
+.fd-insight-card--neutral .fd-insight-card__icon { color: var(--accent-session); }
+
+.fd-insight-card__message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--parchment);
+}
+
+.fd-risk-card {
+  margin-bottom: 18px;
+}
+
+.fd-risk-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fd-risk-card__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--parchment);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--grad-input);
+}
+
+.fd-risk-card__icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.fd-risk-card__item--danger .fd-risk-card__icon { color: var(--rust); }
+.fd-risk-card__item--warning .fd-risk-card__icon { color: var(--brass); }
+
 /* ---------- Main layout ---------- */
 
 .fd-main {
@@ -501,6 +564,49 @@ button {
   .fd-main__insights {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- Focus Quality card (Insights tab) ---------- */
+
+.fd-quality-panel__headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.fd-quality-panel__rate {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 32px;
+  color: var(--brass-strong);
+}
+
+.fd-quality-panel__rate-label {
+  font-size: 12.5px;
+  color: var(--parchment-dim);
+}
+
+.fd-quality-panel__trend {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  margin-bottom: 10px;
+}
+
+.fd-quality-panel__trend--focus-green { color: var(--focus-green); }
+.fd-quality-panel__trend--rust { color: var(--rust); }
+.fd-quality-panel__trend--dim { color: var(--parchment-dim); }
+
+.fd-quality-panel__best-hour {
+  font-size: 13px;
+  color: var(--parchment);
+  margin-bottom: 8px;
+}
+
+.fd-quality-panel__coverage {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--parchment-dim);
 }
 
 /* ---------- Shared panel chrome ---------- */
@@ -597,6 +703,11 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.fd-log-row__task-badge {
+  font-style: normal;
+  color: var(--brass);
 }
 
 .fd-check-card__value {
@@ -1686,6 +1797,10 @@ button {
 .fd-timer-quality {
   display: flex;
   gap: 6px;
+  margin-bottom: 14px;
+}
+
+.fd-timer-task-done {
   margin-bottom: 14px;
 }
 

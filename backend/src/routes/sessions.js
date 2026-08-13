@@ -10,7 +10,9 @@ export const sessionsRouter = Router();
 sessionsRouter.get("/sessions/running", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM sessions WHERE user_id = $1 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
+      `SELECT s.*, tk.title AS task_title
+       FROM sessions s LEFT JOIN tasks tk ON tk.id = s.task_id
+       WHERE s.user_id = $1 AND s.ended_at IS NULL ORDER BY s.started_at DESC LIMIT 1`,
       [req.userId]
     );
     res.json(rows[0] || null);
@@ -21,7 +23,7 @@ sessionsRouter.get("/sessions/running", async (req, res) => {
 });
 
 sessionsRouter.post("/sessions/start", async (req, res) => {
-  const { tag_id, note } = req.body;
+  const { tag_id, note, task_id } = req.body;
   try {
     const { rows: existing } = await pool.query(
       `SELECT id FROM sessions WHERE user_id = $1 AND ended_at IS NULL LIMIT 1`,
@@ -31,9 +33,9 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
       return res.status(409).json({ error: "a session is already running" });
     }
     const { rows } = await pool.query(
-      `INSERT INTO sessions (tag_id, started_at, note, source, user_id)
-       VALUES ($1, now(), $2, 'timer', $3) RETURNING *`,
-      [tag_id || null, note || null, req.userId]
+      `INSERT INTO sessions (tag_id, started_at, note, source, task_id, user_id)
+       VALUES ($1, now(), $2, 'timer', $3, $4) RETURNING *`,
+      [tag_id || null, note || null, task_id || null, req.userId]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -69,7 +71,7 @@ sessionsRouter.post("/sessions/:id/stop", async (req, res) => {
 // already known, as opposed to the start/stop pair above which only
 // knows the end time once you call /stop.
 sessionsRouter.post("/sessions", async (req, res) => {
-  const { tag_id, started_at, ended_at, note, quality } = req.body;
+  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
   if (!started_at || !ended_at) {
     return res.status(400).json({ error: "started_at and ended_at are required" });
   }
@@ -81,9 +83,9 @@ sessionsRouter.post("/sessions", async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO sessions (tag_id, started_at, ended_at, note, quality, source, user_id)
-       VALUES ($1, $2, $3, $4, $5, 'manual', $6) RETURNING *`,
-      [tag_id || null, started_at, ended_at, note || null, quality || null, req.userId]
+      `INSERT INTO sessions (tag_id, started_at, ended_at, note, quality, source, task_id, user_id)
+       VALUES ($1, $2, $3, $4, $5, 'manual', $6, $7) RETURNING *`,
+      [tag_id || null, started_at, ended_at, note || null, quality || null, task_id || null, req.userId]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -205,8 +207,8 @@ sessionsRouter.get("/sessions", async (req, res) => {
   const includeTotal = req.query.count !== "0";
   try {
     const rowsPromise = pool.query(
-      `SELECT s.*, t.name AS tag_name, t.color AS tag_color
-       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id
+      `SELECT s.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
        WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
        ORDER BY s.started_at DESC LIMIT $2 OFFSET $3`,
       [req.userId, limit, offset]
@@ -225,7 +227,7 @@ sessionsRouter.get("/sessions", async (req, res) => {
 });
 
 sessionsRouter.patch("/sessions/:id", async (req, res) => {
-  const { tag_id, started_at, ended_at, note, quality } = req.body;
+  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
   // COALESCE-against-null looks right for started_at/ended_at (you'd
   // never intentionally PATCH a timestamp to null), but tag_id and note
   // are legitimately clearable — "remove the tag", "clear the note" —
@@ -235,6 +237,7 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
   const hasTagField = Object.prototype.hasOwnProperty.call(req.body, "tag_id");
   const hasNoteField = Object.prototype.hasOwnProperty.call(req.body, "note");
   const hasQualityField = Object.prototype.hasOwnProperty.call(req.body, "quality");
+  const hasTaskField = Object.prototype.hasOwnProperty.call(req.body, "task_id");
   if (started_at && ended_at && new Date(ended_at) <= new Date(started_at)) {
     return res.status(400).json({ error: "ended_at must be after started_at" });
   }
@@ -249,6 +252,7 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
          ended_at = COALESCE($5, ended_at),
          note = CASE WHEN $8 THEN $6 ELSE note END,
          quality = CASE WHEN $9 THEN $10 ELSE quality END,
+         task_id = CASE WHEN $11 THEN $12 ELSE task_id END,
          updated_at = now()
        WHERE id = $1 AND user_id = $2 RETURNING *`,
       [
@@ -262,6 +266,8 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
         hasNoteField,
         hasQualityField,
         hasQualityField ? quality : null,
+        hasTaskField,
+        hasTaskField ? task_id : null,
       ]
     );
     if (rows.length === 0) {

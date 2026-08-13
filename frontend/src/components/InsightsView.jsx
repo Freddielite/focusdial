@@ -4,6 +4,7 @@ import CalendarHeatmap from "./CalendarHeatmap.jsx";
 import TagBreakdown from "./TagBreakdown.jsx";
 import TrendChart from "./TrendChart.jsx";
 import WeekdayBreakdown from "./WeekdayBreakdown.jsx";
+import FocusQualityCard from "./FocusQualityCard.jsx";
 
 export default function InsightsView({ summary }) {
   return (
@@ -19,6 +20,7 @@ export default function InsightsView({ summary }) {
         <CalendarHeatmap daily={summary.daily} streakDays={summary.streakDays} />
         <TagBreakdown byTag={summary.byTag} mostSustainedTag={summary.mostSustainedTag} />
         <WeekdayBreakdown weekday={summary.weekday} bestWeekday={summary.bestWeekday} />
+        <FocusQualityCard quality={summary.quality} />
       </div>
       <TrendChart
         weeklyTotals={summary.weeklyTotals}

@@ -15,14 +15,21 @@ const QUALITY_OPTIONS = [
 // pre-filled from the session being edited. Expands within the row
 // itself (see SessionLog's editingId toggle) rather than a modal,
 // matching how Budgets/Deadlines/Reminders edit in place.
-export default function SessionEditModal({ session, tags, onCancel, onSaved }) {
+export default function SessionEditModal({ session, tags, tasks, onCancel, onSaved }) {
   const [tagId, setTagId] = useState(session.tag_id || "");
+  const [taskId, setTaskId] = useState(session.task_id || "");
   const [start, setStart] = useState(toLocalInputValue(new Date(session.started_at)));
   const [end, setEnd] = useState(toLocalInputValue(new Date(session.ended_at)));
   const [note, setNote] = useState(session.note || "");
   const [quality, setQuality] = useState(session.quality || null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  // Open tasks, plus whatever's currently linked even if it's since
+  // been marked done — otherwise saving this form without touching the
+  // task field would silently unlink it, since a "done" task wouldn't
+  // appear as a selectable option at all.
+  const taskOptions = (tasks || []).filter((t) => t.status === "open" || t.id === session.task_id);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -31,6 +38,7 @@ export default function SessionEditModal({ session, tags, onCancel, onSaved }) {
     try {
       const updated = await updateSession(session.id, {
         tag_id: tagId || null,
+        task_id: taskId || null,
         started_at: new Date(start).toISOString(),
         ended_at: new Date(end).toISOString(),
         note: note || null,
@@ -65,6 +73,19 @@ export default function SessionEditModal({ session, tags, onCancel, onSaved }) {
             ))}
           </Dropdown>
         </label>
+        {taskOptions.length > 0 && (
+          <label>
+            Linked task
+            <Dropdown className="fd-select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+              <option value="">No linked task</option>
+              {taskOptions.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </Dropdown>
+          </label>
+        )}
       </div>
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>

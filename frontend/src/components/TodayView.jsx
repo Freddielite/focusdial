@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
 import HeroCard from "./HeroCard.jsx";
+import InsightCard from "./InsightCard.jsx";
+import RiskDigestCard from "./RiskDigestCard.jsx";
 import TimerPanel from "./TimerPanel.jsx";
 import ManualEntryForm from "./ManualEntryForm.jsx";
 import StatsStrip from "./StatsStrip.jsx";
@@ -12,6 +14,8 @@ export default function TodayView({
   streakAtRisk,
   sessionsVersion,
   tasks,
+  insightOfTheDay,
+  riskDigest,
   onSessionCompleted,
   onSessionCreated,
   onSessionDeleted,
@@ -26,11 +30,19 @@ export default function TodayView({
       className="fd-view"
     >
       <HeroCard summary={summary} streakAtRisk={streakAtRisk} />
+      <InsightCard insight={insightOfTheDay} />
+      <RiskDigestCard digest={riskDigest} />
 
       <div className="fd-main__top">
         <div className="fd-main__timer-col">
-          <TimerPanel tags={tags} hourlyTagSuggestions={summary.hourlyTagSuggestions} onSessionCompleted={onSessionCompleted} />
-          <ManualEntryForm tags={tags} onSessionCreated={onSessionCreated} />
+          <TimerPanel
+            tags={tags}
+            tasks={tasks}
+            hourlyTagSuggestions={summary.hourlyTagSuggestions}
+            onSessionCompleted={onSessionCompleted}
+            onDataChanged={onDataChanged}
+          />
+          <ManualEntryForm tags={tags} tasks={tasks} onSessionCreated={onSessionCreated} onDataChanged={onDataChanged} />
         </div>
         <div className="fd-main__side-col">
           <StatsStrip summary={summary} />
@@ -40,6 +52,7 @@ export default function TodayView({
       <SessionLog
         sessionsVersion={sessionsVersion}
         tags={tags}
+        tasks={tasks}
         onSessionDeleted={onSessionDeleted}
         onSessionUpdated={onDataChanged}
       />
