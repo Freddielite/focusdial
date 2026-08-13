@@ -1,7 +1,6 @@
 import { motion } from "framer-motion";
 import HeroCard from "./HeroCard.jsx";
 import InsightCard from "./InsightCard.jsx";
-import RiskDigestCard from "./RiskDigestCard.jsx";
 import TimerPanel from "./TimerPanel.jsx";
 import ManualEntryForm from "./ManualEntryForm.jsx";
 import StatsStrip from "./StatsStrip.jsx";
@@ -15,7 +14,6 @@ export default function TodayView({
   sessionsVersion,
   tasks,
   insightOfTheDay,
-  riskDigest,
   onSessionCompleted,
   onSessionCreated,
   onSessionDeleted,
@@ -31,7 +29,6 @@ export default function TodayView({
     >
       <HeroCard summary={summary} streakAtRisk={streakAtRisk} />
       <InsightCard insight={insightOfTheDay} />
-      <RiskDigestCard digest={riskDigest} />
 
       <div className="fd-main__top">
         <div className="fd-main__timer-col">

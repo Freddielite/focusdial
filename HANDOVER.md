@@ -1386,3 +1386,150 @@ Prev/Next (`goToPage`) and post-edit refetches pass `withTotal: false` —
 initial load and post-delete refetches still pass `true`, since those
 are exactly the two moments the total can genuinely change (a session
 was added or removed).
+
+## Session 9 — inline editing everywhere + custom date/time pickers
+
+Budgets, Deadlines, and Reminders could be created and deleted but not
+edited from the UI, even though Budgets' and Deadlines' PATCH endpoints
+already existed server-side (Reminders' didn't — added
+`PATCH /reminders/:id` in `routes/reminders.js` this session, matching
+the same `hasOwnProperty` + `CASE WHEN` pattern already used for
+`tag_id`/`due_time` elsewhere, so a field can be explicitly cleared to
+`null` and not just left alone by `COALESCE`).
+
+**Inline, not modal.** Each row/card gets a pencil (✎) that expands an
+edit form directly inside the row (`editingId` state + `AnimatePresence`
+height animation) — the same pattern the create ("+ New") forms already
+used, rather than introducing a second interaction pattern. `BudgetEditForm`,
+`DeadlineEditForm`, and `ReminderEditForm` live alongside their manager
+components. Sessions followed the same path a session later (see below).
+
+**`DateTimeField.jsx` — custom Date/Time/DateTime pickers.** Native
+`<input type="date/time/datetime-local">` renders whatever the OS/browser
+provides, which looked inconsistent with the rest of the app's custom
+`Dropdown` (itself already a from-scratch `<select>` replacement, for the
+same reason). `DatePicker`, `TimePicker`, and `DateTimePicker` are portal-
+positioned popovers built the same way `Dropdown` positions its option
+list — and deliberately keep the **exact same value/onChange contract**
+as the native inputs they replace (`"YYYY-MM-DD"`, `"HH:MM"` 24h,
+`"YYYY-MM-DDTHH:MM"`), so every call site just swapped the tag with no
+change to submit logic. `TimeColumns` (hour/minute/AM-PM scroll lists) is
+shared between `TimePicker` and `DateTimePicker`'s combined popover.
+Swapped in everywhere a date/time input existed: `ManualEntryForm`,
+`SessionEditModal`, `DeadlinesView`, `RemindersView`.
+
+## Session 10 — Session edit moved from modal to inline
+
+Follow-up to Session 9: Sessions were still edited via a popup modal
+(`SessionEditModal`'s `fd-modal-overlay`) while everything else had just
+moved to inline expand. `SessionEditModal` was rewritten to render as a
+plain `motion.form` (no overlay wrapper) with `onCancel`/`onSaved` props
+instead of `onClose`; `SessionLog` wraps each row in `.fd-log-row-wrap`
+and toggles the form via the same `editingId` pattern as the other three.
+**Watch this if touching the row divider styling again:** the
+`border-bottom`/`:last-child` rule had to move from `.fd-log-row` to
+`.fd-log-row-wrap` — with the edit form as a sibling inside the wrap, the
+row itself is no longer reliably the actual last child when a form is
+open, which silently ate every row's divider before it was caught.
+
+## Session 11 — three real bugs (not just polish)
+
+All three reported by actual use, not found by re-reading code:
+
+**Service worker served a stale app shell.** `public/sw.js` was
+cache-first for *every* same-origin GET, including the page shell itself
+— fine for hashed `/assets/*.js` (a new deploy = a new filename, so
+cache-first there is always safe), actively wrong for `/` and any
+navigation, since it meant a stale cached shell (pointing at an old JS
+bundle) could keep getting served indefinitely, including right after
+landing back from a Google OAuth redirect — the exact moment freshness
+matters most. Fixed: navigation requests (`request.mode === "navigate"`)
+now go network-first, falling back to cache only on an actual network
+failure. Cache name bumped to `v2` so any already-installed worker drops
+its stale shell entries on next activation rather than serving them
+forever under the old key.
+
+**Google Calendar connect silently dropped you on the wrong tab.**
+`routes/googleAuth.js`'s OAuth callback redirected back to `/?googleAuth=
+connected` with no tab info, so `App.jsx`'s initial-tab logic (reads
+`?tab=` once at mount) always defaulted to "Today" — a successful connect
+looked like nothing happened, since the confirmation lives in Settings
+and that's not where you landed. Fixed by hardcoding `&tab=settings` onto
+that one redirect (safe to hardcode, not round-trip: Connect/Disconnect
+only ever appears in Settings, there's no other page this flow can start
+from).
+
+**Requests looked slow "most of the time."** This is Render's free tier
+cold-start (spins down when idle, first request can take 20-50s to wake
+it), colliding with `api.js`'s old 20s client timeout — the first attempt
+routinely aborted right before the server would've actually answered,
+and only a manual retry a moment later (server now warm) succeeded.
+Raised the timeout to 45s and added one automatic retry in `apiFetch`:
+always for a bare network failure (`TypeError`, the request never
+reached the server), but for our own timeout (`AbortError`) **only on
+GET/HEAD** — a POST/PATCH/DELETE that times out is left alone rather than
+silently retried, since the server may have already received and acted
+on it the first time, and retrying could double a write.
+
+## Session 12 — focus-quality analytics, a combined risk card, Timer→Task linking
+
+Three features aimed at the same brief: use data the app already has
+more, and let its own features inform each other more.
+
+**Focus-quality analytics.** Every session already carried an optional
+Focused/Neutral/Distracted `quality` rating that nothing had ever
+aggregated. `computeSummary` (`analytics.js`) now tracks it per-hour
+(parallel to the existing per-hour *duration* tally — "when do I log the
+most time" and "when do I actually focus best" are different questions)
+and week-over-week (reusing the same `thisMonday`/`daysElapsedThisWeek`
+fairness window as the existing `weekOverWeek` duration comparison, not
+a second definition of "this week"). Surfaced as a new `FocusQualityCard`
+on the Insights tab. `computeInsightOfTheDay()` picks the single most
+notable thing across *all* of summary/budgets/deadlines (a prioritized
+candidate list, evaluated top-down — overdue deadline first, generic
+encouragement last) and renders as `InsightCard` on Today, so noticing a
+trend doesn't require reading every chart yourself.
+
+**Combined risk card.** `computeRiskDigest()` cross-matches budgets
+behind pace (`pct < 0.7`) against deadlines at risk (tight/behind/
+overdue) by shared tag — a tag behind on both fronts becomes one combined
+line ("X is behind pace, and its Y budget is behind too") instead of two
+separate, easy-to-miss-the-connection warnings. Renders as `RiskDigestCard`
+on Today, and renders nothing at all when there's nothing to flag (no
+hollow "all clear" card taking up space every day).
+
+**Timer→Task linking.** New nullable `sessions.task_id` (`ALTER TABLE
+... ADD COLUMN IF NOT EXISTS`, same idempotent pattern as every other
+schema change in this project, `ON DELETE SET NULL` — deleting a task
+shouldn't delete time already logged against it, just drop the
+now-meaningless link). A session can now point at a specific open Task,
+not just a Tag: Tag answers "what kind of work," Task answers "which
+specific thing." Wired into `TimerPanel` (dropdown when idle, a "Mark
+'{title}' done when I stop" checkbox — defaulted **on** — while running),
+`ManualEntryForm`, and `SessionEditModal`. This closes the loop the other
+direction from a Deadline's existing "add as task": that flow lets
+finishing a Deadline complete a Task; this lets finishing a *session*
+complete one too, instead of that being a second, easy-to-forget trip to
+the Tasks widget. `GET /sessions` and `GET /sessions/running` both
+`LEFT JOIN tasks` for `task_title` so the log/timer can show the link
+without needing the full tasks array passed down everywhere.
+
+## Session 13 — em dash cleanup
+
+Removed the "—" character from every place a user actually sees it:
+`FocusQualityCard.jsx`'s trend glyph/placeholder (swapped for "•" and
+"n/a"), five auto-generated message strings in `computeInsightOfTheDay`/
+`computeRiskDigest` (`analytics.js`, rewritten as separate sentences or
+with a comma instead of a dash-joined clause), and the two rate-limit
+error strings in `lib/rateLimit.js` ("too many attempts, please wait...").
+
+**Deliberately left alone:** the character is still all over code
+comments, `console.*` logs, and the handful of `throw new Error(...)`
+startup-config messages in `db.js`/`index.js`/`lib/google.js`/`lib/push.js`
+— none of those render inside the running app; they're either developer
+documentation or a one-time message printed to the server's own console
+before it even finishes booting. If a future pass wants those gone too,
+they're easy to find: `grep -rn "—" backend frontend/src` (excluding
+`node_modules`) turns up every remaining instance, comment or not.
+
+

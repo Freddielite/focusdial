@@ -59,7 +59,7 @@ export function loginRateLimit(req, res, next) {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const key = `login:${clientIp(req)}:${email}`;
   if (!checkLoginAttempt(key)) {
-    return res.status(429).json({ error: "too many attempts — please wait a few minutes and try again" });
+    return res.status(429).json({ error: "too many attempts, please wait a few minutes and try again" });
   }
   next();
 }
@@ -67,7 +67,7 @@ export function loginRateLimit(req, res, next) {
 export function registerRateLimit(req, res, next) {
   const key = `register:${clientIp(req)}`;
   if (!checkRegisterAttempt(key)) {
-    return res.status(429).json({ error: "too many attempts — please wait a few minutes and try again" });
+    return res.status(429).json({ error: "too many attempts, please wait a few minutes and try again" });
   }
   next();
 }

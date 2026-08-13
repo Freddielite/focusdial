@@ -487,7 +487,7 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
     if (matchedBudget) {
       candidates.push({
         tone: "warning",
-        message: `"${d.title}" is behind pace, and its "${matchedBudget.name}" budget is behind too — this tag needs more time this week.`,
+        message: `"${d.title}" is behind pace, and its "${matchedBudget.name}" budget is behind too. This tag needs more time this week.`,
       });
       break; // one compounding example is enough to make the point
     }
@@ -497,7 +497,7 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
   if (behind.length > 0) {
     candidates.push({
       tone: "warning",
-      message: `"${behind[0].title}" is behind pace — you need ${behind[0].hoursPerDayNeeded.toFixed(1)}h/day to catch up.`,
+      message: `"${behind[0].title}" is behind pace. You need ${behind[0].hoursPerDayNeeded.toFixed(1)}h/day to catch up.`,
     });
   }
 
@@ -525,7 +525,7 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
   if (summary.streakDays >= 3) {
     candidates.push({
       tone: "positive",
-      message: `You're on a ${summary.streakDays}-day streak — keep it going.`,
+      message: `You're on a ${summary.streakDays}-day streak. Keep it going.`,
     });
   }
 
@@ -590,7 +590,7 @@ export function computeRiskDigest({ budgetsProgress = [], deadlinesProgress = []
         message:
           d.status === "overdue"
             ? `"${d.title}" is overdue.`
-            : `"${d.title}" is ${d.status} on pace — needs ${d.hoursPerDayNeeded.toFixed(1)}h/day to finish in time.`,
+            : `"${d.title}" is ${d.status} on pace, needs ${d.hoursPerDayNeeded.toFixed(1)}h/day to finish in time.`,
       });
     }
   }
@@ -601,7 +601,7 @@ export function computeRiskDigest({ budgetsProgress = [], deadlinesProgress = []
       key: `budget-${b.id}`,
       tone: "warning",
       rank: 3,
-      message: `"${b.name}" is behind this week — ${Math.round(b.pct * 100)}% of its ${formatDuration(b.targetSeconds)} goal so far.`,
+      message: `"${b.name}" is behind this week, ${Math.round(b.pct * 100)}% of its ${formatDuration(b.targetSeconds)} goal so far.`,
     });
   }
 

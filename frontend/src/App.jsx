@@ -425,14 +425,15 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     sessionsVersion={sessionsVersion}
                     tasks={tasks}
                     insightOfTheDay={insightOfTheDay}
-                    riskDigest={riskDigest}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
                     onSessionDeleted={handleSessionDeleted}
                     onDataChanged={loadAll}
                   />
                 )}
-                {activeTab === "insights" && <InsightsView key="insights" summary={summary} />}
+                {activeTab === "insights" && (
+                  <InsightsView key="insights" summary={summary} riskDigest={riskDigest} />
+                )}
                 {activeTab === "budgets" && (
                   <BudgetsView
                     key="budgets"

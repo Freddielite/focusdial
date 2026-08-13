@@ -5,8 +5,9 @@ import TagBreakdown from "./TagBreakdown.jsx";
 import TrendChart from "./TrendChart.jsx";
 import WeekdayBreakdown from "./WeekdayBreakdown.jsx";
 import FocusQualityCard from "./FocusQualityCard.jsx";
+import RiskDigestCard from "./RiskDigestCard.jsx";
 
-export default function InsightsView({ summary }) {
+export default function InsightsView({ summary, riskDigest }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -15,6 +16,7 @@ export default function InsightsView({ summary }) {
       transition={{ duration: 0.12 }}
       className="fd-view"
     >
+      <RiskDigestCard digest={riskDigest} />
       <div className="fd-main__insights">
         <HourDial hourly={summary.hourly} bestHour={summary.bestHour} />
         <CalendarHeatmap daily={summary.daily} streakDays={summary.streakDays} />

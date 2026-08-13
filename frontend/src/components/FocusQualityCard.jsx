@@ -33,8 +33,8 @@ export default function FocusQualityCard({ quality }) {
           </div>
           {quality.deltaPct != null && (
             <div className={`fd-quality-panel__trend fd-quality-panel__trend--${trendTone(quality.deltaPct)}`}>
-              {quality.deltaPct > 0 ? "▲" : quality.deltaPct < 0 ? "▼" : "—"} {Math.abs(Math.round(quality.deltaPct))} pts
-              vs. last week ({quality.lastWeekFocusRatePct != null ? `${Math.round(quality.lastWeekFocusRatePct)}%` : "—"})
+              {quality.deltaPct > 0 ? "▲" : quality.deltaPct < 0 ? "▼" : "•"} {Math.abs(Math.round(quality.deltaPct))} pts
+              vs. last week ({quality.lastWeekFocusRatePct != null ? `${Math.round(quality.lastWeekFocusRatePct)}%` : "n/a"})
             </div>
           )}
           {quality.bestHour && (
