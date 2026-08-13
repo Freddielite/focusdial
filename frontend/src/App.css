@@ -1327,8 +1327,58 @@ button {
   margin-top: 10px;
 }
 
-.fd-deadline-card__start-hint {
+/* Completed-deadlines history (collapsed by default) -- reuses the
+   existing .fd-deadline-card__status pill classes for the on-time/late
+   badge, so no separate color vocabulary is introduced for what's
+   conceptually the same "status" idea as the active-card pills. */
+.fd-deadline-completed {
+  margin-top: 4px;
+}
+
+.fd-deadline-completed__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-top: 10px;
+  overflow: hidden;
+}
+
+.fd-deadline-completed__item {
+  background: var(--grad-panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.fd-deadline-completed__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fd-deadline-completed__title {
+  font-weight: 600;
+  color: var(--parchment);
+}
+
+.fd-deadline-completed__meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--parchment-dim);
+}
+
+/* Live feasibility preview shown while creating a deadline, before it's
+   saved -- same status-pill styling as the real cards, so a preview
+   visually reads as "a status," not a separate kind of message. */
+.fd-deadline-create-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fd-deadline-create-preview__text {
   font-size: 12px;
   color: var(--parchment-dim);
 }
@@ -1929,6 +1979,27 @@ button {
   font-size: 11.5px;
   color: var(--parchment-dim);
   font-style: italic;
+}
+
+/* Replaces the (idle-only) tag dropdown while a session is running --
+   the dropdown is repurposed for "what to start next," which doesn't
+   apply while something's already going, so this shows what's actually
+   being tracked plus an explicit action to change it. */
+.fd-timer-tag-live {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--parchment-dim);
+}
+
+.fd-timer-tag-live__label strong {
+  color: var(--parchment);
 }
 
 .fd-timer-note {

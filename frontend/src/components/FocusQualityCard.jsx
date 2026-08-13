@@ -42,6 +42,14 @@ export default function FocusQualityCard({ quality }) {
               Best focus window: <strong>{hourLabel(quality.bestHour.hour)}</strong> ({Math.round(quality.bestHour.ratePct)}% focused)
             </div>
           )}
+          {quality.byDuration && Math.round(quality.byDuration.best.ratePct - quality.byDuration.worst.ratePct) >= 10 && (
+            <div className="fd-quality-panel__best-hour">
+              Your <strong>{quality.byDuration.best.label}</strong> sessions are focused{" "}
+              {Math.round(quality.byDuration.best.ratePct)}% of the time, vs{" "}
+              {Math.round(quality.byDuration.worst.ratePct)}% for your{" "}
+              <strong>{quality.byDuration.worst.label}</strong> ones.
+            </div>
+          )}
           <div className="fd-quality-panel__coverage">
             {quality.ratedCount} of {quality.totalCount} sessions rated
           </div>

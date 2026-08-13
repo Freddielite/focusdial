@@ -66,6 +66,14 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   const [quality, setQuality] = useState(null);
   // { awayMs } while the "you were away" prompt is showing, else null.
   const [awayPrompt, setAwayPrompt] = useState(null);
+  // Whether the "change tag" control is expanded while a session is
+  // running. Separate from selectedTag, which is what pre-selects the
+  // *next* session's tag -- reusing that same dropdown for the running
+  // session's tag would conflate two different things (what to start
+  // next vs. what's running right now), so this gets its own small
+  // inline control instead.
+  const [retagging, setRetagging] = useState(false);
+  const [retagBusy, setRetagBusy] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(
     () => typeof window !== "undefined" && localStorage.getItem(NUDGE_DISMISS_KEY) === currentHourBucketKey()
   );
@@ -213,6 +221,30 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
     }
   }
 
+  // Changes the tag of the session that's already running, without
+  // stopping it -- a plain PATCH (the same endpoint the session-edit
+  // form already uses), so the elapsed time so far stays intact instead
+  // of being lost to a stop-and-restart. Useful on its own, and it's
+  // also what a Deadline card's "Switch running timer to X" action
+  // relies on when it's the one initiating the change instead.
+  async function handleRetag(newTagId) {
+    if (!running) return;
+    setRetagBusy(true);
+    setError(null);
+    try {
+      const updated = await updateSession(running.id, { tag_id: newTagId || null });
+      setRunning(updated);
+      setSelectedTag(newTagId || "");
+      setRetagging(false);
+      showRunningSessionNotification(updated);
+      onDataChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRetagBusy(false);
+    }
+  }
+
   async function handleStop() {
     if (!running) return;
     setBusy(true);
@@ -233,6 +265,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
       setQuality(null);
       setSelectedTask("");
       setMarkTaskDone(true);
+      setRetagging(false);
       clearRunningSessionNotification();
       onSessionCompleted(completed);
     } catch (err) {
@@ -293,22 +326,52 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
           </div>
         </div>
       )}
-      <Dropdown
-        className="fd-select"
-        value={selectedTag}
-        onChange={(e) => {
-          setSelectedTag(e.target.value);
-          setUserPickedTag(true);
-        }}
-        disabled={!!running}
-      >
-        <option value="">No tag</option>
-        {tags.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-          </option>
-        ))}
-      </Dropdown>
+      {running ? (
+        <div className="fd-timer-tag-live">
+          <span className="fd-timer-tag-live__label">
+            Tracking: <strong>{tags.find((t) => t.id === running.tag_id)?.name || "No tag"}</strong>
+          </span>
+          <button
+            type="button"
+            className="fd-link-btn"
+            onClick={() => setRetagging((v) => !v)}
+            disabled={retagBusy}
+          >
+            {retagging ? "Cancel" : "Change tag"}
+          </button>
+        </div>
+      ) : (
+        <Dropdown
+          className="fd-select"
+          value={selectedTag}
+          onChange={(e) => {
+            setSelectedTag(e.target.value);
+            setUserPickedTag(true);
+          }}
+        >
+          <option value="">No tag</option>
+          {tags.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </Dropdown>
+      )}
+      {running && retagging && (
+        <Dropdown
+          className="fd-select"
+          value={running.tag_id || ""}
+          onChange={(e) => handleRetag(e.target.value)}
+          disabled={retagBusy}
+        >
+          <option value="">No tag</option>
+          {tags.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </Dropdown>
+      )}
       {suggestedTagId && !running && !showNudge && (
         <div className="fd-timer-suggestion">
           Suggested based on what you usually work on now

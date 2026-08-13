@@ -132,6 +132,17 @@ export function computeBudgetProgress(budgets, sessions) {
   });
 }
 
+// Exact moment a deadline is due. With no due_time, that's end-of-day
+// on due_date. due_date comes back from the database as a full
+// timestamp string (e.g. "2026-08-13T00:00:00.000Z"), not a plain
+// "2026-08-13" -- gluing due_time directly onto it produces a malformed
+// string, so the date portion is extracted first.
+function computeDueAt(d) {
+  const dueDatePart = String(d.due_date).slice(0, 10);
+  const dueDate = startOfLocalDay(new Date(dueDatePart));
+  return d.due_time ? new Date(`${dueDatePart}T${d.due_time}`) : new Date(dueDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+}
+
 // Computes real progress + a feasibility read for each deadline, comparing
 // the pace it actually requires against your real historical average —
 // this is the "does the thinking for you" part: it's not just a countdown,
@@ -156,29 +167,11 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
 
     const estimatedHours = Number(d.estimated_hours);
     const remainingHours = Math.max(0, estimatedHours - completedHours);
-    const dueDate = startOfLocalDay(new Date(d.due_date));
 
-    // Exact moment the deadline is due. With no due_time, that's
-    // end-of-day on due_date. This is now the single number everything
-    // below (daysLeft, hoursPerDayNeeded, and the overdue check) is
-    // derived from, instead of pace/status being computed from a
-    // separate whole-calendar-day count. That used to be able to
-    // disagree with the live countdown by up to 24 hours -- e.g. showing
-    // "Overdue" first thing in the morning on the due date, while the
-    // countdown (which does use dueAt) still had hours left to go.
-    // due_date comes back from the database as a full timestamp string
-    // (e.g. "2026-08-13T00:00:00.000Z"), not a plain "2026-08-13" -- so
-    // gluing due_time directly onto it (the old code) produced a
-    // malformed string like "2026-08-13T00:00:00.000ZT14:30:00", which
-    // is an invalid date (NaN). That NaN then propagated two different,
-    // contradictory ways into the countdown and the status calculation
-    // below, which is why they could disagree with each other. Extract
-    // just the date part first, same as DeadlineEditForm already does
-    // when pre-filling its own date field.
-    const dueDatePart = String(d.due_date).slice(0, 10);
-    const dueAt = d.due_time
-      ? new Date(`${dueDatePart}T${d.due_time}`)
-      : new Date(dueDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+    // Same fix as before: derived from the exact due moment (date +
+    // optional time-of-day), not a whole-calendar-day count, so this
+    // can never disagree with the live countdown.
+    const dueAt = computeDueAt(d);
 
     const hoursLeft = (dueAt.getTime() - Date.now()) / 3_600_000;
     const daysLeft = hoursLeft / 24; // fractional now, not rounded to whole days
@@ -214,6 +207,59 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
       status,
     };
   });
+}
+
+// Looks back across every deadline that has actually been resolved one
+// way or another (marked done, or its due date has already passed) and
+// asks a question none of the real-time pace/status logic above
+// answers: over time, do you actually hit your deadlines? Takes
+// computeDeadlineProgress's own output (deadlinesProgress), not raw
+// deadlines, so it reuses the exact same dueAt every card already
+// computed instead of re-deriving it a third time.
+//
+// "Completed at" is approximated as the deadline's updated_at at the
+// moment its status last became "done" -- there's no separate
+// completed_at column, but updated_at is stamped on every write
+// (routes/deadlines.js) and the checkmark in DeadlinesView is the only
+// thing that sets status to "done", so in practice this is accurate
+// unless a done deadline gets edited again afterward (rare, and only
+// off by however long between completing it and touching it again).
+//
+// Archived deadlines are excluded entirely -- that status means
+// "cancelled," not "missed," so counting it against the rate would
+// punish clearing out a deadline that no longer applies the same as
+// actually blowing through one.
+export function computeDeadlineTrackRecord(deadlinesProgress) {
+  const now = Date.now();
+  let onTime = 0;
+  let late = 0;
+  let missed = 0;
+
+  for (const d of deadlinesProgress) {
+    if (d.status === "archived") continue;
+    if (d.status === "done") {
+      const completedAt = new Date(d.updated_at).getTime();
+      if (completedAt <= d.dueAt.getTime()) onTime += 1;
+      else late += 1;
+    } else if (d.dueAt.getTime() < now) {
+      // Still active (or already flagged overdue) and the due moment
+      // has passed without ever being marked done -- a real miss, not
+      // just "not resolved yet."
+      missed += 1;
+    }
+    // Anything else (active, not yet due) hasn't been resolved either
+    // way and is excluded, the same way an in-progress deadline
+    // shouldn't count against or for the rate.
+  }
+
+  const resolved = onTime + late + missed;
+  return {
+    onTime,
+    late,
+    missed,
+    resolved,
+    onTimeRatePct: resolved > 0 ? (onTime / resolved) * 100 : null,
+  };
 }
 
 // For each hour of day (0-23), which tag has the most historical seconds
@@ -279,6 +325,40 @@ function qualityRate(sessions) {
     if (s.quality === "focused") focused += 1;
   }
   return { focused, rated, ratePct: rated > 0 ? (focused / rated) * 100 : null };
+}
+
+// Answers a different question than the hourly quality breakdown above
+// ("when do I focus best") -- "are my longest sessions actually my best
+// ones, or just the longest." Every session already carries an
+// optional Focused/Neutral/Distracted rating; this is the first thing
+// in the app that buckets it by how long the session ran instead of
+// when it happened. Only surfaces once there's a real contrast between
+// at least two buckets with enough rated sessions to trust (same "at
+// least 3" bar used elsewhere -- mostSustainedTag, bestFocusHour), so a
+// single outlier long session can't manufacture a false pattern.
+const QUALITY_DURATION_BUCKETS = [
+  { key: "under30", label: "under 30m", maxSeconds: 30 * 60 },
+  { key: "30to60", label: "30m-1h", maxSeconds: 60 * 60 },
+  { key: "1to2h", label: "1-2h", maxSeconds: 2 * 60 * 60 },
+  { key: "over2h", label: "over 2h", maxSeconds: Infinity },
+];
+
+function qualityByDuration(sessions) {
+  const buckets = QUALITY_DURATION_BUCKETS.map((b) => ({ ...b, sessions: [] }));
+  for (const s of sessions) {
+    if (!s.quality) continue;
+    const seconds = durationSeconds(s);
+    const bucket = buckets.find((b) => seconds <= b.maxSeconds) || buckets[buckets.length - 1];
+    bucket.sessions.push(s);
+  }
+  const eligible = buckets
+    .map((b) => ({ key: b.key, label: b.label, ...qualityRate(b.sessions) }))
+    .filter((b) => b.rated >= 3);
+  if (eligible.length < 2) return null; // nothing to contrast yet
+
+  const best = eligible.reduce((a, b) => (b.ratePct > a.ratePct ? b : a));
+  const worst = eligible.reduce((a, b) => (b.ratePct < a.ratePct ? b : a));
+  return { buckets: eligible, best, worst };
 }
 
 export function computeSummary(sessions, restDayOfWeek = null) {
@@ -440,6 +520,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     totalCount: sessions.length,
     focusRatePct: overallQuality.ratePct,
     thisWeekFocusRatePct: thisWeekQuality.ratePct,
+    byDuration: qualityByDuration(sessions),
     lastWeekFocusRatePct: lastWeekQuality.ratePct,
     // Percentage-point change (not a ratio) — null unless both weeks
     // have at least one rated session to compare, same reasoning as

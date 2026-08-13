@@ -7,6 +7,7 @@ import {
   logDeadlineProgress,
   getRunningSession,
   startSession,
+  updateSession,
 } from "../api.js";
 import { formatDuration, formatCountdown } from "../format.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
@@ -63,6 +64,59 @@ function useRunningSession() {
 // deadline's estimate/pace can be a small fraction of an hour.
 function formatHours(hours) {
   return formatDuration(Math.max(0, hours) * 3600);
+}
+
+// Live feasibility read shown while *creating* a deadline, before it's
+// even saved -- otherwise you only find out a deadline is unrealistic
+// after committing to it. Mirrors the same math/thresholds as
+// analytics.js's computeDeadlineProgress (kept as its own small copy
+// here rather than imported, since this runs against in-progress form
+// state -- strings that might not be valid dates yet -- not a saved
+// deadline row).
+function previewDeadlineStatus({ dueDate, dueTime, estHours, avgHours }) {
+  if (!dueDate || !estHours || Number(estHours) <= 0) return null;
+  const dueDatePart = dueDate.slice(0, 10);
+  const startOfDue = new Date(`${dueDatePart}T00:00:00`);
+  if (isNaN(startOfDue.getTime())) return null;
+  const dueAt = dueTime
+    ? new Date(`${dueDatePart}T${dueTime}`)
+    : new Date(startOfDue.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+  const hoursLeft = (dueAt.getTime() - Date.now()) / 3_600_000;
+  const remainingHours = Number(estHours);
+
+  if (hoursLeft <= 0) {
+    return { tone: "rust", label: "Already overdue", text: "That due date/time has already passed." };
+  }
+  if (hoursLeft < 24) {
+    const fits = remainingHours <= hoursLeft;
+    return {
+      tone: fits ? "brass" : "rust",
+      label: fits ? "Cutting it close" : "Not enough time",
+      text: `Needs ${formatHours(remainingHours)}, with only ${formatHours(hoursLeft)} available.`,
+    };
+  }
+  if (avgHours <= 0) {
+    return { tone: "dim", label: "Not enough history yet", text: "Log a few more sessions to get a pace read." };
+  }
+  const daysLeft = hoursLeft / 24;
+  const pacePerDay = remainingHours / daysLeft;
+  const ratio = pacePerDay / avgHours;
+  let tone, label;
+  if (ratio <= 0.7) {
+    tone = "focus-green";
+    label = "Ahead of pace";
+  } else if (ratio <= 1.05) {
+    tone = "brass";
+    label = "On track";
+  } else if (ratio <= 1.5) {
+    tone = "brass";
+    label = "Tight";
+  } else {
+    tone = "rust";
+    label = "Behind pace";
+  }
+  return { tone, label, text: `Would need ${formatHours(pacePerDay)}/day (you average ${formatHours(avgHours)}/day).` };
 }
 
 // Lets estimated/logged time be entered as separate Hours + Minutes
@@ -285,9 +339,13 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
   const [runningSession, refreshRunningSession] = useRunningSession();
   const [startingId, setStartingId] = useState(null);
   const [startError, setStartError] = useState(null);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const avgHours = avgDailyFocusSeconds / 3600;
   const active = deadlines.filter((d) => d.status !== "done" && d.status !== "archived" && !pendingIds.has(d.id));
+  const completed = deadlines
+    .filter((d) => d.status === "done")
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
   // The whole point of linking a deadline to a tag is that time logged
   // under that tag counts toward it -- so if you're about to work on
@@ -303,6 +361,28 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
       onDataChanged();
     } catch (err) {
       setStartError({ id: d.id, message: err.message || "Could not start a session." });
+    } finally {
+      setStartingId(null);
+    }
+  }
+
+  // Covers the case that used to be a dead end: a session is already
+  // running on some other tag, so starting a fresh one on this
+  // deadline's tag would just 409. Retagging the *existing* session in
+  // place (a plain PATCH, same one the session-edit form already uses)
+  // is strictly better than stopping and restarting -- it keeps
+  // whatever elapsed time has already accumulated, rather than
+  // throwing it away.
+  async function handleRetagRunningSession(d) {
+    if (!runningSession) return;
+    setStartError(null);
+    setStartingId(d.id);
+    try {
+      await updateSession(runningSession.id, { tag_id: d.tag_id });
+      refreshRunningSession();
+      onDataChanged();
+    } catch (err) {
+      setStartError({ id: d.id, message: err.message || "Could not switch the running timer's tag." });
     } finally {
       setStartingId(null);
     }
@@ -439,6 +519,17 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                 Also add to my task list
               </label>
             </div>
+            {(() => {
+              const preview = previewDeadlineStatus({ dueDate, dueTime, estHours, avgHours });
+              return preview ? (
+                <div className="fd-deadline-create-preview">
+                  <span className={`fd-deadline-card__status fd-deadline-card__status--${preview.tone}`}>
+                    {preview.label}
+                  </span>
+                  <span className="fd-deadline-create-preview__text">{preview.text}</span>
+                </div>
+              ) : null;
+            })()}
             {error && <div className="fd-inline-error">{error}</div>}
             <div className="fd-manual-form__actions">
               <button type="submit" className="fd-btn fd-btn--start">
@@ -587,10 +678,16 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
                   <>
                     {runningSession ? (
                       runningSession.tag_id !== d.tag_id && (
-                        <div className="fd-deadline-card__start-hint">
-                          A timer's already running on a different tag — stop it to start one on{" "}
-                          {d.tag_name || "this tag"}.
-                        </div>
+                        <button
+                          type="button"
+                          className="fd-btn fd-btn--start fd-deadline-card__start"
+                          onClick={() => handleRetagRunningSession(d)}
+                          disabled={startingId === d.id}
+                        >
+                          {startingId === d.id
+                            ? "Switching…"
+                            : `Switch running timer to ${d.tag_name || "this tag"}`}
+                        </button>
                       )
                     ) : (
                       <button
@@ -624,6 +721,56 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
           })}
         </AnimatePresence>
       </div>
+
+      {completed.length > 0 && (
+        <div className="fd-deadline-completed">
+          <button
+            type="button"
+            className="fd-link-btn"
+            onClick={() => setShowCompleted((v) => !v)}
+          >
+            {showCompleted ? "Hide" : "Show"} completed ({completed.length})
+          </button>
+          <AnimatePresence initial={false}>
+            {showCompleted && (
+              <motion.div
+                className="fd-deadline-completed__list"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                {completed.map((d) => {
+                  // Same approximation computeDeadlineTrackRecord uses:
+                  // updated_at at the moment the checkmark set status to
+                  // "done" is the closest thing to a real completed_at
+                  // this schema has.
+                  const completedAt = new Date(d.updated_at);
+                  const onTime = completedAt.getTime() <= d.dueAt.getTime();
+                  return (
+                    <div key={d.id} className="fd-deadline-completed__item">
+                      <div className="fd-deadline-completed__title-row">
+                        <span className="fd-deadline-completed__title">{d.title}</span>
+                        <span
+                          className={`fd-deadline-card__status fd-deadline-card__status--${
+                            onTime ? "focus-green" : "rust"
+                          }`}
+                        >
+                          {onTime ? "On time" : "Late"}
+                        </span>
+                      </div>
+                      <div className="fd-deadline-completed__meta">
+                        {formatHours(d.completedHours)} of {formatHours(Number(d.estimated_hours))} · completed{" "}
+                        {completedAt.toLocaleDateString()}
+                      </div>
+                    </div>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </motion.div>
   );
 }

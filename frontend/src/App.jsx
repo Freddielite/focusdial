@@ -27,7 +27,7 @@ import {
   updateSettings,
   setSlowRequestHandler,
 } from "./api.js";
-import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview } from "./analytics.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord } from "./analytics.js";
 
 const DEFAULT_SETTINGS = {
   push_enabled: true,
@@ -224,6 +224,10 @@ export default function App({ user, onLogout, onUserUpdated }) {
   const weeklyReview = useMemo(
     () => computeWeeklyReview({ sessions: history, deadlinesProgress: deadlinesWithProgress, reminders }),
     [history, deadlinesWithProgress, reminders]
+  );
+  const deadlineTrackRecord = useMemo(
+    () => computeDeadlineTrackRecord(deadlinesWithProgress),
+    [deadlinesWithProgress]
   );
 
   // In-app version of the same "streak at risk" check the backend cron
@@ -440,7 +444,13 @@ export default function App({ user, onLogout, onUserUpdated }) {
                   />
                 )}
                 {activeTab === "insights" && (
-                  <InsightsView key="insights" summary={summary} riskDigest={riskDigest} weeklyReview={weeklyReview} />
+                  <InsightsView
+                    key="insights"
+                    summary={summary}
+                    riskDigest={riskDigest}
+                    weeklyReview={weeklyReview}
+                    deadlineTrackRecord={deadlineTrackRecord}
+                  />
                 )}
                 {activeTab === "budgets" && (
                   <BudgetsView
