@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import { formatDuration } from "../format.js";
 import { deleteSession, listRecentSessions } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
@@ -27,7 +28,7 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [editing, setEditing] = useState(null); // the session row being edited, or null
+  const [editingId, setEditingId] = useState(null); // id of the session row being edited, or null
   // Optimistically hides a row the instant delete is confirmed, without
   // waiting for the real DELETE call (which useUndoableDelete holds off
   // on for a few seconds in case of Undo).
@@ -48,6 +49,7 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
       if (count !== null) setTotal(count);
       setPage(pageNum);
       setPendingIds(new Set());
+      setEditingId(null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -133,40 +135,59 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
           const seconds =
             (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
           return (
-            <div key={s.id} className="fd-log-row fd-check-card" style={{ "--check-accent": s.tag_color || "var(--accent-session)" }}>
-              <span className="fd-check-card__icon">
-                <ClockIcon />
-              </span>
-              <div className="fd-check-card__body">
-                <span className="fd-check-card__title">{s.tag_name || "Untagged"}</span>
-                <span className="fd-check-card__meta">
-                  ★{" "}
-                  {new Date(s.started_at).toLocaleString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
+            <div key={s.id} className="fd-log-row-wrap">
+              <div className="fd-log-row fd-check-card" style={{ "--check-accent": s.tag_color || "var(--accent-session)" }}>
+                <span className="fd-check-card__icon">
+                  <ClockIcon />
                 </span>
-                {s.note && <span className="fd-check-card__note">{s.note}</span>}
+                <div className="fd-check-card__body">
+                  <span className="fd-check-card__title">{s.tag_name || "Untagged"}</span>
+                  <span className="fd-check-card__meta">
+                    ★{" "}
+                    {new Date(s.started_at).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                  {s.note && <span className="fd-check-card__note">{s.note}</span>}
+                </div>
+                <div className="fd-check-card__value">
+                  <span className="fd-check-card__value-num">
+                    {s.quality && (
+                      <span
+                        className={`fd-quality-dot fd-quality-dot--${s.quality}`}
+                        title={QUALITY_LABEL[s.quality]}
+                      />
+                    )}
+                    {formatDuration(seconds)}
+                  </span>
+                </div>
+                <button
+                  className="fd-icon-btn"
+                  onClick={() => setEditingId((id) => (id === s.id ? null : s.id))}
+                  aria-label="Edit session"
+                >
+                  ✎
+                </button>
+                <button className="fd-icon-btn" onClick={() => handleDelete(s)} aria-label="Delete session">
+                  ✕
+                </button>
               </div>
-              <div className="fd-check-card__value">
-                <span className="fd-check-card__value-num">
-                  {s.quality && (
-                    <span
-                      className={`fd-quality-dot fd-quality-dot--${s.quality}`}
-                      title={QUALITY_LABEL[s.quality]}
-                    />
-                  )}
-                  {formatDuration(seconds)}
-                </span>
-              </div>
-              <button className="fd-icon-btn" onClick={() => setEditing(s)} aria-label="Edit session">
-                ✎
-              </button>
-              <button className="fd-icon-btn" onClick={() => handleDelete(s)} aria-label="Delete session">
-                ✕
-              </button>
+              <AnimatePresence initial={false}>
+                {editingId === s.id && (
+                  <SessionEditModal
+                    session={s}
+                    tags={tags}
+                    onCancel={() => setEditingId(null)}
+                    onSaved={(updated) => {
+                      setEditingId(null);
+                      handleSaved(updated);
+                    }}
+                  />
+                )}
+              </AnimatePresence>
             </div>
           );
         })}
@@ -193,17 +214,6 @@ export default function SessionLog({ sessionsVersion, tags, onSessionDeleted, on
             Next →
           </button>
         </div>
-      )}
-      {editing && (
-        <SessionEditModal
-          session={editing}
-          tags={tags}
-          onClose={() => setEditing(null)}
-          onSaved={(updated) => {
-            setEditing(null);
-            handleSaved(updated);
-          }}
-        />
       )}
     </div>
   );

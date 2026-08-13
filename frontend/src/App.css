@@ -1541,13 +1541,20 @@ button {
   }
 }
 
-.fd-log-row {
-  padding: 10px 0;
+.fd-log-row-wrap {
   border-bottom: 1px solid var(--line);
 }
 
-.fd-log-row:last-child {
+.fd-log-row-wrap:last-child {
   border-bottom: none;
+}
+
+.fd-log-row {
+  padding: 10px 0;
+}
+
+.fd-log-row-wrap .fd-inline-edit-form {
+  margin: 0 0 12px;
 }
 
 .fd-log-row .fd-check-card__icon {
