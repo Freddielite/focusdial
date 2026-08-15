@@ -42,6 +42,28 @@ function startOfLocalDay(date) {
   return d;
 }
 
+// Splits a session's duration across local-midnight boundaries it
+// crosses, so a session running 11:45pm-12:15am counts 15m toward the
+// day it started and 15m toward the day it ended, instead of the whole
+// 30m landing on just one of those days. Every place below that
+// attributes time *to a specific calendar day* (streaks, the calendar
+// heatmap, "today"/"this week" totals, best-day, weekly/monthly trend
+// charts, budget progress) walks these segments rather than assuming a
+// session belongs entirely to the day it started.
+function splitSessionByLocalDay(session) {
+  const end = new Date(session.ended_at);
+  let cursor = new Date(session.started_at);
+  const segments = [];
+  while (cursor < end) {
+    const dayStart = startOfLocalDay(cursor);
+    const nextDayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    const segmentEnd = end < nextDayStart ? end : nextDayStart;
+    segments.push({ date: dayStart, seconds: (segmentEnd.getTime() - cursor.getTime()) / 1000 });
+    cursor = segmentEnd;
+  }
+  return segments;
+}
+
 function mondayOf(date) {
   const d = startOfLocalDay(date);
   const day = d.getDay(); // 0 = Sunday ... 6 = Saturday
@@ -56,8 +78,10 @@ function mondayOf(date) {
 function computeWeeklyTotals(sessions, weeksBack = 12) {
   const totals = new Map();
   for (const s of sessions) {
-    const key = localDayKey(mondayOf(new Date(s.started_at)));
-    totals.set(key, (totals.get(key) || 0) + durationSeconds(s));
+    for (const seg of splitSessionByLocalDay(s)) {
+      const key = localDayKey(mondayOf(seg.date));
+      totals.set(key, (totals.get(key) || 0) + seg.seconds);
+    }
   }
   const thisMonday = mondayOf(new Date());
   const result = [];
@@ -77,9 +101,10 @@ function computeWeeklyTotals(sessions, weeksBack = 12) {
 function computeMonthlyTotals(sessions, monthsBack = 6) {
   const totals = new Map();
   for (const s of sessions) {
-    const started = new Date(s.started_at);
-    const key = `${started.getFullYear()}-${started.getMonth()}`;
-    totals.set(key, (totals.get(key) || 0) + durationSeconds(s));
+    for (const seg of splitSessionByLocalDay(s)) {
+      const key = `${seg.date.getFullYear()}-${seg.date.getMonth()}`;
+      totals.set(key, (totals.get(key) || 0) + seg.seconds);
+    }
   }
   const now = new Date();
   const result = [];
@@ -126,9 +151,18 @@ export function computeBudgetProgress(budgets, sessions) {
 
   return budgets.map((b) => {
     const tagIds = new Set((b.tags || []).map((t) => t.id));
-    const actualSeconds = sessions
-      .filter((s) => s.tag_id && tagIds.has(s.tag_id) && new Date(s.started_at) >= weekStart)
-      .reduce((sum, s) => sum + durationSeconds(s), 0);
+    // Split by local day rather than filtering whole sessions on
+    // started_at >= weekStart -- a session starting Sunday night and
+    // ending Monday morning has a real Monday portion that belongs to
+    // this week's budget, which a whole-session filter would drop
+    // entirely.
+    let actualSeconds = 0;
+    for (const s of sessions) {
+      if (!s.tag_id || !tagIds.has(s.tag_id)) continue;
+      for (const seg of splitSessionByLocalDay(s)) {
+        if (seg.date >= weekStart) actualSeconds += seg.seconds;
+      }
+    }
     const targetSeconds = b.weekly_target_seconds;
     const remainingSeconds = Math.max(0, targetSeconds - actualSeconds);
 
@@ -419,18 +453,24 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     const seconds = durationSeconds(s);
     allTimeSeconds += seconds;
 
-    const dayKey = localDayKey(started);
-    dayTotals.set(dayKey, (dayTotals.get(dayKey) || 0) + seconds);
-
-    if (dayKey === todayKey) todaySeconds += seconds;
-    if (started >= thisWeekStart) weekSeconds += seconds;
+    // Calendar-day attribution (streak, heatmap, today/week totals, the
+    // weekday pattern) splits at local midnight -- see
+    // splitSessionByLocalDay -- so a session crossing midnight counts
+    // toward both days it actually touched, not just the one it started
+    // on.
+    for (const seg of splitSessionByLocalDay(s)) {
+      const dayKey = localDayKey(seg.date);
+      dayTotals.set(dayKey, (dayTotals.get(dayKey) || 0) + seg.seconds);
+      if (dayKey === todayKey) todaySeconds += seg.seconds;
+      if (seg.date >= thisWeekStart) weekSeconds += seg.seconds;
+      weekdayByGetDay[seg.date.getDay()].seconds += seg.seconds;
+    }
 
     // Attributes the whole session to the hour it started in, rather than
     // splitting a session that crosses an hour boundary proportionally —
     // a reasonable simplification for a "which hour am I usually
     // focused in" insight, not a billing system.
     hourly[started.getHours()].seconds += seconds;
-    weekdayByGetDay[started.getDay()].seconds += seconds;
 
     if (s.quality) {
       const bucket = hourlyQuality[started.getHours()];
@@ -793,21 +833,46 @@ export function computeWeeklyReview({ sessions, deadlinesProgress = [], reminder
   const lastWeekStart = new Date(thisMonday.getTime() - 7 * 24 * 60 * 60 * 1000);
   const lastWeekEnd = new Date(lastWeekStart.getTime() + daysElapsed * 24 * 60 * 60 * 1000);
 
-  const thisWeekSessions = sessions.filter((s) => new Date(s.started_at) >= thisMonday);
+  // Overlap-based (not just started_at >= thisMonday) so a session that
+  // started Sunday night and ran past midnight is still counted as
+  // touching this week -- its tag/quality apply to the whole session
+  // (see tagTotals/weekQuality below), while its actual *time* is split
+  // per calendar day just below.
+  const thisWeekSessions = sessions.filter((s) => new Date(s.ended_at) > thisMonday);
   const lastWeekSessions = sessions.filter((s) => {
     const started = new Date(s.started_at);
-    return started >= lastWeekStart && started < lastWeekEnd;
+    const ended = new Date(s.ended_at);
+    return ended > lastWeekStart && started < lastWeekEnd;
   });
 
-  const totalSeconds = thisWeekSessions.reduce((sum, s) => sum + durationSeconds(s), 0);
-  const lastWeekSeconds = lastWeekSessions.reduce((sum, s) => sum + durationSeconds(s), 0);
+  // Splits each session by local day and only counts the portion that
+  // actually falls within [rangeStart, rangeEnd) -- so a session
+  // crossing midnight into this week contributes just its this-week
+  // minutes, not the whole thing (and not zero, either).
+  function secondsByDayInRange(sessionsList, rangeStart, rangeEnd) {
+    let total = 0;
+    const perDay = new Map();
+    for (const s of sessionsList) {
+      for (const seg of splitSessionByLocalDay(s)) {
+        if (seg.date >= rangeStart && seg.date < rangeEnd) {
+          total += seg.seconds;
+          const key = localDayKey(seg.date);
+          perDay.set(key, (perDay.get(key) || 0) + seg.seconds);
+        }
+      }
+    }
+    return { total, perDay };
+  }
+
+  const thisWeekFull = new Date(thisMonday.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const { total: totalSeconds, perDay: dayTotals } = secondsByDayInRange(
+    thisWeekSessions,
+    thisMonday,
+    thisWeekFull
+  );
+  const { total: lastWeekSeconds } = secondsByDayInRange(lastWeekSessions, lastWeekStart, lastWeekEnd);
   const deltaPct = lastWeekSeconds > 0 ? (totalSeconds - lastWeekSeconds) / lastWeekSeconds : null;
 
-  const dayTotals = new Map();
-  for (const s of thisWeekSessions) {
-    const key = localDayKey(new Date(s.started_at));
-    dayTotals.set(key, (dayTotals.get(key) || 0) + durationSeconds(s));
-  }
   let bestDay = null;
   for (let i = 0; i < daysElapsed; i++) {
     const day = new Date(thisMonday.getTime() + i * 24 * 60 * 60 * 1000);

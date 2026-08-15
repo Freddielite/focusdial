@@ -7,18 +7,35 @@ function trendTone(deltaPct) {
   return "dim";
 }
 
+// Both formatters below used to compare raw elapsed time (hours/ms since
+// now) instead of calendar dates -- which meant a reminder or deadline
+// due early tomorrow morning would read "today" any time it was less
+// than 24h away, even at 11pm the night before. "Today"/"tomorrow" is a
+// calendar-date question, not an elapsed-time one, so this compares
+// local day boundaries instead.
+function startOfLocalDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function calendarDaysUntil(target, now) {
+  const diffMs = startOfLocalDay(target).getTime() - startOfLocalDay(now).getTime();
+  return Math.round(diffMs / (24 * 60 * 60 * 1000));
+}
+
 function formatDueIn(dueAt, now) {
-  const days = Math.round((dueAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+  const days = calendarDaysUntil(dueAt, now);
   if (days <= 0) return "today";
   if (days === 1) return "tomorrow";
   return `in ${days}d`;
 }
 
 function formatRemindIn(remindAt, now) {
-  const hours = Math.round((remindAt.getTime() - now.getTime()) / (60 * 60 * 1000));
-  if (hours < 24) return "today";
-  const days = Math.round(hours / 24);
-  return days === 1 ? "tomorrow" : `in ${days}d`;
+  const days = calendarDaysUntil(remindAt, now);
+  if (days <= 0) return "today";
+  if (days === 1) return "tomorrow";
+  return `in ${days}d`;
 }
 
 // The in-app counterpart to the Sunday push digest (routes/cron.js) --
