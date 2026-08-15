@@ -143,40 +143,55 @@ export function computeAvgDailyFocusSeconds(sessions) {
 // 5h binges with multi-day gaps. Total/average alone can't tell those
 // apart; this looks at the *spread* of daily totals instead.
 //
-// Population stddev (not sample) over the 14 most recent *completed*
-// calendar days -- today is deliberately excluded, same convention as
-// the Trend chart's average line (see HANDOVER Session 2): comparing a
-// still-in-progress day against finished ones understates it, since an
-// early-in-the-day zero isn't a real skipped day yet. Zero-filling
-// applies to the 14 completed days themselves (a genuinely skipped day
-// is real signal, same reasoning as computeAvgDailyFocusSeconds
-// averaging over every day, not just worked ones).
+// Population stddev (not sample) over up to the 14 most recent
+// *completed* calendar days -- today is deliberately excluded, same
+// convention as the Trend chart's average line (see HANDOVER Session
+// 2): comparing a still-in-progress day against finished ones
+// understates it, since an early-in-the-day zero isn't a real skipped
+// day yet.
 //
-// Score is 100 / (1 + stddev/mean) -- decays smoothly as variability
-// grows relative to the average, rather than the flat 0 a hard
-// min(1, ...) clamp would give any history with stddev >= mean. That
-// clamp made a "just barely uneven" week and a "wildly spiky" one look
-// identical (both floor to 0); this keeps them distinguishable.
+// The window is also clamped to never reach earlier than your first-
+// ever session -- same trap computeAvgDailyFocusSeconds's windowStart
+// and the Trend chart's average-line fix both already avoid. Without
+// this, a brand-new account (or the first fortnight after signup)
+// would have days *before it existed* zero-filled into the variance,
+// making "just started, only 6 days old" indistinguishable from "6
+// active days out of a real, lived-in 14."
 //
-// Needs at least 5 of the 14 days to have any logged time before
-// trusting a score at all -- same "don't manufacture a pattern from
+// Needs at least 5 active days within whatever window is actually
+// available (never more than 14, but fewer for a newer account)
+// before trusting a score -- same "don't manufacture a pattern from
 // too little evidence" bar as computeHourlyTagSuggestions/
 // mostSustainedTag (those use >=3 sessions; this uses >=5 days since
-// it's a 14-day window, not an all-time one).
+// it's a short rolling window, not an all-time one). A window that
+// hasn't even reached 5 days yet (account younger than 5 days) can't
+// clear that bar regardless of how many of those days were active.
 const CONSISTENCY_WINDOW_DAYS = 14;
 const CONSISTENCY_MIN_ACTIVE_DAYS = 5;
 export function computeConsistencyScore(sessions, now = new Date()) {
+  if (sessions.length === 0) return null;
+
   const dayTotals = new Map();
+  let earliest = new Date(sessions[0].started_at);
   for (const s of sessions) {
+    const started = new Date(s.started_at);
+    if (started < earliest) earliest = started;
     for (const seg of splitSessionByLocalDay(s)) {
       const key = localDayKey(seg.date);
       dayTotals.set(key, (dayTotals.get(key) || 0) + seg.seconds);
     }
   }
+
+  const earliestDayStart = startOfLocalDay(earliest);
+  const yesterday = new Date(startOfLocalDay(now).getTime() - 24 * 60 * 60 * 1000);
+  const daysSinceEarliest =
+    Math.floor((yesterday.getTime() - earliestDayStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  const windowDays = Math.min(CONSISTENCY_WINDOW_DAYS, Math.max(0, daysSinceEarliest));
+  if (windowDays < CONSISTENCY_MIN_ACTIVE_DAYS) return null; // account too new for even a partial read
+
   const values = [];
-  // i starts at 1 (yesterday), not 0 (today) -- see comment above.
-  for (let i = 1; i <= CONSISTENCY_WINDOW_DAYS; i++) {
-    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+  for (let i = 0; i < windowDays; i++) {
+    const d = new Date(yesterday.getTime() - i * 24 * 60 * 60 * 1000);
     values.push(dayTotals.get(localDayKey(d)) || 0);
   }
   const activeDays = values.filter((v) => v > 0).length;
@@ -188,7 +203,7 @@ export function computeConsistencyScore(sessions, now = new Date()) {
   const stddev = Math.sqrt(variance);
   const score = Math.round(100 / (1 + stddev / mean));
 
-  return { score, avgSeconds: mean, stddevSeconds: stddev, activeDays, windowDays: CONSISTENCY_WINDOW_DAYS };
+  return { score, avgSeconds: mean, stddevSeconds: stddev, activeDays, windowDays };
 }
 
 // Whether jumping between tags a lot in a day comes with a real cost to

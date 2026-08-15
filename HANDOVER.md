@@ -1755,3 +1755,58 @@ stddev >= mean — a barely-uneven week and a wildly spiky one were
 indistinguishable, both showing 0. Replaced with `100 / (1 +
 stddev/mean)`, which decays smoothly instead of clamping, so the
 score stays informative past that point instead of going flat.
+
+## Session 21 — audit pass: consistency score didn't respect account age
+
+Asked to re-check that everything reads correctly relative to when an
+account actually started, not just to today. Went through the four
+Session 19 functions again with that lens.
+
+**Real bug found, in `computeConsistencyScore`.** The 14-day window
+was fixed-length regardless of account age — a 9-day-old account
+still zero-filled the 5 days *before it existed* into the variance
+calc, on top of Session 20's already-fixed "today" and floor bugs.
+This is exactly the trap `computeAvgDailyFocusSeconds`'s `windowStart`
+clamp and the Trend chart's average-line fix (Session 2) both already
+exist to avoid — missed applying the same guard when this was built.
+
+Fixed: window now clamps to `min(14, days since first-ever session)`,
+same pattern as those two. A 9-day-old account gets a 9-day window,
+not a 14-day one with 5 phantom zero days baked in. `windowDays` in
+the returned object reflects the actual window used, and
+`ConsistencyCard.jsx` already read that field dynamically, so no
+frontend change was needed — the card just displays correctly now
+that the number behind it is right. Verified against the reported
+9-day case: same input that scored 0 before Session 20+21's fixes now
+scores 75.
+
+**Checked and clean:** `computeContextSwitchCost` (no zero-fill, only
+counts days with real sessions), `computeGoalProjection` (no lookback
+window at all), `computeStartTimeAnomaly` (baseline built from actual
+first-session days only, never zero-filled — a new account just has
+fewer baseline days, which the existing `>=7` minimum already
+handles). None of the three needed a change.
+
+## Backlog — feature ideas not yet built
+
+From the original brainstorm (see Session 19's local-logic pass for
+the four items that *did* get built). These are still open, feature-
+level rather than local-logic, un-scoped:
+
+- **Focus streaks with recovery grace** — one protected miss per week
+  without breaking the streak.
+- **Quick-start via free text** — skip the tag dropdown, type/say what
+  you're working on, auto-match or create the tag.
+- **Session templates** — save a tag + duration + task combo as a
+  one-tap preset.
+- **Comparative insight callouts** — "you focus 23% more on Tuesdays
+  than average" phrasing, not just raw charts.
+- **Export Weekly Review as an image** — canvas-to-PNG share button on
+  the existing card.
+- **Tag archiving** — hide unused tags from pickers without deleting
+  history tied to them.
+- **Multi-device running-session conflict handling** — warn instead of
+  silently creating a second running session from another device.
+- **Recurring deadlines/tasks** — a "repeats weekly" flag, currently
+  everything is one-shot.
+
