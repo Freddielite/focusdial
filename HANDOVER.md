@@ -1735,3 +1735,23 @@ recovery grace, voice/quick-add, session templates, comparative
 insights, shareable weekly review image, tag archiving, multi-device
 running-session conflict, recurring deadlines/tasks) — feature-level,
 not local-logic, held back per this session's scope.
+
+## Session 20 — consistency score bug fix
+
+Reported: consistency showing 0 despite a real 9-day streak. Two real
+bugs, both in `computeConsistencyScore` from the previous session:
+
+**Today counted as a zero-day.** The 14-day window started at `i=0`
+(today), so checking the app before logging anything yet today
+counted it as a skipped day — comparing a still-in-progress day
+against finished ones, the exact mistake Session 2's Trend chart
+average line was deliberately built to avoid. Fixed: window now runs
+`i=1..14` (yesterday back 14 completed days), same convention as that
+chart.
+
+**Hard floor at 0.** The score formula, `100 * (1 - min(1,
+stddev/mean))`, floored identically at 0 for *any* history with
+stddev >= mean — a barely-uneven week and a wildly spiky one were
+indistinguishable, both showing 0. Replaced with `100 / (1 +
+stddev/mean)`, which decays smoothly instead of clamping, so the
+score stays informative past that point instead of going flat.

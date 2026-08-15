@@ -24,7 +24,7 @@ export default function ConsistencyCard({ consistency }) {
       <div className="fd-panel fd-quality-panel">
         <div className="fd-panel__label">Consistency</div>
         <div className="fd-empty">
-          Log sessions on at least 5 of the last 14 days to see how steady your focus time is.
+          Log sessions on at least 5 of the last 14 completed days to see how steady your focus time is.
         </div>
       </div>
     );
@@ -37,10 +37,10 @@ export default function ConsistencyCard({ consistency }) {
       <div className="fd-panel__label">Consistency</div>
       <div className="fd-quality-panel__headline">
         <span className={`fd-quality-panel__rate fd-quality-panel__rate--${scoreTone(score)}`}>{score}</span>
-        <span className="fd-quality-panel__rate-label">{scoreLabel(score)} over the last {windowDays} days</span>
+        <span className="fd-quality-panel__rate-label">{scoreLabel(score)} over the last {windowDays} completed days</span>
       </div>
       <div className="fd-quality-panel__best-hour">
-        Averaging <strong>{formatDuration(avgSeconds)}</strong>/day, logged on {activeDays} of the last {windowDays} days.
+        Averaging <strong>{formatDuration(avgSeconds)}</strong>/day, logged on {activeDays} of the last {windowDays} completed days.
       </div>
       <div className="fd-quality-panel__coverage">
         Higher score means steadier day-to-day totals, not just a higher average.

@@ -143,13 +143,20 @@ export function computeAvgDailyFocusSeconds(sessions) {
 // 5h binges with multi-day gaps. Total/average alone can't tell those
 // apart; this looks at the *spread* of daily totals instead.
 //
-// Population stddev (not sample) over the trailing 14 calendar days,
-// zero-filling days with no sessions (a skipped day is real signal
-// here, not missing data to ignore -- same reasoning as
-// computeAvgDailyFocusSeconds averaging over every day, not just
-// worked ones). Score is 100 * (1 - min(1, stddev/mean)): a
-// coefficient-of-variation read, clamped so a wildly spiky history
-// floors at 0 instead of going negative.
+// Population stddev (not sample) over the 14 most recent *completed*
+// calendar days -- today is deliberately excluded, same convention as
+// the Trend chart's average line (see HANDOVER Session 2): comparing a
+// still-in-progress day against finished ones understates it, since an
+// early-in-the-day zero isn't a real skipped day yet. Zero-filling
+// applies to the 14 completed days themselves (a genuinely skipped day
+// is real signal, same reasoning as computeAvgDailyFocusSeconds
+// averaging over every day, not just worked ones).
+//
+// Score is 100 / (1 + stddev/mean) -- decays smoothly as variability
+// grows relative to the average, rather than the flat 0 a hard
+// min(1, ...) clamp would give any history with stddev >= mean. That
+// clamp made a "just barely uneven" week and a "wildly spiky" one look
+// identical (both floor to 0); this keeps them distinguishable.
 //
 // Needs at least 5 of the 14 days to have any logged time before
 // trusting a score at all -- same "don't manufacture a pattern from
@@ -167,7 +174,8 @@ export function computeConsistencyScore(sessions, now = new Date()) {
     }
   }
   const values = [];
-  for (let i = 0; i < CONSISTENCY_WINDOW_DAYS; i++) {
+  // i starts at 1 (yesterday), not 0 (today) -- see comment above.
+  for (let i = 1; i <= CONSISTENCY_WINDOW_DAYS; i++) {
     const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
     values.push(dayTotals.get(localDayKey(d)) || 0);
   }
@@ -178,7 +186,7 @@ export function computeConsistencyScore(sessions, now = new Date()) {
   if (mean <= 0) return null;
   const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
   const stddev = Math.sqrt(variance);
-  const score = Math.round(100 * Math.max(0, 1 - Math.min(1, stddev / mean)));
+  const score = Math.round(100 / (1 + stddev / mean));
 
   return { score, avgSeconds: mean, stddevSeconds: stddev, activeDays, windowDays: CONSISTENCY_WINDOW_DAYS };
 }
