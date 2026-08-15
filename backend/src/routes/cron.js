@@ -62,6 +62,16 @@ function localDateISO(localDate) {
 function localHour(localDate) {
   return localDate.getUTCHours();
 }
+// Monday-start week key (YYYY-MM-DD of that week's Monday) for an
+// already-shifted "local" Date, same convention as the frontend's
+// mondayOf()/localDayKey() in analytics.js - used only by the streak
+// recovery-grace check below, to tell "which week is this miss in."
+function localWeekKey(localDate) {
+  const day = localDate.getUTCDay(); // 0 = Sunday ... 6 = Saturday
+  const diff = day === 0 ? -6 : 1 - day;
+  const monday = new Date(localDate.getTime() + diff * 24 * 60 * 60 * 1000);
+  return localDateISO(monday);
+}
 
 function nextOccurrence(date, recurrence) {
   const d = new Date(date);
@@ -217,19 +227,49 @@ async function checkStreakAtRisk(userId, tz, settings) {
   const todayKey = localDateISO(nowLocal);
   if (settings.last_streak_nudge_date === todayKey) return false; // already nudged today
 
+  // Pulls a full 9 days back (this week plus a short buffer), not just
+  // yesterday - the recovery-grace check below needs to walk the rest
+  // of this week to know whether its one protected miss is still
+  // available.
   const { rows: sessions } = await pool.query(
-    `SELECT started_at FROM sessions WHERE user_id = $1 AND ended_at IS NOT NULL AND started_at >= now() - interval '2 days'`,
+    `SELECT started_at FROM sessions WHERE user_id = $1 AND ended_at IS NOT NULL AND started_at >= now() - interval '9 days'`,
     [userId]
   );
+  const loggedDays = new Set(sessions.map((s) => localDateISO(shiftToLocal(new Date(s.started_at), tz))));
+
+  if (loggedDays.has(todayKey)) return false; // already logged today, nothing at risk
+
   const yesterdayLocal = new Date(nowLocal.getTime() - 24 * 60 * 60 * 1000);
-  const yesterdayKey = localDateISO(yesterdayLocal);
+  const hasYesterday = loggedDays.has(localDateISO(yesterdayLocal));
 
-  const hasToday = sessions.some((s) => localDateISO(shiftToLocal(new Date(s.started_at), tz)) === todayKey);
-  const hasYesterday = sessions.some(
-    (s) => localDateISO(shiftToLocal(new Date(s.started_at), tz)) === yesterdayKey
-  );
+  // Deliberate duplicate of analytics.js's grace walk (see
+  // computeSummary), same "good enough for this one check" trade-off
+  // already used elsewhere in this file (checkDeadlinePaceChanges vs.
+  // the frontend's computeDeadlineProgress) - only walks back to this
+  // week's Monday rather than the whole streak, so a streak with an
+  // uncovered gap further back than that could still be misjudged as
+  // healthy. Fine for "should I nudge tonight," which is all this
+  // decides.
+  let graceAvailable = false;
+  if (settings.streak_recovery_grace_enabled) {
+    let missesThisWeek = 0;
+    const thisWeekKey = localWeekKey(nowLocal);
+    for (
+      let cursor = new Date(yesterdayLocal);
+      localWeekKey(cursor) === thisWeekKey;
+      cursor = new Date(cursor.getTime() - 24 * 60 * 60 * 1000)
+    ) {
+      const isRestDay = settings.rest_day_of_week !== null && cursor.getUTCDay() === settings.rest_day_of_week;
+      if (!loggedDays.has(localDateISO(cursor)) && !isRestDay) missesThisWeek += 1;
+    }
+    // At most one miss so far this week (yesterday's, if any) means the
+    // week's one grace hasn't been spent yet - a miss tonight would
+    // still be covered.
+    graceAvailable = missesThisWeek <= 1;
+  }
 
-  if (hasToday || !hasYesterday) return false; // no risk, or no streak to protect
+  if (graceAvailable) return false; // tonight's potential miss would be covered by grace - nothing urgent
+  if (!hasYesterday) return false; // no live streak to protect
 
   await sendPushToUser(userId, {
     title: "Your streak is at risk",

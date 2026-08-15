@@ -722,7 +722,7 @@ function qualityByDuration(sessions) {
   return { buckets: eligible, best, worst };
 }
 
-export function computeSummary(sessions, restDayOfWeek = null) {
+export function computeSummary(sessions, restDayOfWeek = null, graceEnabled = false) {
   const now = new Date();
   const todayKey = localDayKey(now);
   // Monday-start calendar week, matching the convention used everywhere
@@ -805,17 +805,39 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   // neither extends nor resets the streak on its own. Addresses the
   // open question from the original streak design: previously a single
   // missed day fully reset it, with no concept of a planned day off.
+  //
+  // Recovery grace (opt-in, separate from the rest day): one protected
+  // miss per Monday-start calendar week. Unlike the rest day, this isn't
+  // tied to a specific weekday - it's a one-time-per-week allowance that
+  // covers whichever day actually gets missed. `graceUsedWeeks` tracks
+  // which weeks (by Monday key) have already spent their one protected
+  // miss during this walk, so a second miss in the same week still
+  // breaks the streak as normal - only the first one per week is
+  // forgiven. `streakGraceAvailable` specifically answers "is *this*
+  // week's grace still unspent as of right now" - flipped false the
+  // moment the walk consumes it while still inside the current week -
+  // so the UI can tell "a miss tonight would still be safe" apart from
+  // "the safety net for this week is already used."
   let streakDays = 0;
   let cursor = startOfLocalDay(now);
   if (!dayTotals.has(todayKey)) {
     cursor = new Date(cursor.getTime() - 24 * 60 * 60 * 1000);
   }
+  const graceUsedWeeks = new Set();
+  const nowWeekKey = localDayKey(mondayOf(now));
+  let streakGraceAvailable = graceEnabled;
   while (true) {
     const key = localDayKey(cursor);
     if (dayTotals.has(key)) {
       streakDays += 1;
     } else if (restDayOfWeek !== null && cursor.getDay() === restDayOfWeek) {
       // Rest day, nothing logged - skip without breaking or counting.
+    } else if (graceEnabled && !graceUsedWeeks.has(localDayKey(mondayOf(cursor)))) {
+      // Protected miss - consumes this week's one grace, streak
+      // continues without counting the day itself.
+      const weekKey = localDayKey(mondayOf(cursor));
+      graceUsedWeeks.add(weekKey);
+      if (weekKey === nowWeekKey) streakGraceAvailable = false;
     } else {
       break;
     }
@@ -936,6 +958,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     weekSeconds,
     allTimeSeconds,
     streakDays,
+    streakGraceAvailable,
     hourly,
     bestHour,
     weekday,

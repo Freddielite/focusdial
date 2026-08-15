@@ -16,6 +16,7 @@ export default function TodayView({
   insightOfTheDay,
   dailyGoalSeconds,
   goalProjection,
+  graceEnabled,
   onSessionCompleted,
   onSessionCreated,
   onSessionDeleted,
@@ -35,6 +36,7 @@ export default function TodayView({
         dailyGoalSeconds={dailyGoalSeconds}
         goalProjection={goalProjection}
         startTimeAnomaly={summary.startTimeAnomaly}
+        graceEnabled={graceEnabled}
       />
       <InsightCard insight={insightOfTheDay} />
 

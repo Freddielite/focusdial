@@ -2896,6 +2896,14 @@ button {
   font-weight: 700;
 }
 
+.fd-hero__grace {
+  margin-left: 4px;
+  font-size: 0.85em;
+  font-family: initial;
+}
+.fd-hero__grace--available { opacity: 1; }
+.fd-hero__grace--used { opacity: 0.4; }
+
 /* ---------- Toasts ---------- */
 
 .fd-toast-region {

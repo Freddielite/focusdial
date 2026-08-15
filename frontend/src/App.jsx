@@ -40,6 +40,7 @@ const DEFAULT_SETTINGS = {
   notify_deadline_completed: true,
   notify_budget_reached: true,
   rest_day_of_week: null,
+  streak_recovery_grace_enabled: false,
   daily_focus_goal_seconds: null,
   weekly_digest_day_of_week: 0,
   weekly_digest_hour: 19,
@@ -218,8 +219,8 @@ export default function App({ user, onLogout, onUserUpdated }) {
   }
 
   const summary = useMemo(
-    () => computeSummary(history, settings.rest_day_of_week ?? null),
-    [history, settings.rest_day_of_week]
+    () => computeSummary(history, settings.rest_day_of_week ?? null, settings.streak_recovery_grace_enabled ?? false),
+    [history, settings.rest_day_of_week, settings.streak_recovery_grace_enabled]
   );
   const budgetsWithProgress = useMemo(
     () => computeBudgetProgress(budgets, history),
@@ -250,13 +251,25 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // job does for push notifications - this one only needs to run while
   // the app is actually open. A configured rest day is never "at risk"
   // since it doesn't break the streak either way (see analytics.js).
+  // Same for a still-available recovery grace: if this week's one
+  // protected miss hasn't been spent yet, missing today would just
+  // consume it rather than actually break the streak, so it's not
+  // "at risk" in the sense this banner is warning about.
   const streakAtRisk = useMemo(() => {
     const nowDate = new Date(nowTick);
     const hour = nowDate.getHours();
     const isRestDay = settings.rest_day_of_week != null && nowDate.getDay() === settings.rest_day_of_week;
-    return hour >= 19 && summary.todaySeconds === 0 && summary.streakDays > 0 && !isRestDay;
+    const graceCovers = settings.streak_recovery_grace_enabled && summary.streakGraceAvailable;
+    return hour >= 19 && summary.todaySeconds === 0 && summary.streakDays > 0 && !isRestDay && !graceCovers;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowTick, summary.todaySeconds, summary.streakDays, settings.rest_day_of_week]);
+  }, [
+    nowTick,
+    summary.todaySeconds,
+    summary.streakDays,
+    summary.streakGraceAvailable,
+    settings.rest_day_of_week,
+    settings.streak_recovery_grace_enabled,
+  ]);
 
   // Same-pace "will I hit today's goal" projection, only worth surfacing
   // once enough of the day has actually happened to extrapolate from
@@ -468,6 +481,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     insightOfTheDay={insightOfTheDay}
                     dailyGoalSeconds={settings.daily_focus_goal_seconds}
                     goalProjection={goalProjection}
+                    graceEnabled={settings.streak_recovery_grace_enabled}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
                     onSessionDeleted={handleSessionDeleted}

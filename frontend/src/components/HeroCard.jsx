@@ -14,13 +14,23 @@ function statusPill(summary, streakAtRisk, goalMet) {
   return { label: "Fresh start", tone: "dim" };
 }
 
-export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds, goalProjection, startTimeAnomaly }) {
+export default function HeroCard({
+  summary,
+  streakAtRisk,
+  dailyGoalSeconds,
+  goalProjection,
+  startTimeAnomaly,
+  graceEnabled,
+}) {
   const hasGoal = dailyGoalSeconds != null && dailyGoalSeconds > 0;
   const goalPct = hasGoal ? Math.min(1, summary.todaySeconds / dailyGoalSeconds) : 0;
   const goalMet = hasGoal && summary.todaySeconds >= dailyGoalSeconds;
   const pill = statusPill(summary, streakAtRisk, goalMet);
   const streakText =
     summary.streakDays > 0 ? `${summary.streakDays}-day streak` : "No streak yet";
+  // Only worth a note once there's an actual streak to protect - an
+  // unused grace on a fresh start isn't information anyone needs yet.
+  const showGraceNote = graceEnabled && summary.streakDays > 0;
 
   return (
     <section className="fd-hero">
@@ -79,7 +89,21 @@ export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds, goal
           <div className="fd-hero__stat">
             <span className="fd-hero__dot fd-hero__dot--brass" />
             <span className="fd-hero__stat-label">Streak</span>
-            <span className="fd-hero__stat-value">{streakText}</span>
+            <span className="fd-hero__stat-value">
+              {streakText}
+              {showGraceNote && (
+                <span
+                  className={`fd-hero__grace ${summary.streakGraceAvailable ? "fd-hero__grace--available" : "fd-hero__grace--used"}`}
+                  title={
+                    summary.streakGraceAvailable
+                      ? "This week's protected miss hasn't been used yet"
+                      : "This week's protected miss has already been used"
+                  }
+                >
+                  {summary.streakGraceAvailable ? "🛡" : "🛡︎"}
+                </span>
+              )}
+            </span>
           </div>
         </div>
       </div>

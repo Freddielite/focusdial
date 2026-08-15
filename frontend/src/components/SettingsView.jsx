@@ -593,6 +593,16 @@ export default function SettingsView({
             <option value="0">Sun</option>
           </Dropdown>
         </Row>
+        <Row
+          title="Recovery grace"
+          desc="Forgive one missed day per week, whichever day it happens to be, so a single slip-up doesn't reset your streak."
+        >
+          <Toggle
+            checked={settings?.streak_recovery_grace_enabled === true}
+            onChange={(v) => onUpdateSetting("streak_recovery_grace_enabled", v)}
+            label="Recovery grace"
+          />
+        </Row>
       </section>
 
       <section className="fd-panel fd-set-card">

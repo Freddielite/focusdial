@@ -252,6 +252,17 @@ export async function initSchema() {
     -- checkStreakAtRisk for where this is actually consulted.
     ALTER TABLE settings ADD COLUMN IF NOT EXISTS rest_day_of_week INTEGER CHECK (rest_day_of_week BETWEEN 0 AND 6);
 
+    -- Opt-in "recovery grace": one protected miss per Monday-start
+    -- calendar week that doesn't break the streak, on top of (and
+    -- independent from) the fixed rest_day_of_week above. Where a rest
+    -- day is a specific weekday chosen in advance, grace instead covers
+    -- whichever single day actually gets missed - a genuine slip-up, not
+    -- a planned day off. Defaults to false so existing streaks keep their
+    -- current (stricter) behaviour until explicitly turned on in
+    -- Settings. See analytics.js's streak walk and cron.js's
+    -- checkStreakAtRisk for where this is actually consulted.
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS streak_recovery_grace_enabled BOOLEAN NOT NULL DEFAULT false;
+
     -- Legacy: backed the ICS calendar-subscription feature (deleted - -- see HANDOVER.md's "Deleted: ICS export" entry - superseded by
     -- real two-way Google Calendar sync). Left in place rather than
     -- DROP COLUMN, since it's a harmless unused nullable column and

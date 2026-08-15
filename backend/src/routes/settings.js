@@ -18,6 +18,7 @@ const BOOLEAN_FIELDS = [
   "notify_session_completed",
   "notify_deadline_completed",
   "notify_budget_reached",
+  "streak_recovery_grace_enabled",
 ];
 
 settingsRouter.get("/settings", async (req, res) => {

@@ -1960,3 +1960,63 @@ good at. Revisit if that's wanted too, but it wasn't in scope of "my
 app."
 
 
+
+## Session 25 — focus streaks with recovery grace
+
+Backlog item, finally built: one protected miss per Monday-start
+calendar week that doesn't break the streak, opt-in via a new Settings
+toggle (`streak_recovery_grace_enabled`, defaults `false` so nobody's
+existing streak behavior changes on its own). Threaded through the same
+three places `rest_day_of_week` already established a pattern for —
+worth reading together if this or a similar streak rule gets touched
+again.
+
+**Deliberately separate from the rest day, not merged into it.** A rest
+day is a specific weekday chosen in advance ("Sundays are always off");
+grace instead covers whichever single day actually gets missed, once
+per week, no matter which day that turns out to be. Both can be on at
+once — a rest day is skipped for free, and grace is still available on
+top of it for a genuine slip-up on a different day that week.
+
+**`analytics.js`'s streak walk** (`computeSummary`, new third param
+`graceEnabled`) now tracks a `graceUsedWeeks` set (Monday-key per week)
+while walking backwards — the first miss in a given week (that isn't
+already a rest day) consumes that week's grace and the walk continues;
+a second miss in the same week still breaks the streak as before. Also
+returns a new `streakGraceAvailable` boolean — specifically "has *this*
+week's grace been spent yet, as of right now" — which is what the UI
+reads to distinguish "a miss tonight is still safe" from "the net for
+this week is already used."
+
+**`cron.js`'s `checkStreakAtRisk`** got the same "deliberate duplicate"
+treatment as `checkDeadlinePaceChanges` elsewhere in this file: it now
+pulls 9 days of sessions (was 2) and walks back to this week's Monday to
+work out whether grace is still available, suppressing the push nudge
+entirely when it is (missing tonight would just spend the grace, not
+break anything). It's an approximation, same caveat as the frontend
+version — only checks the current week, so a streak with an uncovered
+gap further back could still be misjudged. Fine for "should I nudge
+tonight."
+
+**Frontend surfacing:** `App.jsx`'s in-app `streakAtRisk` banner gets
+the same suppression as the push check. `HeroCard.jsx` shows a small
+shield next to the streak stat when grace is on and there's an actual
+streak to protect — filled when available, faded once spent this week —
+so the state isn't only implicit in whether a banner does or doesn't
+show up.
+
+**Settings:** new toggle under the existing "Daily & Streak" card,
+right below Rest day.
+
+Verified: `node --check` clean on every touched backend file, `npm run
+build` clean on the frontend, and a standalone script exercising
+`computeSummary` directly confirmed the actual behavior — a single
+missed day mid-streak is fully forgiven with grace on (10-day streak
+where the ungraced version would show 3), a second miss in the same
+week still breaks it (drops back to 3, same as ungraced), and
+`streakGraceAvailable` correctly flips to `false` once a week's grace
+has been spent. **Not verified this session:** no browser here, so the
+Settings toggle, the shield badge, and the suppressed push/in-app
+warnings weren't clicked through — worth a manual pass (turn grace on,
+skip a day, confirm the streak survives and the badge fades) the first
+time this runs somewhere with a real browser.
