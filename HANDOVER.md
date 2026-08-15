@@ -1810,3 +1810,93 @@ level rather than local-logic, un-scoped:
 - **Recurring deadlines/tasks** — a "repeats weekly" flag, currently
   everything is one-shot.
 
+## Session 22 — comparative insights + multi-device conflict handling
+
+Two backlog items, one local-logic (client-side only) and one that
+touched both ends.
+
+### Comparative insight callouts
+
+New `computeComparativeInsights()` in `analytics.js`, same family as the
+Session 19 local-logic functions: weekday deviation callouts like "You
+focus 23% more on Tuesdays than your daily average," rendered on
+Insights via a new `ComparativeInsightsCard.jsx`.
+
+Zero-fills an 8-week (56-day) window clamped to account age (same trap
+`computeConsistencyScore`'s `windowDays` clamp already exists to avoid —
+a young account shouldn't have days before it existed dragging weekday
+averages around), excludes in-progress today, and gates on the same two
+bars the rest of the file uses: ≥3 occurrences of a given weekday before
+trusting its average (the `mostSustainedTag`/`computeHourlyTagSuggestions`
+bar), and ≥15% relative deviation from the overall window average before
+it's worth a sentence (the same threshold `computeContextSwitchCost`
+uses). Returns up to 3 candidates, largest deviation first, so one very
+lopsided week doesn't produce a wall of near-duplicate lines.
+
+Deliberately doesn't tone "less" as a warning (unlike `RiskDigestCard`'s
+rust/danger styling) — a lighter Friday or a quiet weekend isn't
+something wrong, just an observation, so both directions get the same
+neutral card styling aside from the ▲/▼ icon.
+
+Wired into `computeSummary`'s return (`comparativeInsights`) rather than
+computed separately in `App.jsx`, consistent with how `consistency` and
+`contextSwitchCost` are already threaded through.
+
+### Multi-device running-session conflict handling
+
+The one-running-session-per-user rule was already correctly enforced at
+the DB level (`idx_sessions_one_running_per_user`, a partial unique
+index) — that part was never actually broken. The gaps were in how a
+conflict got surfaced:
+
+**Race condition surfaced as a generic 500.** `POST /sessions/start`'s
+existing pre-check (`SELECT ... WHERE ended_at IS NULL`) has an
+unavoidable window: two devices starting within milliseconds of each
+other can both pass that check before either INSERT commits. The unique
+index correctly rejects the loser's INSERT — but that unique-violation
+was falling into the route's generic catch block and returning a bare
+"failed to start session" 500, indistinguishable from a real server
+error, instead of the same conflict response the common (non-race) case
+already got. Fixed by catching Postgres error code `23505` on that
+specific constraint name and returning the same 409 shape as the
+pre-check path.
+
+**409s carried no information about what was actually running.** Both
+the pre-check and the newly-caught race case now call a shared
+`fetchRunningSessionRow()` helper (also what `GET /sessions/running`
+uses now, replacing its own inline copy of the same query) and include
+the full joined session — tag, task, started_at — in the 409 body's
+`running` field, not just an error string.
+
+**Frontend showed that error string and nothing else.** `api.js`'s
+`attemptFetch` now attaches `.status` and `.body` to thrown Errors (it
+previously only kept `.message`, discarding the rest of the JSON body) —
+that's what lets `err.body.running` reach the UI at all.
+`TimerPanel.jsx` catches a 409 specifically and shows an explicit
+warning banner — "Already running on another device: `<tag>`, started
+`<duration>` ago" — with a "Switch to it here" action (adopts the
+session object already in hand, no extra round trip) or a dismiss. This
+is the actual "warn instead of silently creating a second session" ask
+from the backlog line — the old behavior technically already prevented
+the second session, it just failed unhelpfully when it did.
+
+**Stale-tab gap.** The existing recovery mechanisms (initial load,
+`visibilitychange`, service-worker message) all depend on something
+happening — the tab getting backgrounded and refocused, or this device
+itself attempting a start/stop. A tab left open and focused the entire
+time never had a reason to re-check. Added a 60-second `setInterval`
+calling the same `refreshRunning()` used everywhere else, so a session
+started or stopped on another device is picked up within a minute even
+if this tab never loses focus. Deliberately just a poll, not a
+websocket — a once-a-minute GET is cheap enough that the added
+complexity wouldn't buy much here.
+
+**Not done:** device identity/naming (the banner says "another device,"
+not which one — there's no session/device table to name it from, and
+adding one felt like overkill for what this is actually solving). Also
+didn't touch the manual-entry (`POST /sessions`) or PATCH paths — the
+partial unique index only applies where `ended_at IS NULL`, so backfill
+entries (which always have both timestamps) were never part of this
+race to begin with.
+
+

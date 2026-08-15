@@ -71,7 +71,14 @@ async function attemptFetch(path, options, timeoutMs) {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       if (res.status === 401) unauthorizedHandler?.();
-      throw new Error(body.error || `Request failed with status ${res.status}`);
+      const err = new Error(body.error || `Request failed with status ${res.status}`);
+      // Attached so callers can branch on more than just the message
+      // string -- e.g. /sessions/start's 409 conflict body carries the
+      // actual running session (see TimerPanel's multi-device conflict
+      // handling), which a plain Error message can't hold.
+      err.status = res.status;
+      err.body = body;
+      throw err;
     }
     if (res.status === 204) return null;
     return await res.json();

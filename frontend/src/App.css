@@ -516,6 +516,38 @@ button {
 .fd-risk-card__item--danger .fd-risk-card__icon { color: var(--rust); }
 .fd-risk-card__item--warning .fd-risk-card__icon { color: var(--brass); }
 
+.fd-comparative-card {
+  /* No margin-bottom here -- lives inside .fd-main__insights' grid,
+     same as the other panels there. */
+}
+
+.fd-comparative-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fd-comparative-card__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--parchment);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--grad-input);
+}
+
+.fd-comparative-card__icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 11px;
+}
+
+.fd-comparative-card__item--more .fd-comparative-card__icon { color: var(--focus-green); }
+.fd-comparative-card__item--less .fd-comparative-card__icon { color: var(--parchment-dim); }
+
 /* ---------- Main layout ---------- */
 
 .fd-main {
@@ -2123,6 +2155,29 @@ button {
 
 .fd-timer-away-prompt__actions {
   display: flex;
+  gap: 16px;
+}
+
+.fd-timer-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px;
+  background: rgba(255, 107, 87, 0.1);
+  border: 1px solid rgba(255, 107, 87, 0.3);
+  border-radius: 6px;
+}
+
+.fd-timer-conflict__text {
+  font-size: 12.5px;
+  color: var(--parchment);
+  line-height: 1.4;
+}
+
+.fd-timer-conflict__actions {
+  display: flex;
+  align-items: center;
   gap: 16px;
 }
 

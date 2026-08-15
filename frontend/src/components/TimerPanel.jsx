@@ -54,6 +54,13 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   const [elapsed, setElapsed] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // The running session returned by a 409 from POST /sessions/start --
+  // i.e. another device (or another tab) already has a timer going.
+  // Kept separate from `error` since it renders as its own warning
+  // banner with actions (switch to it / dismiss), not a plain inline
+  // error string -- see the backlog item this addresses: warn instead
+  // of just failing silently or unhelpfully.
+  const [conflict, setConflict] = useState(null);
   // What actually got done, captured while the timer is running rather
   // than after the fact — the backlog's ask was "captured when a session
   // is stopped," and having the field visible the whole time (instead of
@@ -137,6 +144,11 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
           setSelectedTag(s.tag_id || "");
           setSelectedTask(s.task_id || "");
           showRunningSessionNotification(s);
+          // Whatever's actually running now (this poll is the source of
+          // truth) supersedes any stale conflict banner from an earlier
+          // failed start attempt -- the timer display below takes over
+          // that job instead.
+          setConflict(null);
         } else {
           clearRunningSessionNotification();
         }
@@ -146,6 +158,22 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
 
   useEffect(() => {
     refreshRunning();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Light periodic re-check on top of the load/visibility/service-worker
+  // triggers above -- those only catch a remote change when *this* tab
+  // gets backgrounded and refocused, or when this tab itself tries to
+  // start/stop something. A tab left open and focused the whole time
+  // (the exact case where someone might not think to check another
+  // device) would otherwise never learn a session was started or
+  // stopped elsewhere until something else happened to trigger a
+  // refresh. One GET every minute is cheap and keeps both this tab's
+  // timer and the conflict banner below honest without needing a
+  // websocket for something this infrequent.
+  useEffect(() => {
+    const interval = setInterval(refreshRunning, 60000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -206,6 +234,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   async function handleStart(tagIdOverride) {
     setBusy(true);
     setError(null);
+    setConflict(null);
     setAwayPrompt(null);
     const tagToUse = tagIdOverride !== undefined ? tagIdOverride : selectedTag || null;
     try {
@@ -215,10 +244,36 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
       setRunning(s);
       showRunningSessionNotification(s);
     } catch (err) {
-      setError(err.message);
+      // A 409 here means this device's own view was stale: it thought
+      // nothing was running, but another device (or another tab) already
+      // has a session going -- started after this device last checked,
+      // or started here before this refresh landed. Showing the actual
+      // running session (what it's tagged, when it started) instead of
+      // a generic error string is the point -- see the backend's
+      // fetchRunningSessionRow, which is what puts `err.body.running`
+      // here.
+      if (err.status === 409 && err.body?.running) {
+        setConflict(err.body.running);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setBusy(false);
     }
+  }
+
+  // "Switch to it" on the conflict banner -- rather than re-fetching,
+  // just adopt the session object the 409 already handed us: same data
+  // GET /sessions/running would return, one fewer round trip, and it
+  // also sets up the tag/task dropdowns and notification exactly like
+  // refreshRunning() does on load.
+  function handleAdoptConflict() {
+    if (!conflict) return;
+    setRunning(conflict);
+    setSelectedTag(conflict.tag_id || "");
+    setSelectedTask(conflict.task_id || "");
+    showRunningSessionNotification(conflict);
+    setConflict(null);
   }
 
   // Changes the tag of the session that's already running, without
@@ -302,6 +357,22 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
             </button>
             <button type="button" className="fd-link-btn" onClick={handleTrimAway}>
               Trim {formatDuration(awayPrompt.awayMs / 1000)}
+            </button>
+          </div>
+        </div>
+      )}
+      {conflict && !running && (
+        <div className="fd-timer-conflict">
+          <span className="fd-timer-conflict__text">
+            Already running on another device: <strong>{conflict.tag_name || "No tag"}</strong>, started{" "}
+            {formatDuration((Date.now() - new Date(conflict.started_at).getTime()) / 1000)} ago.
+          </span>
+          <div className="fd-timer-conflict__actions">
+            <button type="button" className="fd-link-btn" onClick={handleAdoptConflict}>
+              Switch to it here
+            </button>
+            <button type="button" className="fd-icon-btn" onClick={() => setConflict(null)} aria-label="Dismiss">
+              ✕
             </button>
           </div>
         </div>

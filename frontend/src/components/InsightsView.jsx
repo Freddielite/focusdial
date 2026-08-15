@@ -4,6 +4,7 @@ import CalendarHeatmap from "./CalendarHeatmap.jsx";
 import TagBreakdown from "./TagBreakdown.jsx";
 import TrendChart from "./TrendChart.jsx";
 import WeekdayBreakdown from "./WeekdayBreakdown.jsx";
+import ComparativeInsightsCard from "./ComparativeInsightsCard.jsx";
 import FocusQualityCard from "./FocusQualityCard.jsx";
 import ConsistencyCard from "./ConsistencyCard.jsx";
 import RiskDigestCard from "./RiskDigestCard.jsx";
@@ -26,6 +27,7 @@ export default function InsightsView({ summary, riskDigest, weeklyReview, deadli
         <CalendarHeatmap daily={summary.daily} streakDays={summary.streakDays} />
         <TagBreakdown byTag={summary.byTag} mostSustainedTag={summary.mostSustainedTag} />
         <WeekdayBreakdown weekday={summary.weekday} bestWeekday={summary.bestWeekday} />
+        <ComparativeInsightsCard insights={summary.comparativeInsights} />
         <FocusQualityCard quality={summary.quality} />
         <ConsistencyCard consistency={summary.consistency} />
         <DeadlineTrackRecordCard trackRecord={deadlineTrackRecord} />

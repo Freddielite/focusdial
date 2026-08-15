@@ -264,6 +264,96 @@ export function computeContextSwitchCost(sessions) {
   };
 }
 
+// "You focus 23% more on Tuesdays than your daily average" -- turns the
+// weekday chart (WeekdayBreakdown) that's already on Insights into
+// plain-language callouts instead of leaving the "how much is that,
+// really" read to whoever's eyeballing the bars. Comparative against
+// your *own* baseline, not anyone else's numbers.
+//
+// Same zero-fill + account-age-clamped-window convention as
+// computeConsistencyScore: a weekday's average is total seconds logged
+// on that weekday divided by how many times that weekday has actually
+// *occurred* in the window (including zero-session occurrences), not
+// just the sessions that happened to land on it -- otherwise a weekday
+// you skip a lot would look artificially high from having fewer,
+// larger data points pulling its average up.
+//
+// Window is 8 calendar weeks (56 completed days), clamped to never
+// reach earlier than the account's first-ever session -- same trap
+// computeConsistencyScore's windowDays clamp and
+// computeAvgDailyFocusSeconds's windowStart both already guard against.
+// Today is excluded (in-progress days understate, same as everywhere
+// else in this file that deals with "today" vs. completed days).
+//
+// Each weekday needs >=3 occurrences within whatever window is actually
+// available before it's trusted -- same "don't manufacture a pattern"
+// bar as mostSustainedTag/computeHourlyTagSuggestions -- and the
+// deviation from the overall window average needs to be >=15% relative
+// to be worth a sentence, same gap threshold computeContextSwitchCost
+// uses for the same reason: a 4% difference is real but not a useful
+// thing to tell someone. Returns up to 3 candidates, largest deviation
+// first, so a very lopsided week doesn't drown a shorter list in noise.
+const COMPARATIVE_WINDOW_DAYS = 56;
+const COMPARATIVE_MIN_OCCURRENCES = 3;
+const COMPARATIVE_MIN_DEVIATION_PCT = 0.15;
+const COMPARATIVE_MAX_INSIGHTS = 3;
+const WEEKDAY_LABELS_PLURAL = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+export function computeComparativeInsights(sessions, now = new Date()) {
+  if (sessions.length === 0) return [];
+
+  const dayTotals = new Map();
+  let earliest = new Date(sessions[0].started_at);
+  for (const s of sessions) {
+    const started = new Date(s.started_at);
+    if (started < earliest) earliest = started;
+    for (const seg of splitSessionByLocalDay(s)) {
+      const key = localDayKey(seg.date);
+      dayTotals.set(key, (dayTotals.get(key) || 0) + seg.seconds);
+    }
+  }
+
+  const earliestDayStart = startOfLocalDay(earliest);
+  const yesterday = new Date(startOfLocalDay(now).getTime() - 24 * 60 * 60 * 1000);
+  const daysSinceEarliest =
+    Math.floor((yesterday.getTime() - earliestDayStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  const windowDays = Math.min(COMPARATIVE_WINDOW_DAYS, Math.max(0, daysSinceEarliest));
+  if (windowDays === 0) return [];
+
+  const perWeekday = Array.from({ length: 7 }, () => []); // getDay() -> [seconds,...]
+  let windowTotal = 0;
+  for (let i = 0; i < windowDays; i++) {
+    const d = new Date(yesterday.getTime() - i * 24 * 60 * 60 * 1000);
+    const seconds = dayTotals.get(localDayKey(d)) || 0;
+    perWeekday[d.getDay()].push(seconds);
+    windowTotal += seconds;
+  }
+  const overallAvg = windowTotal / windowDays;
+  if (overallAvg <= 0) return [];
+
+  const candidates = [];
+  perWeekday.forEach((values, day) => {
+    if (values.length < COMPARATIVE_MIN_OCCURRENCES) return;
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const pctDiff = (avg - overallAvg) / overallAvg;
+    if (Math.abs(pctDiff) < COMPARATIVE_MIN_DEVIATION_PCT) return;
+    const direction = pctDiff > 0 ? "more" : "less";
+    candidates.push({
+      id: `weekday-${day}`,
+      weekdayAvgSeconds: avg,
+      overallAvgSeconds: overallAvg,
+      occurrences: values.length,
+      pctDiff,
+      direction,
+      text: `You focus ${Math.round(Math.abs(pctDiff) * 100)}% ${direction} on ${WEEKDAY_LABELS_PLURAL[day]} than your daily average.`,
+    });
+  });
+
+  return candidates
+    .sort((a, b) => Math.abs(b.pctDiff) - Math.abs(a.pctDiff))
+    .slice(0, COMPARATIVE_MAX_INSIGHTS);
+}
+
 // Linear same-pace projection of today's total, for the one question
 // the existing goal bar (HeroCard) can't answer on its own: "at this
 // rate, will I actually get there." Deliberately naive (today's total
@@ -856,6 +946,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     consistency: computeConsistencyScore(sessions, now),
     startTimeAnomaly: computeStartTimeAnomaly(sessions, now),
     contextSwitchCost: computeContextSwitchCost(sessions),
+    comparativeInsights: computeComparativeInsights(sessions, now),
   };
 }
 

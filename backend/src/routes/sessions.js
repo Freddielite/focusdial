@@ -9,18 +9,29 @@ export const sessionsRouter = Router();
 // running — the frontend can recover it via GET /sessions/running.
 sessionsRouter.get("/sessions/running", async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT s.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
-       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
-       WHERE s.user_id = $1 AND s.ended_at IS NULL ORDER BY s.started_at DESC LIMIT 1`,
-      [req.userId]
-    );
-    res.json(rows[0] || null);
+    res.json(await fetchRunningSessionRow(req.userId));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "failed to check running session" });
   }
 });
+
+// Fetches the currently-running session (joined, same shape as
+// GET /sessions/running) so a 409 conflict response can tell the caller
+// *what's* running and where, not just that something is -- this is the
+// piece that turns "silently fails" or a bare error string into
+// something the frontend can actually show as "already running on
+// another device: <tag>, started X ago" per the multi-device conflict
+// handling this exists for.
+async function fetchRunningSessionRow(userId) {
+  const { rows } = await pool.query(
+    `SELECT s.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+     FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
+     WHERE s.user_id = $1 AND s.ended_at IS NULL ORDER BY s.started_at DESC LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
 
 sessionsRouter.post("/sessions/start", async (req, res) => {
   const { tag_id, note, task_id } = req.body;
@@ -30,7 +41,12 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
       [req.userId]
     );
     if (existing.length > 0) {
-      return res.status(409).json({ error: "a session is already running" });
+      // Includes the full running session (not just an error string) so
+      // the frontend can show *what's* running and where — this is the
+      // common case: another device (or another tab) started a session
+      // first, this request just lost the race by more than a moment.
+      const running = await fetchRunningSessionRow(req.userId);
+      return res.status(409).json({ error: "a session is already running", running });
     }
     // A plain `INSERT ... RETURNING *` can only return columns from
     // `sessions` itself, not a joined tag/task name — which is exactly
@@ -52,6 +68,24 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
     );
     res.status(201).json(rows[0]);
   } catch (err) {
+    // The SELECT-then-INSERT above has a race window: two requests from
+    // two devices, milliseconds apart, can both pass the "existing"
+    // check before either INSERT commits. `idx_sessions_one_running_per_user`
+    // (db.js) is what actually closes that window — the loser's INSERT
+    // fails with a unique-violation here rather than silently creating a
+    // second running session. Without this catch, that rare case
+    // surfaced as a generic "failed to start session" 500 instead of the
+    // same friendly, informative 409 the common (non-race) case gets
+    // above — same conflict, worse error message, purely because of
+    // timing.
+    if (err.code === "23505" && err.constraint === "idx_sessions_one_running_per_user") {
+      try {
+        const running = await fetchRunningSessionRow(req.userId);
+        return res.status(409).json({ error: "a session is already running", running });
+      } catch (innerErr) {
+        console.error(innerErr);
+      }
+    }
     console.error(err);
     res.status(500).json({ error: "failed to start session" });
   }
