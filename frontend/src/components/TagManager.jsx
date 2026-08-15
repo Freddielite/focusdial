@@ -10,13 +10,15 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(SWATCHES[0]);
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || busy) return;
+    setBusy(true);
     setError(null);
     try {
       await createTag(name.trim(), color);
@@ -24,6 +26,8 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
       onTagsChanged();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -93,8 +97,8 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
             />
           ))}
         </div>
-        <button type="submit" className="fd-btn fd-btn--start">
-          Add
+        <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+          {busy ? "Adding…" : "Add"}
         </button>
       </form>
       {error && <div className="fd-inline-error">{error}</div>}

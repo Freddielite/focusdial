@@ -39,6 +39,7 @@ export default function TasksWidget({ tasks, onDataChanged }) {
   // case of a task with no due date at all.
   const [dueDate, setDueDate] = useState("");
   const [showDueDate, setShowDueDate] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
@@ -47,12 +48,17 @@ export default function TasksWidget({ tasks, onDataChanged }) {
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (!title.trim()) return;
-    await createTask(title.trim(), dueDate || null);
-    setTitle("");
-    setDueDate("");
-    setShowDueDate(false);
-    onDataChanged();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    try {
+      await createTask(title.trim(), dueDate || null);
+      setTitle("");
+      setDueDate("");
+      setShowDueDate(false);
+      onDataChanged();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleToggle(task) {
@@ -90,6 +96,7 @@ export default function TasksWidget({ tasks, onDataChanged }) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           maxLength={100}
+          disabled={busy}
         />
         <button
           type="button"
@@ -97,11 +104,12 @@ export default function TasksWidget({ tasks, onDataChanged }) {
           onClick={() => setShowDueDate((v) => !v)}
           aria-label="Set due date"
           title="Set due date"
+          disabled={busy}
         >
           <CalendarGlyph />
         </button>
-        <button type="submit" className="fd-link-btn">
-          Add
+        <button type="submit" className="fd-link-btn" disabled={busy}>
+          {busy ? "Adding…" : "Add"}
         </button>
       </form>
       {showDueDate && (

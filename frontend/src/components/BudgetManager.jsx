@@ -92,6 +92,7 @@ export default function BudgetManager({ budgets, tags, onDataChanged }) {
   const [hours, setHours] = useState(10);
   const [color, setColor] = useState(SWATCHES[0]);
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
@@ -102,7 +103,8 @@ export default function BudgetManager({ budgets, tags, onDataChanged }) {
 
   async function handleCreate(e) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || busy) return;
+    setBusy(true);
     setError(null);
     try {
       await createBudget(name.trim(), Number(hours), color);
@@ -110,6 +112,8 @@ export default function BudgetManager({ budgets, tags, onDataChanged }) {
       onDataChanged();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -163,7 +167,9 @@ export default function BudgetManager({ budgets, tags, onDataChanged }) {
         </div>
         {error && <div className="fd-inline-error">{error}</div>}
         <div className="fd-manual-form__actions">
-          <button type="submit" className="fd-btn fd-btn--start">Add budget</button>
+          <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+            {busy ? "Adding…" : "Add budget"}
+          </button>
         </div>
       </form>
 

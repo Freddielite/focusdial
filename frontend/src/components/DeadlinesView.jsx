@@ -196,13 +196,19 @@ const STATUS_COPY = {
 
 function LogProgressInline({ deadline, onLogged }) {
   const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
   async function submit(e) {
     e.preventDefault();
     const hours = Number(value);
-    if (!hours || hours <= 0) return;
-    await logDeadlineProgress(deadline.id, hours);
-    setValue("");
-    onLogged();
+    if (!hours || hours <= 0 || busy) return;
+    setBusy(true);
+    try {
+      await logDeadlineProgress(deadline.id, hours);
+      setValue("");
+      onLogged();
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <form className="fd-log-progress" onSubmit={submit}>
@@ -213,9 +219,10 @@ function LogProgressInline({ deadline, onLogged }) {
         placeholder="Hours worked"
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        disabled={busy}
       />
-      <button type="submit" className="fd-link-btn">
-        Log
+      <button type="submit" className="fd-link-btn" disabled={busy}>
+        {busy ? "Logging…" : "Log"}
       </button>
     </form>
   );
@@ -331,6 +338,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
   const [estHours, setEstHours] = useState(10);
   const [addAsTask, setAddAsTask] = useState(false);
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
@@ -401,6 +409,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
 
   async function handleCreate(e) {
     e.preventDefault();
+    if (busy) return;
     if (!title.trim()) {
       setError("Title is required.");
       return;
@@ -414,6 +423,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
       return;
     }
     setError(null);
+    setBusy(true);
     try {
       await createDeadline({
         title: title.trim(),
@@ -431,6 +441,8 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
       onDataChanged();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -543,8 +555,8 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
             })()}
             {error && <div className="fd-inline-error">{error}</div>}
             <div className="fd-manual-form__actions">
-              <button type="submit" className="fd-btn fd-btn--start">
-                Add Deadline
+              <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+                {busy ? "Adding…" : "Add Deadline"}
               </button>
             </div>
           </motion.form>

@@ -45,10 +45,12 @@ function ConvertPanel({ reminder, tags, onDone, onDelete, onEdit }) {
   const [estHours, setEstHours] = useState(5);
   const [tagId, setTagId] = useState("");
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   async function submitDeadline(e) {
     e.preventDefault();
-    if (!dueDate || !estHours) return;
+    if (!dueDate || !estHours || busy) return;
+    setBusy(true);
     setError(null);
     try {
       await convertReminderToDeadline(reminder.id, {
@@ -59,17 +61,23 @@ function ConvertPanel({ reminder, tags, onDone, onDelete, onEdit }) {
       onDone();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function submitTask(e) {
     e.preventDefault();
+    if (busy) return;
+    setBusy(true);
     setError(null);
     try {
       await convertReminderToTask(reminder.id, { due_date: dueDate || null });
       onDone();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -106,11 +114,11 @@ function ConvertPanel({ reminder, tags, onDone, onDelete, onEdit }) {
         </div>
         {error && <div className="fd-inline-error">{error}</div>}
         <div className="fd-manual-form__actions">
-          <button type="button" className="fd-link-btn" onClick={() => setMode(null)}>
+          <button type="button" className="fd-link-btn" onClick={() => setMode(null)} disabled={busy}>
             Back
           </button>
-          <button type="submit" className="fd-btn fd-btn--start">
-            Create Task
+          <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+            {busy ? "Creating…" : "Create Task"}
           </button>
         </div>
       </form>
@@ -151,11 +159,11 @@ function ConvertPanel({ reminder, tags, onDone, onDelete, onEdit }) {
       </div>
       {error && <div className="fd-inline-error">{error}</div>}
       <div className="fd-manual-form__actions">
-        <button type="button" className="fd-link-btn" onClick={() => setMode(null)}>
+        <button type="button" className="fd-link-btn" onClick={() => setMode(null)} disabled={busy}>
           Back
         </button>
-        <button type="submit" className="fd-btn fd-btn--start">
-          Create Deadline
+        <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+          {busy ? "Creating…" : "Create Deadline"}
         </button>
       </div>
     </form>
@@ -250,6 +258,7 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
   const [note, setNote] = useState("");
   const [recurrence, setRecurrence] = useState("none");
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
@@ -281,7 +290,8 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
 
   async function handleCreate(e) {
     e.preventDefault();
-    if (!title.trim() || !remindAt) return;
+    if (!title.trim() || !remindAt || busy) return;
+    setBusy(true);
     setError(null);
     try {
       await createReminder({
@@ -296,6 +306,8 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
       onDataChanged();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -356,8 +368,8 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
             </div>
             {error && <div className="fd-inline-error">{error}</div>}
             <div className="fd-manual-form__actions">
-              <button type="submit" className="fd-btn fd-btn--start">
-                Create Reminder
+              <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+                {busy ? "Creating…" : "Create Reminder"}
               </button>
             </div>
           </motion.form>
