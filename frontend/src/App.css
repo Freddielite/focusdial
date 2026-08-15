@@ -1,13 +1,13 @@
 /* Dark theme is the default (also the fallback for browsers that don't
    support prefers-color-scheme at all). Light theme overrides these same
-   variable names below — nothing that consumes them needs to know which
+   variable names below - nothing that consumes them needs to know which
    theme is active.
 
    Flat-card system: near-black page background, solid (not glassy)
    cards, one bold sans throughout. Category accent tokens (session /
    deadline / reminder, plus --brass doing double duty for budgets) give
    each card type its own identity color the way a habit tracker assigns
-   a color per habit — used for icon glyphs, not status, so they stay
+   a color per habit - used for icon glyphs, not status, so they stay
    separate from the tone system below (focus-green/brass/rust/dim). */
 :root {
   color-scheme: dark;
@@ -41,7 +41,7 @@
   --font-mono: "Space Mono", "Courier New", monospace;
 }
 
-/* Automatically follows the OS/browser preference — no in-app toggle by
+/* Automatically follows the OS/browser preference - no in-app toggle by
    design, so there's nothing to remember or get out of sync with the
    system setting. Same flat-card character as dark mode, just inverted:
    light page, dark ink text. */
@@ -75,7 +75,7 @@
   }
 }
 
-/* Explicit overrides from the manual toggle (see hooks/useTheme.js) — a
+/* Explicit overrides from the manual toggle (see hooks/useTheme.js) - a
    [data-theme] attribute selector has higher specificity than the plain
    :root the media query above targets, so these win regardless of
    whether they agree or disagree with the system setting. Values are
@@ -131,8 +131,7 @@
   --sheen: none;
 }
 
-/* Glass tokens are kept only as a name for "the card surface fill" —
-   there's no actual glass/blur left in the flat redesign (see the
+/* Glass tokens are kept only as a name for "the card surface fill" - there's no actual glass/blur left in the flat redesign (see the
    removed backdrop-filter rules below), just a solid panel color and a
    hairline border. Hero = the flat balance card on Today. */
 :root {
@@ -180,8 +179,8 @@
 
 /* Smooth cross-fade when switching themes (Auto/Light/Dark, see
    ThemeToggle.jsx + hooks/useTheme.js). Scoped to color-related
-   properties only — background, text, borders, shadows, and SVG
-   stroke/fill (for the inline icon set) — deliberately never layout
+   properties only - background, text, borders, shadows, and SVG
+   stroke/fill (for the inline icon set) - deliberately never layout
    properties (width/height/padding/etc), so this can't introduce any
    visual jank on its own, just a smoother color transition.
    `background` (not just `background-color`) is included so panels
@@ -225,7 +224,7 @@ a {
 
 @media (max-width: 720px) {
   /* background-attachment:fixed forces a repaint of the whole gradient
-     on every scroll frame on mobile Safari — a well-known source of
+     on every scroll frame on mobile Safari - a well-known source of
      scroll jank. There's no parallax effect being relied on here, so
      it's not worth the cost on a touch device. */
   body {
@@ -370,7 +369,7 @@ button {
 }
 
 /* Mobile: header keeps just brand + theme; the nav becomes a fixed
-   bottom bar with icon-over-label — the standard app pattern, and it
+   bottom bar with icon-over-label - the standard app pattern, and it
    ends the tab overflow/wrapping for good. */
 @media (max-width: 720px) {
   .fd-header {
@@ -414,12 +413,11 @@ button {
   }
 
   .fd-tabnav__indicator {
-    /* Deliberately NOT using left:50% + transform:translateX(-50%) here —
-       framer-motion's layoutId shared-element animation takes ownership
+    /* Deliberately NOT using left:50% + transform:translateX(-50%) here - framer-motion's layoutId shared-element animation takes ownership
        of this element's `transform` style every frame (that's how the
        slide-between-tabs animation works), which silently overwrites any
        transform set via CSS. The result was the indicator sitting at its
-       un-corrected `left` position instead of centered — visible as the
+       un-corrected `left` position instead of centered - visible as the
        bar drifting away from the active tab's icon/label. Centering via
        left/width math (no transform) sidesteps the conflict entirely. */
     left: calc(50% - 13px);
@@ -486,7 +484,7 @@ button {
 }
 
 .fd-risk-card {
-  /* No margin-bottom here — this card lives inside .fd-main__insights'
+  /* No margin-bottom here - this card lives inside .fd-main__insights'
      grid now, which already spaces items via `gap`. */
 }
 
@@ -649,7 +647,7 @@ button {
 /* ---------- Weekly Review card (Insights tab) ---------- */
 
 .fd-weekly-review {
-  /* No margin-bottom here — this is a direct child of .fd-view, which
+  /* No margin-bottom here - this is a direct child of .fd-view, which
      already spaces its children via `gap`. A margin here on top of that
      gap was doubling up, leaving a visibly bigger gap below this card
      than appears anywhere else in the app. */
@@ -795,8 +793,7 @@ button {
 /* ---------- Checklist-style card (shared by budgets, deadlines,
    reminders, session rows) ----------
    One shared visual pattern: a colored icon, a title + small meta line,
-   and a bold right-aligned value with a small unit label underneath —
-   the same shape a habit tracker uses for "Drink water · 0/5 glasses".
+   and a bold right-aligned value with a small unit label underneath - the same shape a habit tracker uses for "Drink water · 0/5 glasses".
    Each consumer sets --check-accent (inline style, since budgets/
    sessions carry a per-item custom color) or via one of the
    .fd-check-card--<type> modifiers below (for types with no per-item
@@ -1314,7 +1311,7 @@ button {
 
 /* date/datetime-local inputs render several fixed-width internal
    segments (month/day/year, hour/minute, AM/PM, plus the calendar-icon
-   button) that don't compress below a certain point — on a narrow phone,
+   button) that don't compress below a certain point - on a narrow phone,
    two of them side-by-side (Start/End) simply don't have room and
    overflow/clip, which is the "broken browser default" look this fixes.
    Stacking them one-per-row on mobile gives each one its full natural
@@ -1631,7 +1628,7 @@ button {
 /* ---------- Weekday breakdown ---------- */
 
 /* Spans the full 3-column insights grid instead of sitting as an
-   asymmetric 4th tile — a wide bar chart reads better full-width, same
+   asymmetric 4th tile - a wide bar chart reads better full-width, same
    reasoning as TrendChart living outside the grid entirely. */
 .fd-weekday-panel {
   grid-column: 1 / -1;
@@ -1664,7 +1661,7 @@ button {
   transition: height 0.3s ease, background 0.35s ease;
 }
 
-/* Same sage-green used for the best-hour wedge in HourDial — one
+/* Same sage-green used for the best-hour wedge in HourDial - one
    consistent "this is your peak" color across both insights. */
 .fd-weekday-bar--best {
   background: var(--grad-green);
@@ -2109,7 +2106,7 @@ button {
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-/* Each quality has its own tint once selected — green/gray/rust, same
+/* Each quality has its own tint once selected - green/gray/rust, same
    tone system used for streak (green), dimmed text (gray), and warnings
    (rust) elsewhere in the app, not a new color vocabulary. */
 .fd-timer-quality__btn--focused.fd-timer-quality__btn--active {
@@ -3087,8 +3084,7 @@ button {
   margin-top: 4px;
 }
 
-/* Rows whose toggle has no effect while the master push switch is off —
-   dimmed and blurred to read as inactive at a glance, and pointer
+/* Rows whose toggle has no effect while the master push switch is off - dimmed and blurred to read as inactive at a glance, and pointer
    events dropped as a second guard alongside the Toggle's own
    `disabled` attribute. */
 .fd-set-row--muted {

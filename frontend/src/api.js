@@ -5,7 +5,7 @@
 const BASE_URL = `${import.meta.env.VITE_API_URL || ""}/api`;
 
 // Exported so push.js can hand the service worker a full, working stop
-// URL inside a notification's data — the SW runs as a separate script
+// URL inside a notification's data - the SW runs as a separate script
 // outside this module graph and has no other way to know the backend's
 // origin, especially once frontend/backend are split across
 // Vercel/Render (different origins).
@@ -16,7 +16,7 @@ export function setSlowRequestHandler(fn) {
   slowRequestHandler = fn;
 }
 
-// Fires when a request comes back 401 — lets App.jsx drop straight to
+// Fires when a request comes back 401 - lets App.jsx drop straight to
 // the login screen on a genuinely expired/missing session, instead of
 // every affected component separately showing its own confusing "failed
 // to load" error.
@@ -61,7 +61,7 @@ async function attemptFetch(path, options, timeoutMs) {
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       ...options,
-      // Required for the session cookie to actually be sent — without
+      // Required for the session cookie to actually be sent - without
       // this, a cross-origin deploy (frontend on Vercel, backend on
       // Render) silently drops it and every request looks logged-out.
       credentials: "include",
@@ -102,7 +102,7 @@ async function apiFetch(path, options = {}) {
         if (err.name === "AbortError") throw new Error("Request timed out. Check your connection and try again.");
         throw err;
       }
-      // One retry only, after a short pause — a sleeping backend is
+      // One retry only, after a short pause - a sleeping backend is
       // usually awake by now; a second failure means something's
       // actually wrong rather than just cold-starting, so that one is
       // surfaced to the caller as normal.
@@ -132,7 +132,7 @@ export const login = (email, password) =>
 export const logout = () => apiFetch("/auth/logout", { method: "POST" });
 export const updateProfile = (displayName) =>
   apiFetch("/auth/me", { method: "PATCH", body: JSON.stringify({ displayName }) });
-// Full-page redirect, not a fetch — same reasoning as googleAuthStartUrl
+// Full-page redirect, not a fetch - same reasoning as googleAuthStartUrl
 // below.
 export const googleLoginStartUrl = () => `${BASE_URL}/auth/google/login/start`;
 
@@ -161,13 +161,13 @@ export const listRecentSessions = (limit = 10, offset = 0, includeTotal = true) 
   apiFetch(`/sessions?limit=${limit}&offset=${offset}&count=${includeTotal ? 1 : 0}`);
 export const getSessionHistory = () => apiFetch("/sessions/history");
 
-// Not an apiFetch call — this is a direct download link handed to an <a>
+// Not an apiFetch call - this is a direct download link handed to an <a>
 // tag, since the response is a file (CSV/JSON with Content-Disposition),
 // not a JSON body to parse.
 export const sessionsExportUrl = (format) => `${BASE_URL}/sessions/export?format=${format}`;
 
 export const getGoogleAuthStatus = () => apiFetch("/auth/google/status");
-// Not an apiFetch call — this is a full-page redirect to Google's
+// Not an apiFetch call - this is a full-page redirect to Google's
 // consent screen (and back to /api/auth/google/callback), not a JSON
 // request/response.
 export const googleAuthStartUrl = () => `${BASE_URL}/auth/google/start`;
@@ -222,7 +222,7 @@ export const updateSettings = (payload) =>
 
 // Fire a push for one of the three app-driven events (session_completed,
 // deadline_completed, budget_reached). The client only calls this while
-// the page is backgrounded — see maybePushEvent in push.js — so the user
+// the page is backgrounded - see maybePushEvent in push.js - so the user
 // gets an in-app toast when looking and a push when not.
 export const sendNotify = (type, title, body) =>
   apiFetch("/notify", { method: "POST", body: JSON.stringify({ type, title, body }) });

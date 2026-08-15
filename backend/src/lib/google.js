@@ -6,11 +6,11 @@ const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } = process.
 export const googleConfigured = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REDIRECT_URI);
 
 if (!googleConfigured) {
-  // Not fatal — same shape as push.js's VAPID check below. The app
+  // Not fatal - same shape as push.js's VAPID check below. The app
   // works without this set, Google Calendar linking is just hidden in
   // Settings. See HANDOVER.md for how to set up an OAuth client.
   console.warn(
-    "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI not set — Google Calendar linking is disabled."
+    "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI not set - Google Calendar linking is disabled."
   );
 }
 
@@ -26,7 +26,7 @@ const SCOPES = [
 export function getAuthUrl(state) {
   return newOAuthClient().generateAuthUrl({
     access_type: "offline", // required to get a refresh_token back, not just a short-lived access_token
-    prompt: "consent", // forces a refresh_token on every connect, not just the very first — otherwise reconnecting after a disconnect never gets one again
+    prompt: "consent", // forces a refresh_token on every connect, not just the very first - otherwise reconnecting after a disconnect never gets one again
     scope: SCOPES,
     state,
   });
@@ -54,7 +54,7 @@ export async function fetchConnectedEmail(authClient) {
 // in shouldn't require granting calendar access, and someone who never
 // touches Google Calendar sync shouldn't be prompted for it just to use
 // the app. access_type stays "online" (no refresh_token requested) since
-// this only needs a one-off identity check — the app's own session
+// this only needs a one-off identity check - the app's own session
 // cookie carries the login afterward, not a stored Google token.
 const { GOOGLE_LOGIN_REDIRECT_URI } = process.env;
 export const googleLoginConfigured = Boolean(
@@ -73,7 +73,7 @@ export function getLoginAuthUrl() {
   });
 }
 
-// Returns { googleSub, email, name } — googleSub is Google's stable
+// Returns { googleSub, email, name } - googleSub is Google's stable
 // per-account id (the v2 userinfo endpoint's `id` field, equivalent to
 // the id_token's `sub` claim), used to recognize the same person on
 // every future login regardless of email changes.
@@ -89,7 +89,7 @@ export async function exchangeLoginCode(code) {
 
 // Loads stored tokens and returns an authenticated client. googleapis'
 // OAuth2 client refreshes an expired access_token on demand internally,
-// but doesn't persist the new one anywhere by itself — the `tokens`
+// but doesn't persist the new one anywhere by itself - the `tokens`
 // event fires whenever that happens, which is the hook used here to
 // write it back to the DB so the next call doesn't need to refresh
 // again. Returns null if nothing is connected.
@@ -106,7 +106,7 @@ export async function getAuthedClient(userId) {
   });
   client.on("tokens", (tokens) => {
     // refresh_token is only ever re-included by Google on the very
-    // first grant (or when `prompt: consent` forces a fresh one) — a
+    // first grant (or when `prompt: consent` forces a fresh one) - a
     // silent refresh only returns a new access_token, so this must not
     // overwrite the stored refresh_token with undefined.
     pool
@@ -125,9 +125,8 @@ export function getCalendarClient(authClient) {
 
 // Establishes (or re-establishes) the incremental-sync cursor. Google
 // Calendar API's syncToken mechanism requires the *first* request in a
-// sync sequence to carry whatever filters should apply throughout —
-// timeMin (only future events matter here) and showDeleted (so
-// cancellations show up in later incremental polls) — and forbids
+// sync sequence to carry whatever filters should apply throughout - // timeMin (only future events matter here) and showDeleted (so
+// cancellations show up in later incremental polls) - and forbids
 // combining those same filters with syncToken on later calls. So this
 // paginates once with the filters, keeps only the final page's
 // nextSyncToken, and every later poll (routes/cron.js) uses only that
@@ -177,14 +176,14 @@ function reminderToEvent(reminder) {
 
 // Creates or updates the Google Calendar event mirroring a deadline or
 // reminder, and keeps google_event_links in sync. Best-effort by design
-// — every call site treats a local write as already succeeded before
+// - every call site treats a local write as already succeeded before
 // this runs, so a Google-side failure here (not connected, transient API
 // error, etc.) is logged and swallowed rather than surfaced as a request
 // failure. Worst case, that one item's mirror lags until its next edit.
 export async function pushItemToGoogle(userId, itemType, item) {
   try {
     const authClient = await getAuthedClient(userId);
-    if (!authClient) return; // not connected — nothing to push
+    if (!authClient) return; // not connected - nothing to push
 
     const { rows: accountRows } = await pool.query(`SELECT calendar_id FROM google_account WHERE user_id = $1`, [userId]);
     const calendarId = accountRows[0]?.calendar_id || "primary";
@@ -219,8 +218,7 @@ export async function pushItemToGoogle(userId, itemType, item) {
 }
 
 // Deletes the Google Calendar event mirroring a deadline/reminder (used
-// when the item itself is deleted, or leaves the active/pending state —
-// completed, archived, dismissed, converted), and removes the link row
+// when the item itself is deleted, or leaves the active/pending state - // completed, archived, dismissed, converted), and removes the link row
 // regardless of whether the Google-side delete actually succeeded, since
 // a 404/410 there means it's already gone either way.
 export async function deleteItemFromGoogle(userId, itemType, itemId) {

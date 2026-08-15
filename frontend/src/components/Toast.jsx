@@ -15,7 +15,7 @@ export function useToast() {
 
 const DEFAULT_DURATION = 5000;
 
-// Small inline glyphs per tone — kept as SVG rather than an icon
+// Small inline glyphs per tone - kept as SVG rather than an icon
 // dependency so the bundle stays lean and the strokes inherit the tone
 // colour via currentColor.
 function ToneIcon({ tone }) {
@@ -35,7 +35,7 @@ function ToneIcon({ tone }) {
       <svg {...common}><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg>
     );
   }
-  // default / info — the FocusMark reticle, tying toasts to the brand
+  // default / info - the FocusMark reticle, tying toasts to the brand
   return <FocusMark size={18} strokeWidth={2} />;
 }
 
@@ -69,7 +69,7 @@ export function ToastProvider({ children }) {
 
   // Attached to the returned function rather than changing useToast()'s
   // return shape (which every existing `const toast = useToast();
-  // toast({...})` call site already assumes is a plain function) — this
+  // toast({...})` call site already assumes is a plain function) - this
   // way both the old calling convention and `toast.dismiss(id)` work.
   toast.dismiss = dismiss;
 

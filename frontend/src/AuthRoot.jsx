@@ -5,7 +5,7 @@ import AuthGate from "./components/AuthGate.jsx";
 import { getMe, logout, setUnauthorizedHandler } from "./api.js";
 
 // Small full-screen spinner shown for the gap between clicking "Sign
-// out" and the server actually clearing the session — logout() is a
+// out" and the server actually clearing the session - logout() is a
 // real network round-trip, so without this the screen just sat frozen
 // until it resolved.
 function AuthLoadingScreen({ label }) {
@@ -46,7 +46,7 @@ export default function AuthRoot() {
       .catch(() => setStatus("anon"));
 
     // If a session expires mid-use (cookie cleared, server-side logout
-    // from elsewhere, etc.), any API call will 401 — this drops straight
+    // from elsewhere, etc.), any API call will 401 - this drops straight
     // back to the login screen instead of every affected component
     // separately showing its own confusing "failed to load" error.
     setUnauthorizedHandler(() => {
@@ -67,8 +67,7 @@ export default function AuthRoot() {
     try {
       await logout();
     } catch (err) {
-      // Not fatal — we still clear the local session below regardless —
-      // but swallowing this completely last time made a real failure
+      // Not fatal - we still clear the local session below regardless - // but swallowing this completely last time made a real failure
       // here indistinguishable from "nothing happened". Logging it so
       // it at least shows up in devtools if this keeps happening.
       console.error("logout request failed:", err);
@@ -88,7 +87,7 @@ export default function AuthRoot() {
       {status === "anon" && <AuthGate onAuthenticated={handleAuthenticated} />}
       {/* Kept mounted through "loggingOut" (rather than swapped out
           alongside AuthGate in one AnimatePresence) so there's no
-          transition between App — a huge, non-motion subtree — and
+          transition between App - a huge, non-motion subtree - and
           another child for framer-motion to coordinate. The overlay
           below just renders on top of it while the request is in
           flight. */}

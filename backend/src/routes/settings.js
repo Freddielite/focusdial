@@ -24,7 +24,7 @@ settingsRouter.get("/settings", async (req, res) => {
   try {
     // Get-or-create: a settings row is normally created alongside the
     // user account itself (see routes/auth.js), but this stays
-    // defensive regardless — INSERT ... ON CONFLICT DO NOTHING RETURNING
+    // defensive regardless - INSERT ... ON CONFLICT DO NOTHING RETURNING
     // * only returns a row if it actually inserted one, so an empty
     // result here means the row already existed and just needs a plain
     // SELECT.
@@ -48,7 +48,7 @@ settingsRouter.get("/settings", async (req, res) => {
 // other's columns.
 //
 // timezone_offset_minutes note: the frontend sends
-// `-new Date().getTimezoneOffset()` (the sign is flipped — JS's
+// `-new Date().getTimezoneOffset()` (the sign is flipped - JS's
 // getTimezoneOffset() is backwards from the usual "UTC+1" convention)
 // so the cron job can approximate the user's local day/hour without a
 // full IANA timezone database. See routes/cron.js for why it's an
@@ -137,7 +137,7 @@ settingsRouter.put("/settings", async (req, res) => {
 
   try {
     // Row should already exist (created at signup, or by the GET
-    // handler's get-or-create above) — ON CONFLICT here is just a safety
+    // handler's get-or-create above) - ON CONFLICT here is just a safety
     // net so a PUT before any GET still works rather than silently
     // updating zero rows.
     await pool.query(`INSERT INTO settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`, [req.userId]);

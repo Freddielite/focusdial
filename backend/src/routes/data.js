@@ -8,12 +8,12 @@ export const dataRouter = Router();
 // list rather than being all-or-nothing.
 //
 // Foreign keys are all declared ON DELETE SET NULL (see db.js), so the
-// categories don't have to be deleted in dependency order — clearing
+// categories don't have to be deleted in dependency order - clearing
 // tags, for instance, just nulls out sessions.tag_id and
 // deadlines.tag_id rather than failing or cascading. Everything still
 // runs in one transaction so a mid-way error can't leave a half-wiped
 // database. Every statement is scoped to the requesting user's own rows
-// only — $1 is always req.userId.
+// only - $1 is always req.userId.
 const CATEGORY_SQL = {
   sessions: `DELETE FROM sessions WHERE user_id = $1`,
   tags: `DELETE FROM tags WHERE user_id = $1`,
@@ -21,7 +21,7 @@ const CATEGORY_SQL = {
   deadlines: `DELETE FROM deadlines WHERE user_id = $1`,
   reminders: `DELETE FROM reminders WHERE user_id = $1`,
   tasks: `DELETE FROM tasks WHERE user_id = $1`,
-  // "preferences" doesn't drop the settings row — it resets the
+  // "preferences" doesn't drop the settings row - it resets the
   // notification/automation toggles back to their defaults (all on) and
   // clears the streak-nudge bookkeeping. timezone_offset_minutes is left
   // alone since the app re-syncs it on the next load anyway.

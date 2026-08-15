@@ -12,28 +12,28 @@ if (pushConfigured) {
     VAPID_PRIVATE_KEY
   );
 } else {
-  // Not fatal — the app still works without push configured, it just
+  // Not fatal - the app still works without push configured, it just
   // can't send any. Reminders/automation become in-app-only in that
   // case. See HANDOVER.md for how to generate a VAPID key pair.
   console.warn(
-    "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — push notifications are disabled. " +
+    "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set - push notifications are disabled. " +
       "Generate a key pair with `npx web-push generate-vapid-keys` and set them as env vars to enable."
   );
 }
 
 // Sends `payload` (an object with at least title/body) to every device
-// belonging to one specific user — replaced the old sendPushToAll now
+// belonging to one specific user - replaced the old sendPushToAll now
 // that there's more than one person's devices to keep separate.
 // Subscriptions that the push service reports as gone (410 Gone, or 404
-// Not Found) are removed — those statuses mean the browser has
+// Not Found) are removed - those statuses mean the browser has
 // permanently unsubscribed, not a transient failure, so retrying or
 // keeping them around would just accumulate dead rows.
 export async function sendPushToUser(userId, payload) {
   if (!pushConfigured) return { sent: 0, skipped: "not_configured" };
 
   // Soft master switch (Settings → Notifications). Checked here so a
-  // single toggle silences every push path — cron automations and
-  // app-driven events alike — without callers each having to remember
+  // single toggle silences every push path - cron automations and
+  // app-driven events alike - without callers each having to remember
   // to check it. Distinct from unsubscribing: the browser subscriptions
   // stay put, so flipping it back on needs no re-permission.
   const { rows: settingsRows } = await pool.query(`SELECT push_enabled FROM settings WHERE user_id = $1`, [userId]);

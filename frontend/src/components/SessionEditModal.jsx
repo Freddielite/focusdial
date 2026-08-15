@@ -26,7 +26,7 @@ export default function SessionEditModal({ session, tags, tasks, onCancel, onSav
   const [busy, setBusy] = useState(false);
 
   // Open tasks, plus whatever's currently linked even if it's since
-  // been marked done — otherwise saving this form without touching the
+  // been marked done - otherwise saving this form without touching the
   // task field would silently unlink it, since a "done" task wouldn't
   // appear as a selectable option at all.
   const taskOptions = (tasks || []).filter((t) => t.status === "open" || t.id === session.task_id);

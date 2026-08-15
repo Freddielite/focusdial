@@ -6,7 +6,7 @@ export const sessionsRouter = Router();
 // Persisting the running session to the database (rather than only
 // holding it in frontend memory/localStorage) means a page refresh or
 // browser crash mid-session doesn't lose the fact that a timer was
-// running — the frontend can recover it via GET /sessions/running.
+// running - the frontend can recover it via GET /sessions/running.
 sessionsRouter.get("/sessions/running", async (req, res) => {
   try {
     res.json(await fetchRunningSessionRow(req.userId));
@@ -42,14 +42,14 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
     );
     if (existing.length > 0) {
       // Includes the full running session (not just an error string) so
-      // the frontend can show *what's* running and where — this is the
+      // the frontend can show *what's* running and where - this is the
       // common case: another device (or another tab) started a session
       // first, this request just lost the race by more than a moment.
       const running = await fetchRunningSessionRow(req.userId);
       return res.status(409).json({ error: "a session is already running", running });
     }
     // A plain `INSERT ... RETURNING *` can only return columns from
-    // `sessions` itself, not a joined tag/task name — which is exactly
+    // `sessions` itself, not a joined tag/task name - which is exactly
     // what left the running-session notification (see frontend's
     // push.js) always showing "Untitled session" even when a tag was
     // set, since it had nothing else to go on. Wrapping the insert in a
@@ -71,12 +71,12 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
     // The SELECT-then-INSERT above has a race window: two requests from
     // two devices, milliseconds apart, can both pass the "existing"
     // check before either INSERT commits. `idx_sessions_one_running_per_user`
-    // (db.js) is what actually closes that window — the loser's INSERT
+    // (db.js) is what actually closes that window - the loser's INSERT
     // fails with a unique-violation here rather than silently creating a
     // second running session. Without this catch, that rare case
     // surfaced as a generic "failed to start session" 500 instead of the
     // same friendly, informative 409 the common (non-race) case gets
-    // above — same conflict, worse error message, purely because of
+    // above - same conflict, worse error message, purely because of
     // timing.
     if (err.code === "23505" && err.constraint === "idx_sessions_one_running_per_user") {
       try {
@@ -120,7 +120,7 @@ sessionsRouter.post("/sessions/:id/stop", async (req, res) => {
   }
 });
 
-// Manual backfill entry — a fully-formed session with both timestamps
+// Manual backfill entry - a fully-formed session with both timestamps
 // already known, as opposed to the start/stop pair above which only
 // knows the end time once you call /stop.
 sessionsRouter.post("/sessions", async (req, res) => {
@@ -154,7 +154,7 @@ sessionsRouter.post("/sessions", async (req, res) => {
 });
 
 // Returns the full session history (capped generously) for the frontend
-// to compute analytics from — streaks, best hour of day, tag breakdowns,
+// to compute analytics from - streaks, best hour of day, tag breakdowns,
 // etc. Deliberately done client-side rather than as a server aggregate:
 // "today" and "this week" are timezone-sensitive, and the browser knows
 // the user's actual local timezone, while the server would otherwise have
@@ -180,8 +180,7 @@ sessionsRouter.get("/sessions/history", async (req, res) => {
 // Guards against CSV formula injection: a leading =/+/-/@ in a cell is
 // how a spreadsheet app decides to evaluate it as a formula rather than
 // display it as text, which matters here since `note` is free text the
-// user controls. Prefixing with a single quote is the standard fix —
-// Excel/Sheets both render it as literal text, quote stripped.
+// user controls. Prefixing with a single quote is the standard fix - // Excel/Sheets both render it as literal text, quote stripped.
 function csvCell(value) {
   if (value === null || value === undefined) return "";
   let str = String(value);
@@ -193,7 +192,7 @@ function csvCell(value) {
 // Streams the full completed-session history for the Settings → Export
 // control. Deliberately a separate endpoint from /sessions/history (which
 // feeds the frontend's own analytics) since the two have different
-// shapes and different consumers — one's JS-internal, this one produces
+// shapes and different consumers - one's JS-internal, this one produces
 // a file meant to leave the app. Session-cookie protected like any other
 // route here (unlike the ICS calendar export) since this is only ever
 // opened by the same logged-in browser clicking a Settings button, never
@@ -289,8 +288,7 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
   const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
   // COALESCE-against-null looks right for started_at/ended_at (you'd
   // never intentionally PATCH a timestamp to null), but tag_id and note
-  // are legitimately clearable — "remove the tag", "clear the note" —
-  // and COALESCE can't tell "field omitted" from "field explicitly set
+  // are legitimately clearable - "remove the tag", "clear the note" - // and COALESCE can't tell "field omitted" from "field explicitly set
   // to null", so it silently no-ops those clears. hasOwnProperty checks
   // (same pattern as routes/deadlines.js's tag_id handling) fix that.
   const hasTagField = Object.prototype.hasOwnProperty.call(req.body, "tag_id");

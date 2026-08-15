@@ -36,8 +36,7 @@ export function ConfirmProvider({ children }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       {dialog && (
-        // Clicking the backdrop cancels, same as the Cancel button —
-        // matches how SessionEditModal's overlay already behaves.
+        // Clicking the backdrop cancels, same as the Cancel button - // matches how SessionEditModal's overlay already behaves.
         <div className="fd-modal-overlay" onClick={() => choose(false)}>
           <div className="fd-panel fd-modal-panel fd-confirm-panel" onClick={(e) => e.stopPropagation()}>
             <div className="fd-panel__label">{dialog.title}</div>

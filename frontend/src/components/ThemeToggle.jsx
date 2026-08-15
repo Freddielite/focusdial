@@ -34,7 +34,7 @@ function Icon({ theme }) {
       </svg>
     );
   }
-  // Auto — the half-filled dial, echoing FocusDial's mark
+  // Auto - the half-filled dial, echoing FocusDial's mark
   return (
     <svg {...common}>
       <circle cx="12" cy="12" r="9" />

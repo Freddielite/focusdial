@@ -40,7 +40,7 @@ googleAuthRouter.get("/auth/google/start", (req, res) => {
   // `state` is a random anti-CSRF nonce, bound to this session, and
   // verified (not trusted as an identity) on the way back in
   // /auth/google/callback below. It is never used to decide *whose*
-  // account the tokens get attached to — that always comes from the
+  // account the tokens get attached to - that always comes from the
   // authenticated session (req.userId), which requireAuth already
   // guarantees is present for this route.
   const nonce = crypto.randomUUID();
@@ -52,7 +52,7 @@ googleAuthRouter.get("/auth/google/callback", async (req, res) => {
   const frontendUrl = (process.env.FRONTEND_URL || "").replace(/\/$/, "");
   // &tab=settings is safe to hardcode here (rather than round-tripping
   // the tab the user actually started from) because Connect/Disconnect
-  // only ever appears in Settings — there's no other page this flow can
+  // only ever appears in Settings - there's no other page this flow can
   // begin from. Without it, App.jsx's initial-tab logic defaults back to
   // "today", so a successful connect looked like it silently did nothing
   // since the confirmation lives on a tab the user was no longer on.
@@ -64,7 +64,7 @@ googleAuthRouter.get("/auth/google/callback", async (req, res) => {
   if (!code) return res.status(400).send("missing code");
 
   // Verify `state` against the nonce this same session generated in
-  // /auth/google/start — this is what actually defends against CSRF on
+  // /auth/google/start - this is what actually defends against CSRF on
   // the callback. It is deliberately NOT used to pick whose account the
   // tokens get saved to; that identity always comes from req.userId
   // (the authenticated session), never from a request-controllable
@@ -84,8 +84,7 @@ googleAuthRouter.get("/auth/google/callback", async (req, res) => {
       // one on file for this app+account, even with prompt=consent, in
       // some edge cases. Without one the connection can't survive the
       // ~1h access-token expiry, so this is treated as a failed connect
-      // rather than silently storing something that breaks later —
-      // disconnecting any existing grant at https://myaccount.google.com/permissions
+      // rather than silently storing something that breaks later - // disconnecting any existing grant at https://myaccount.google.com/permissions
       // before retrying forces a fresh one.
       return redirectTo("error");
     }
@@ -105,7 +104,7 @@ googleAuthRouter.get("/auth/google/callback", async (req, res) => {
     // Backfill: mirror everything currently active/pending out to the
     // newly-connected calendar, so it has immediate parity with the app
     // instead of only showing things created/edited from now on. Scoped
-    // to this one user's own items only — without the user_id filter
+    // to this one user's own items only - without the user_id filter
     // here, every other user's deadlines/reminders would get pushed onto
     // this one person's calendar.
     const [{ rows: deadlines }, { rows: reminders }] = await Promise.all([
@@ -143,7 +142,7 @@ googleAuthRouter.post("/auth/google/disconnect", async (req, res) => {
     ]);
     const account = rows[0];
     if (account) {
-      // Best-effort revoke — if this fails (network blip, token already
+      // Best-effort revoke - if this fails (network blip, token already
       // invalid), the local disconnect still proceeds, since the goal is
       // "FocusDial stops touching this calendar," which the DB cleanup
       // below achieves regardless.
@@ -156,7 +155,7 @@ googleAuthRouter.post("/auth/google/disconnect", async (req, res) => {
     }
     await pool.query(`DELETE FROM google_account WHERE user_id = $1`, [req.userId]);
     // google_event_links has no user_id column of its own (every lookup
-    // normally goes through item ownership instead) — scoped here via a
+    // normally goes through item ownership instead) - scoped here via a
     // subquery over this user's own deadlines/reminders so disconnecting
     // only clears this one person's links, not everyone's.
     await pool.query(

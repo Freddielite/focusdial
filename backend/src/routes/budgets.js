@@ -74,7 +74,7 @@ budgetsRouter.patch("/budgets/:id", async (req, res) => {
 budgetsRouter.delete("/budgets/:id", async (req, res) => {
   try {
     // Tags assigned to this budget just lose the assignment (ON DELETE
-    // SET NULL) — deleting a budget shouldn't delete the tags or the
+    // SET NULL) - deleting a budget shouldn't delete the tags or the
     // session history behind them.
     await pool.query(`DELETE FROM budgets WHERE id = $1 AND user_id = $2`, [req.params.id, req.userId]);
     res.status(204).end();

@@ -1,7 +1,7 @@
 import { getPushPublicKey, subscribeToPush, unsubscribeFromPush, sendNotify, API_BASE_URL } from "./api.js";
 
 // App-driven events (session/deadline/budget) always show an in-app
-// toast. They should ALSO push — but only when the app is backgrounded,
+// toast. They should ALSO push - but only when the app is backgrounded,
 // so someone actively watching the toast doesn't get a redundant system
 // notification for the same thing. document.hidden is true when the tab
 // is in the background or the screen is off; that's exactly the "they
@@ -13,7 +13,7 @@ export function maybePushEvent(type, title, body) {
 }
 
 // Push subscription keys arrive from the server as URL-safe base64;
-// PushManager.subscribe() needs them as a raw Uint8Array instead — this
+// PushManager.subscribe() needs them as a raw Uint8Array instead - this
 // is the standard conversion function used in essentially every Web
 // Push tutorial, not something specific to this app.
 function urlBase64ToUint8Array(base64String) {
@@ -35,7 +35,7 @@ export async function getPushStatus() {
   return existing ? "subscribed" : "not-subscribed";
 }
 
-// Must be called from a direct user gesture (a click handler) — browsers
+// Must be called from a direct user gesture (a click handler) - browsers
 // silently ignore or reject permission requests made outside one.
 export async function enablePush() {
   if (!isPushSupported()) throw new Error("Push notifications aren't supported in this browser.");
@@ -72,16 +72,16 @@ export async function disablePush() {
 // Persistent "session running" notification with a Stop action, tapped
 // from the lock screen or notification shade without reopening the app.
 // Best-effort and silent: this only shows if push permission was already
-// granted through the normal Settings flow — it never prompts on its
+// granted through the normal Settings flow - it never prompts on its
 // own, since a session starting isn't a moment to interrupt someone with
 // a permission dialog.
 //
-// The Stop action itself is Android/Chrome-only — WebKit (Safari, and
+// The Stop action itself is Android/Chrome-only - WebKit (Safari, and
 // therefore every iOS browser, since they're all WebKit under the hood)
 // has never implemented the Notification actions API. iOS still gets
 // the notification, just without a working button; tapping the body
 // opens the app instead, same as any other notification. Not a bug to
-// chase — there's no iOS API path to reach for here.
+// chase - there's no iOS API path to reach for here.
 export async function showRunningSessionNotification(session) {
   if (!isPushSupported() || Notification.permission !== "granted") return;
   try {
@@ -92,10 +92,9 @@ export async function showRunningSessionNotification(session) {
       badge: "/icons/icon-192.png",
       tag: "running-session", // replaces itself rather than stacking on repeated calls
       renotify: false,
-      silent: true, // this is a status indicator, not an alert — no sound/vibration on (re)show
+      silent: true, // this is a status indicator, not an alert - no sound/vibration on (re)show
       // Anchors the OS's own "posted X ago" display to when the session
-      // actually started, not to whenever this call happened to run —
-      // without this, that indicator effectively restarts every time
+      // actually started, not to whenever this call happened to run - // without this, that indicator effectively restarts every time
       // this is re-called (page reload, tab refocus, etc.) instead of
       // ticking up correctly for the session's true duration, no polling
       // required to keep it accurate.
@@ -111,7 +110,7 @@ export async function showRunningSessionNotification(session) {
     });
   } catch {
     // Notification API can still throw in some embedded/PWA contexts
-    // even after the support+permission checks above — never worth
+    // even after the support+permission checks above - never worth
     // failing the actual session start over.
   }
 }
@@ -123,6 +122,6 @@ export async function clearRunningSessionNotification() {
     const existing = await reg.getNotifications({ tag: "running-session" });
     existing.forEach((n) => n.close());
   } catch {
-    // Same reasoning as above — never worth surfacing to the user.
+    // Same reasoning as above - never worth surfacing to the user.
   }
 }

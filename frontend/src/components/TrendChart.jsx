@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { formatDuration } from "../format.js";
 
 // Fixed width per bar column so labels always have enough room to sit
-// under their own bar without crowding into the next one — the chart
+// under their own bar without crowding into the next one - the chart
 // scrolls horizontally instead of squeezing columns to fit.
 const COLUMN_WIDTH = 44;
 
 // Must match .fd-trend-chart's padding-top in App.css. Bar heights are
 // percentages of the chart's USABLE height (below this padding), but
-// the average line's "bottom" offset — being a plain CSS percentage —
-// resolves against the chart's FULL height (padding included). Same
+// the average line's "bottom" offset - being a plain CSS percentage - // resolves against the chart's FULL height (padding included). Same
 // percentage value, two different rulers, so the line floated above
 // where it should sit relative to the bars. Reusing this constant in a
 // calc() below (100% - CHART_TOP_PADDING) puts both on the same ruler.
@@ -31,7 +30,7 @@ export default function TrendChart({ weeklyTotals, monthlyTotals, weekOverWeek }
   const data = view === "week" ? weeklyTotals : monthlyTotals;
 
   // The current (in-progress) period is excluded from the average and
-  // drawn with a dashed outline instead of a solid fill — comparing a
+  // drawn with a dashed outline instead of a solid fill - comparing a
   // half-finished week against completed ones would be misleading, and
   // the visual distinction makes that obvious at a glance rather than
   // needing a caption to explain it.
@@ -54,7 +53,7 @@ export default function TrendChart({ weeklyTotals, monthlyTotals, weekOverWeek }
 
   const scrollRef = useRef(null);
 
-  // Every bar gets a fixed-width column and its own label — the chart
+  // Every bar gets a fixed-width column and its own label - the chart
   // scrolls horizontally instead of thinning bars/labels to fit, so
   // nothing overlaps at any screen width. Land on the most recent
   // period (right edge) since that's what you came here to check.
@@ -103,8 +102,8 @@ export default function TrendChart({ weeklyTotals, monthlyTotals, weekOverWeek }
               // never sits low enough to overlap the axis labels under
               // the bars, and never gets pushed past the top of the
               // chart on the flip side. The calc() puts this on the same
-              // 140px-usable-height ruler the bars use — see
-              // CHART_TOP_PADDING above — instead of a bare percentage
+              // 140px-usable-height ruler the bars use - see
+              // CHART_TOP_PADDING above - instead of a bare percentage
               // of the chart's full padded height.
               style={{
                 bottom: `calc((100% - ${CHART_TOP_PADDING}px) * ${Math.min(Math.max(average / maxSeconds, 0.1), 0.92)})`,

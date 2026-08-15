@@ -8,7 +8,7 @@ const OUTER_R = 108;
 const INNER_R = 44;
 
 // Converts an hour (0-23) to an angle, with midnight at the top and hours
-// running clockwise — reads like a 24-hour clock face, not a math
+// running clockwise - reads like a 24-hour clock face, not a math
 // convention (0 radians = 3 o'clock) that would put midnight on the side.
 function hourToAngle(hour) {
   return (hour / 24) * 360 - 90;

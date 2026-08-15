@@ -111,7 +111,7 @@ deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
 });
 
 // Adds to manual_hours_logged atomically (read-modify-write in SQL rather
-// than in JS) — only meaningful for deadlines with no linked tag, since
+// than in JS) - only meaningful for deadlines with no linked tag, since
 // tag-linked ones compute progress from real session history instead
 // (see the frontend's analytics for that calculation).
 deadlinesRouter.post("/deadlines/:id/log", async (req, res) => {

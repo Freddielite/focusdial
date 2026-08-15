@@ -17,9 +17,8 @@ export default function ComparativeInsightsCard({ insights }) {
       <div className="fd-panel fd-comparative-card">
         <div className="fd-panel__label">Comparative Insights</div>
         <div className="fd-empty">
-          Needs at least 3 logged occurrences of a given weekday before comparing it to your
-          average — that's a minimum of 15 days of history (longer if some weekdays are sparser
-          than others). Keep logging and this will start filling in.
+          Needs 3 occurrences of a weekday to trust a pattern, about 15 days minimum. Keep
+          logging and this will fill in.
         </div>
       </div>
     );

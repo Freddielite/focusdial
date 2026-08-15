@@ -1,7 +1,7 @@
 import { formatDuration } from "../format.js";
 import FocusMark from "./FocusMark.jsx";
 
-// The Today hero — FocusDial's take on the ledger app's balance card.
+// The Today hero - FocusDial's take on the ledger app's balance card.
 // Instead of a money balance it leads with today's focus time (the one
 // number that answers "how's today going"), with this-week and streak
 // as the supporting stats, and a status pill that reads the way "In the
@@ -35,7 +35,7 @@ export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds, goal
 
         {startTimeAnomaly && (
           <div className="fd-hero__anomaly">
-            Later start than usual today — first session at{" "}
+            Later start than usual today - first session at{" "}
             {Math.round(startTimeAnomaly.todayStartMinute / 60)}h{String(startTimeAnomaly.todayStartMinute % 60).padStart(2, "0")},
             vs your typical {Math.round(startTimeAnomaly.avgStartMinute / 60)}h
             {String(Math.round(startTimeAnomaly.avgStartMinute) % 60).padStart(2, "0")}.

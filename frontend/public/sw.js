@@ -1,4 +1,4 @@
-// Deliberately minimal — this exists to satisfy Chrome's install
+// Deliberately minimal - this exists to satisfy Chrome's install
 // requirement (a registered service worker with a fetch handler), not to
 // provide full offline support. API requests always hit the network
 // directly (this app's data changes constantly; serving stale cached
@@ -70,7 +70,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 // Displays a system notification when the backend's cron job (see
-// backend/src/routes/cron.js) sends a push — this fires even if the app
+// backend/src/routes/cron.js) sends a push - this fires even if the app
 // tab isn't open, as long as the browser process is running (and, per
 // Chrome/Edge/Firefox, even if it isn't, on most desktop/Android setups).
 self.addEventListener("push", (event) => {
@@ -87,18 +87,17 @@ self.addEventListener("push", (event) => {
   );
 });
 
-// Focuses an already-open tab if one exists, otherwise opens a new one —
-// standard pattern for "clicking a notification should bring you to the
+// Focuses an already-open tab if one exists, otherwise opens a new one - // standard pattern for "clicking a notification should bring you to the
 // app, not spawn duplicate tabs every time.
 self.addEventListener("notificationclick", (event) => {
   const data = event.notification.data || {};
 
   // The running-session notification's Stop button (Android/Chrome
-  // only — see push.js's showRunningSessionNotification for why this
+  // only - see push.js's showRunningSessionNotification for why this
   // action is absent on iOS). Called directly from here rather than
   // waking the app first, since the whole point is working even when
   // the app isn't open. credentials: "include" is required the same way
-  // it is everywhere else in this app — the session cookie doesn't ride
+  // it is everywhere else in this app - the session cookie doesn't ride
   // along automatically on a cross-origin fetch without it.
   if (event.action === "stop" && data.type === "running-session" && data.stopUrl) {
     event.notification.close();
@@ -106,7 +105,7 @@ self.addEventListener("notificationclick", (event) => {
       fetch(data.stopUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" })
         .catch((err) => console.error("stop-from-notification failed:", err))
         .then(() =>
-          // Tells any open tab to refresh its timer state — stopping via
+          // Tells any open tab to refresh its timer state - stopping via
           // the notification wouldn't otherwise be reflected there until
           // the next reload.
           self.clients.matchAll({ type: "window", includeUncontrolled: true })

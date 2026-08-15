@@ -1925,4 +1925,38 @@ number ("minimum of 15 days of history") rather than the previous vague
 "why is this empty despite a real streak" question is exactly the one
 worth answering inline, not just being accurate-but-unhelpful about.
 
+## Session 24 — em-dash cleanup, shorter empty-state copy
+
+Two follow-ups from feedback on Session 23's empty-state message:
+
+**Message was too long.** Cut `ComparativeInsightsCard`'s empty state
+from a two-sentence, parenthetical-laden explanation down to one short
+line ("Needs 3 occurrences of a weekday to trust a pattern, about 15
+days minimum.") that still answers the actual question without
+over-explaining it.
+
+**Global em-dash removal**, same convention already applied to the
+Ledger codebase in an earlier project. Ran a mechanical `\s*—\s*` ->
+`" - "` substitution across every `.js`/`.jsx` file in `frontend/src`
+and `backend/src`/`backend/scripts` (211 occurrences across 46 files),
+then caught the ones the first pass missed because they live outside
+`src/`: `frontend/public/sw.js` (6 more) and `frontend/src/App.css` (19,
+CSS comments). Re-ran `node --check` on every backend file and
+`vite build` on the frontend after — both clean.
+
+Two real (not just cosmetic) catches in that sweep, both actually
+user-visible rather than internal comments:
+- `frontend/index.html`'s `<title>` tag — "FocusDial — Deep Work
+  Journal" was showing in the browser tab exactly as seen in the report
+  that flagged this whole thing.
+- `frontend/public/manifest.webmanifest`'s `"name"` field — same string,
+  shows in the OS app switcher/install prompt once the PWA is installed.
+
+**Left alone, deliberately:** `README.md` and `HANDOVER.md` (379
+combined occurrences) — these are internal docs, not anything the app
+itself shows, and this file's own established style (see every session
+above) leans on the em-dash heavily for exactly the kind of aside it's
+good at. Revisit if that's wanted too, but it wasn't in scope of "my
+app."
+
 

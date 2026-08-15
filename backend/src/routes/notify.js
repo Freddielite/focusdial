@@ -4,7 +4,7 @@ import { sendPushToUser } from "../lib/push.js";
 
 export const notifyRouter = Router();
 
-// The three "app-driven" events — the ones that happen in response to
+// The three "app-driven" events - the ones that happen in response to
 // something the user just did in the app (finishing a session, hitting a
 // budget goal, completing a deadline), as opposed to the cron-driven
 // automations that fire while the app is closed.
@@ -38,7 +38,7 @@ notifyRouter.post("/notify", async (req, res) => {
       [req.userId]
     );
     if (rows[0] && rows[0].enabled === false) {
-      // The user has this specific event switched off — not an error,
+      // The user has this specific event switched off - not an error,
       // just nothing to send.
       return res.json({ ok: true, sent: 0, skipped: "event_disabled" });
     }

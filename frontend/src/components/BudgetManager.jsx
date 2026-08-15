@@ -8,7 +8,7 @@ import Dropdown from "./Dropdown.jsx";
 
 const SWATCHES = ["#E0A93D", "#4DA3FF", "#FF7A5C", "#4CD37D", "#FF6FA3"];
 
-// The management half of budgets — create, delete, and wire tags to a
+// The management half of budgets - create, delete, and wire tags to a
 // weekly goal. The Budgets tab stays read-only (progress bars); this is
 // where the goals actually get set up, living in Settings alongside tag
 // management so all the "configure my tracking" controls are together.

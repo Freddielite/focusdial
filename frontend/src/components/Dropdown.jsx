@@ -40,7 +40,7 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
     const flipUp = spaceBelow < listHeight && rect.top > spaceBelow;
     setCoords({
       left: rect.left,
-      // Floor, not fixed width — a trigger that's shrink-wrapped to a
+      // Floor, not fixed width - a trigger that's shrink-wrapped to a
       // short selected value (e.g. "None") would otherwise force every
       // option in the list to that same narrow width, clipping options
       // with longer labels even when there's plenty of room to grow.

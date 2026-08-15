@@ -1,7 +1,7 @@
 // Minimal in-memory fixed-window rate limiter for auth endpoints.
 //
 // Deliberately not a full library (e.g. express-rate-limit) to avoid
-// adding a dependency for something this small — but the same caveat
+// adding a dependency for something this small - but the same caveat
 // applies as to any in-memory limiter: state is per-process, so it
 // resets on restart and isn't shared across horizontally-scaled
 // instances. Fine for a single-instance deploy (this app's current
@@ -16,7 +16,7 @@
 
 const buckets = new Map();
 
-// Sweep old entries periodically so this doesn't grow unbounded — sized
+// Sweep old entries periodically so this doesn't grow unbounded - sized
 // off the largest windowMs any caller uses (see loginLimiter/registerLimiter
 // below); doubled for headroom.
 setInterval(() => {
@@ -39,12 +39,12 @@ function makeLimiter({ windowMs, max }) {
   };
 }
 
-// 10 attempts per 15 minutes per IP+email — generous enough for a real
+// 10 attempts per 15 minutes per IP+email - generous enough for a real
 // user who mistypes a password a few times, tight enough to make
 // credential stuffing / password spraying against a single account slow
 // and noisy rather than free.
 const checkLoginAttempt = makeLimiter({ windowMs: 15 * 60 * 1000, max: 10 });
-// Looser budget for registration — the goal here is just to make
+// Looser budget for registration - the goal here is just to make
 // mass account-enumeration slow, not to block normal signup traffic.
 const checkRegisterAttempt = makeLimiter({ windowMs: 15 * 60 * 1000, max: 20 });
 

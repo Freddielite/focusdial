@@ -4,7 +4,7 @@ const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
-    "DATABASE_URL is not set. This app requires Postgres — see .env.example."
+    "DATABASE_URL is not set. This app requires Postgres - see .env.example."
   );
 }
 
@@ -252,8 +252,7 @@ export async function initSchema() {
     -- checkStreakAtRisk for where this is actually consulted.
     ALTER TABLE settings ADD COLUMN IF NOT EXISTS rest_day_of_week INTEGER CHECK (rest_day_of_week BETWEEN 0 AND 6);
 
-    -- Legacy: backed the ICS calendar-subscription feature (deleted —
-    -- see HANDOVER.md's "Deleted: ICS export" entry — superseded by
+    -- Legacy: backed the ICS calendar-subscription feature (deleted - -- see HANDOVER.md's "Deleted: ICS export" entry - superseded by
     -- real two-way Google Calendar sync). Left in place rather than
     -- DROP COLUMN, since it's a harmless unused nullable column and
     -- dropping it is a destructive migration for zero functional gain.
@@ -365,7 +364,7 @@ export async function initSchema() {
     ALTER TABLE google_account ALTER COLUMN id DROP DEFAULT;
     ALTER TABLE google_account ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_google_account_user_id ON google_account(user_id);
-    -- Same missing-default bug as settings.id above — routes/googleAuth.js's
+    -- Same missing-default bug as settings.id above - routes/googleAuth.js's
     -- INSERT INTO google_account (...) never supplies id, and DROP DEFAULT
     -- left nothing to fill it in.
     CREATE SEQUENCE IF NOT EXISTS google_account_id_seq OWNED BY google_account.id;

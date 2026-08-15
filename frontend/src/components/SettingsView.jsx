@@ -11,7 +11,7 @@ import { formatHour } from "../format.js";
 
 const THEME_LABEL = { system: "Auto", light: "Light", dark: "Dark" };
 
-// Reusable pill switch. Controlled — the parent owns the value so a
+// Reusable pill switch. Controlled - the parent owns the value so a
 // single settings object stays the source of truth for both this screen
 // and the notification logic in App.
 function Toggle({ checked, onChange, disabled, label }) {
@@ -105,7 +105,7 @@ const EVENT_ROWS = [
 ];
 
 // Device push: browser permission + subscription for THIS device. This
-// is separate from the master mute below — you subscribe once here, then
+// is separate from the master mute below - you subscribe once here, then
 // the toggles decide what actually comes through.
 function DevicePush({ onChange }) {
   const [status, setStatus] = useState("checking");
@@ -197,7 +197,7 @@ function ExportSection() {
 }
 
 // Google Calendar two-way sync. Three states: not configured on this
-// server (no OAuth client set up — see HANDOVER.md), configured but not
+// server (no OAuth client set up - see HANDOVER.md), configured but not
 // connected (show a Connect button), or connected (show account +
 // disconnect + the poll-side toggle). Mirrors DevicePush's
 // fetch-status-on-mount shape above.
@@ -315,7 +315,7 @@ function ResetSection({ onDataChanged }) {
     setConfirming(false);
 
     // Same delay-then-commit pattern as every other delete in the app
-    // (see hooks/useUndoableDelete.js) — not reused directly here since
+    // (see hooks/useUndoableDelete.js) - not reused directly here since
     // that hook is built around hiding/restoring one item by id, and a
     // category wipe has no single item to hide (Settings doesn't render
     // the sessions/tags/etc. it's about to clear).
@@ -453,7 +453,7 @@ export default function SettingsView({
   scrollTarget,
   onScrollTargetConsumed,
 }) {
-  // Auto-detected timezone, shown read-only — the app already syncs the
+  // Auto-detected timezone, shown read-only - the app already syncs the
   // offset to the server on load for the closed-app automations; this
   // just surfaces what it detected.
   const tz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Unknown";

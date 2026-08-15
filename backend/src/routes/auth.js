@@ -56,8 +56,7 @@ authRouter.post("/auth/login", loginRateLimit, async (req, res) => {
     const { rows } = await pool.query(`SELECT * FROM users WHERE email = $1`, [email.trim().toLowerCase()]);
     const user = rows[0];
     // Same generic error whether the email doesn't exist, has no
-    // password set (Google-only account), or the password is wrong —
-    // distinguishing those in the response would let someone probe
+    // password set (Google-only account), or the password is wrong - // distinguishing those in the response would let someone probe
     // which emails have accounts.
     if (!user || !user.password_hash || !(await verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: "incorrect email or password" });
@@ -89,7 +88,7 @@ authRouter.get("/auth/me", async (req, res) => {
   }
 });
 
-// Not mounted behind requireAuth (this whole router isn't — see
+// Not mounted behind requireAuth (this whole router isn't - see
 // index.js), so it checks the session itself, same as /auth/me above.
 authRouter.patch("/auth/me", async (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "not signed in" });
@@ -134,7 +133,7 @@ authRouter.get("/auth/google/login/callback", async (req, res) => {
 
     // Recognize the same person by google_sub first (stable across
     // email changes), then fall back to matching an existing
-    // email/password account and linking it — so someone who registered
+    // email/password account and linking it - so someone who registered
     // with a password can start using "Sign in with Google" later
     // without ending up with two separate accounts.
     let { rows } = await pool.query(`SELECT * FROM users WHERE google_sub = $1`, [googleSub]);

@@ -1,5 +1,5 @@
 // All the "does the thinking for you" logic lives here, computed from raw
-// session history rather than as a server-side aggregate — see the comment
+// session history rather than as a server-side aggregate - see the comment
 // on GET /sessions/history in the backend for why (timezone correctness).
 import { formatDuration } from "./format.js";
 
@@ -118,8 +118,8 @@ function computeMonthlyTotals(sessions, monthsBack = 6) {
 
 // Average seconds of focus per calendar day, over the last 30 days (or
 // since your first-ever session, if you've been using this less than 30
-// days). Deliberately averaged over every day in the window — including
-// zero-session days — not just the days you happened to work, since a
+// days). Deliberately averaged over every day in the window - including
+// zero-session days - not just the days you happened to work, since a
 // deadline plan needs a realistic "what can I actually sustain every
 // day," not a best-case "when I do sit down, how long" number.
 export function computeAvgDailyFocusSeconds(sessions) {
@@ -296,7 +296,7 @@ export function computeContextSwitchCost(sessions) {
 //
 // Concretely: no weekday can clear the >=3-occurrences bar before day
 // 15 of an account's history at the very earliest (occurrences of any
-// single weekday land 7 days apart, so the 3rd one is day 15) — a
+// single weekday land 7 days apart, so the 3rd one is day 15) - a
 // brand-new account, even a perfect daily streak, will see this stay
 // empty until then. ComparativeInsightsCard's empty state says so
 // explicitly rather than a vague "check back later," since "why is
@@ -506,8 +506,7 @@ function computeDueAt(d) {
 }
 
 // Computes real progress + a feasibility read for each deadline, comparing
-// the pace it actually requires against your real historical average —
-// this is the "does the thinking for you" part: it's not just a countdown,
+// the pace it actually requires against your real historical average - // this is the "does the thinking for you" part: it's not just a countdown,
 // it's telling you whether the plan is realistic given how you actually work.
 export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSeconds) {
   const avgDailyFocusHours = avgDailyFocusSeconds / 3600;
@@ -541,7 +540,7 @@ export function computeDeadlineProgress(deadlines, sessions, avgDailyFocusSecond
 
     let status;
     if (d.status === "done" || d.status === "archived") {
-      // Manually set (e.g. the checkmark in DeadlinesView) — this is a
+      // Manually set (e.g. the checkmark in DeadlinesView) - this is a
       // deliberate user action, so it must win over the derived pace
       // status instead of being silently recalculated away.
       status = d.status;
@@ -625,7 +624,7 @@ export function computeDeadlineTrackRecord(deadlinesProgress) {
 }
 
 // For each hour of day (0-23), which tag has the most historical seconds
-// logged starting in that hour — used both to pre-select a tag when
+// logged starting in that hour - used both to pre-select a tag when
 // starting a new timer around that time, and (see TimerPanel's
 // proactive nudge) to actively suggest starting one. Returns a plain
 // object keyed by hour (0-23) to { tagId, name, color, seconds, count }
@@ -674,7 +673,7 @@ export function computeHourlyTagSuggestions(sessions) {
 
 // Focused-count / rated-count over a subset of sessions, ignoring
 // sessions with no quality rating at all (there's no "neutral default"
-// to fall back on — an unrated session simply doesn't count toward the
+// to fall back on - an unrated session simply doesn't count toward the
 // rate either way). ratePct is null (not 0) when there's no rated
 // session in the subset, so callers can tell "0% focused" apart from
 // "no data yet."
@@ -728,7 +727,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   const todayKey = localDayKey(now);
   // Monday-start calendar week, matching the convention used everywhere
   // else in this file (mondayOf(), weekOverWeek, computeBudgetProgress,
-  // computeWeeklyTotals, computeWeeklyReview) — this used to be a
+  // computeWeeklyTotals, computeWeeklyReview) - this used to be a
   // trailing 7-day rolling window instead (today back through 6 days
   // ago), which quietly disagreed with all of those any day that isn't
   // a Monday, worst by Sunday (up to 6 extra days of the *previous*
@@ -745,14 +744,14 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   const dayTotals = new Map(); // localDayKey -> seconds, for streak + heatmap
   const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, seconds: 0 }));
   // Parallel to `hourly` above but tallying quality ratings instead of
-  // duration — "which hour do I log the most time in" and "which hour
+  // duration - "which hour do I log the most time in" and "which hour
   // do I actually focus best in" are different questions, and only the
   // first one was answerable before this existed.
   const hourlyQuality = Array.from({ length: 24 }, () => ({ focused: 0, rated: 0 }));
   // Indexed by JS's native getDay() (0 = Sunday ... 6 = Saturday) so the
   // accumulation loop below can write straight into it, same shape as
   // `hourly` above. Reordered to Monday-first only for display, right
-  // before it's returned — see `weekday` below.
+  // before it's returned - see `weekday` below.
   const weekdayByGetDay = Array.from({ length: 7 }, (_, day) => ({ day, seconds: 0 }));
   const tagTotals = new Map(); // tag_id ('untagged' if none) -> {name,color,seconds,count}
 
@@ -775,8 +774,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     }
 
     // Attributes the whole session to the hour it started in, rather than
-    // splitting a session that crosses an hour boundary proportionally —
-    // a reasonable simplification for a "which hour am I usually
+    // splitting a session that crosses an hour boundary proportionally - // a reasonable simplification for a "which hour am I usually
     // focused in" insight, not a billing system.
     hourly[started.getHours()].seconds += seconds;
 
@@ -800,10 +798,10 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   }
 
   // Streak: walk backwards day by day from today. If today has no logged
-  // session yet, that's not a broken streak — the day isn't over — so
+  // session yet, that's not a broken streak - the day isn't over - so
   // start counting from yesterday instead in that case. A configured
   // rest day (see Settings) doesn't break the streak even with zero
-  // sessions logged — it's skipped over rather than counted, so it
+  // sessions logged - it's skipped over rather than counted, so it
   // neither extends nor resets the streak on its own. Addresses the
   // open question from the original streak design: previously a single
   // missed day fully reset it, with no concept of a planned day off.
@@ -817,7 +815,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     if (dayTotals.has(key)) {
       streakDays += 1;
     } else if (restDayOfWeek !== null && cursor.getDay() === restDayOfWeek) {
-      // Rest day, nothing logged — skip without breaking or counting.
+      // Rest day, nothing logged - skip without breaking or counting.
     } else {
       break;
     }
@@ -825,13 +823,13 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   }
 
   // Week-over-week: "this week so far" (Monday through today) against
-  // the equivalent Monday-through-same-weekday slice of last week — not
+  // the equivalent Monday-through-same-weekday slice of last week - not
   // full 7-day totals, since comparing a partial current week against a
   // complete previous one would always show a misleading drop, worse the
   // earlier in the week it is. Both slices cover the same day count, so
   // the comparison is fair at any point in the week. Reuses
   // `thisWeekStart` from the top of this function rather than a second
-  // `mondayOf(now)` call — that's also what `weekSeconds` above is now
+  // `mondayOf(now)` call - that's also what `weekSeconds` above is now
   // scoped to, so this and the hero card's "This week" stat agree.
   const daysElapsedThisWeek = Math.floor((startOfLocalDay(now) - thisWeekStart) / 86400000) + 1;
   let thisWeekSoFarSeconds = 0;
@@ -847,7 +845,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     lastWeekSameSpanSeconds,
     deltaSeconds: thisWeekSoFarSeconds - lastWeekSameSpanSeconds,
     // null (not 0 or Infinity) when there's no prior-week baseline to
-    // compare against — a percentage against zero is meaningless, not
+    // compare against - a percentage against zero is meaningless, not
     // "infinitely up."
     deltaPct: lastWeekSameSpanSeconds > 0 ? (thisWeekSoFarSeconds - lastWeekSameSpanSeconds) / lastWeekSameSpanSeconds : null,
   };
@@ -855,7 +853,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   const bestHour = hourly.reduce((best, h) => (h.seconds > best.seconds ? h : best), hourly[0]);
 
   // Same "at least 3 rated sessions" bar as mostSustainedTag below, for
-  // the same reason — one lucky/unlucky rating in an otherwise-empty
+  // the same reason - one lucky/unlucky rating in an otherwise-empty
   // hour shouldn't crown it "best" or "worst." Null (not hour 0) when
   // nothing clears that bar, so callers can tell "no confident answer
   // yet" apart from a real result at midnight.
@@ -870,8 +868,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
   });
 
   // Quality (focus-rate) trend, same "this week so far vs. the same
-  // number of days last week" fairness rule as weekOverWeek above —
-  // reusing thisWeekStart/daysElapsedThisWeek rather than a second
+  // number of days last week" fairness rule as weekOverWeek above - // reusing thisWeekStart/daysElapsedThisWeek rather than a second
   // definition of "this week."
   const thisWeekQuality = qualityRate(sessions.filter((s) => new Date(s.started_at) >= thisWeekStart));
   const lastWeekQualityStart = new Date(thisWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -890,7 +887,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     thisWeekFocusRatePct: thisWeekQuality.ratePct,
     byDuration: qualityByDuration(sessions),
     lastWeekFocusRatePct: lastWeekQuality.ratePct,
-    // Percentage-point change (not a ratio) — null unless both weeks
+    // Percentage-point change (not a ratio) - null unless both weeks
     // have at least one rated session to compare, same reasoning as
     // weekOverWeek's deltaPct null-vs-zero distinction above.
     deltaPct:
@@ -905,7 +902,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     weekdayByGetDay[0]
   );
   // Monday-first for display, consistent with this app's Monday-start
-  // week convention (see mondayOf() above) — the accumulation above still
+  // week convention (see mondayOf() above) - the accumulation above still
   // uses getDay()'s native Sunday-first indexing, this just reorders the
   // same 7 entries for the chart.
   const MONDAY_FIRST = [1, 2, 3, 4, 5, 6, 0];
@@ -917,7 +914,7 @@ export function computeSummary(sessions, restDayOfWeek = null) {
 
   // "Most productive" tag: longest average session length among tags with
   // at least 3 sessions (enough to not be a fluke from one long outlier),
-  // not just whichever tag has the most total time — total time mostly
+  // not just whichever tag has the most total time - total time mostly
   // just reflects what you do most, not what you're best at sustaining
   // focus on.
   const eligibleForAvg = byTag.filter((t) => t.count >= 3);
@@ -965,7 +962,7 @@ function hourLabel(hour) {
 }
 
 // Picks the single most notable, actionable thing to surface right now
-// out of everything the app already knows — a prioritized list of
+// out of everything the app already knows - a prioritized list of
 // candidate observations, evaluated top-down, first one whose
 // condition actually holds wins. Order matters: it's roughly "most
 // urgent to act on" first (an overdue deadline) down to "just a nice
@@ -987,7 +984,7 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
   }
 
   // Compounding risk: a tag that's behind on both its weekly budget and
-  // a deadline riding on that same tag — worth calling out together
+  // a deadline riding on that same tag - worth calling out together
   // since either alone might look manageable.
   const behindBudgets = budgetsProgress.filter((b) => b.pct < 0.7);
   for (const d of deadlinesProgress) {
@@ -1081,7 +1078,7 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
 }
 
 // Everything currently worth a "heads up" across Budgets and Deadlines,
-// in one list — cross-referencing by shared tag so a tag that's behind
+// in one list - cross-referencing by shared tag so a tag that's behind
 // on both fronts shows up as one combined line instead of two
 // disconnected ones. Severity order: overdue > behind > tight budget
 // alone, so the most urgent item leads.

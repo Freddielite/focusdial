@@ -7,9 +7,9 @@ function statusForPct(pct) {
   return { label: "Behind", tone: "dim" };
 }
 
-// Wallet glyph — the budget category's icon. Each card is tinted with
+// Wallet glyph - the budget category's icon. Each card is tinted with
 // the budget's own color (b.color) rather than one fixed accent, same
-// as the tag-dot/progress-bar already were — budgets already carry a
+// as the tag-dot/progress-bar already were - budgets already carry a
 // per-item color, so the checklist icon reuses it instead of flattening
 // to a single category color the way deadlines/reminders do.
 function WalletIcon() {

@@ -11,7 +11,7 @@ const QUALITY_OPTIONS = [
 ];
 
 // Same threshold the backend's cron runaway check uses (routes/cron.js)
-// — kept as two separate constants rather than shared, since one lives
+// - kept as two separate constants rather than shared, since one lives
 // in a browser bundle and the other in a Node process with no shared
 // module between them.
 const RUNAWAY_THRESHOLD_SECONDS = 4 * 60 * 60;
@@ -62,12 +62,12 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   // of just failing silently or unhelpfully.
   const [conflict, setConflict] = useState(null);
   // What actually got done, captured while the timer is running rather
-  // than after the fact — the backlog's ask was "captured when a session
+  // than after the fact - the backlog's ask was "captured when a session
   // is stopped," and having the field visible the whole time (instead of
   // only appearing in a post-stop prompt) means it can be jotted down
   // mid-session too, not just recalled after.
   const [note, setNote] = useState("");
-  // Separate from the tag (topic) — a quick self-rating of how the
+  // Separate from the tag (topic) - a quick self-rating of how the
   // session actually went, captured the same way as the note: inline
   // while running, not a separate post-stop step.
   const [quality, setQuality] = useState(null);
@@ -88,7 +88,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   const hiddenAtRef = useRef(null);
 
   // Pre-selects whatever tag you most often work on at this hour of day
-  // — but only if you haven't already picked one yourself, and only
+  // - but only if you haven't already picked one yourself, and only
   // while nothing is running (so it doesn't override an in-progress
   // session recovered from the backend).
   useEffect(() => {
@@ -134,7 +134,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
 
   // On load, check whether a session is already running (e.g. the page
   // was refreshed mid-session) so the timer picks back up rather than
-  // silently losing track of it — see the comment on GET /sessions/running
+  // silently losing track of it - see the comment on GET /sessions/running
   // in the backend for why this is persisted server-side at all.
   function refreshRunning() {
     return getRunningSession()
@@ -178,12 +178,12 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   }, []);
 
   // Two unrelated jobs share this listener since they're both keyed off
-  // the same event: (1) idle/away detection — record when the tab went
+  // the same event: (1) idle/away detection - record when the tab went
   // hidden while a session was running, and if it's been long enough by
   // the time it's visible again, offer to trim the away time out of the
   // session; (2) catching a session stopped remotely (the running-session
   // notification's Stop action, tapped while this tab was backgrounded)
-  // — re-checking on every return to foreground means the UI doesn't
+  // - re-checking on every return to foreground means the UI doesn't
   // keep showing a timer that's actually already stopped.
   useEffect(() => {
     function handleVisibility() {
@@ -205,7 +205,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   }, [running]);
 
   // The service worker posts this after handling the notification's Stop
-  // action — same refresh as the visibility-change case above, but for
+  // action - same refresh as the visibility-change case above, but for
   // when the tab is actually visible/foregrounded when it happens (rare,
   // but possible on a device with the app open in one window and the
   // notification tapped from another).

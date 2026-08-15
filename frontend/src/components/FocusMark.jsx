@@ -1,4 +1,4 @@
-// The brand mark: a camera autofocus reticle — four corner brackets
+// The brand mark: a camera autofocus reticle - four corner brackets
 // around a center focus point. Replaces the old half-dial glyph
 // everywhere it appeared (header, toast/notification default icon), so
 // there's one definition instead of copy-pasted SVG paths drifting out

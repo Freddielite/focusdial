@@ -4,8 +4,7 @@
 // Before this app had real accounts, every row belonged to nobody in
 // particular (user_id didn't exist yet). Adding user_id to every table
 // (see db.js) was done as a purely additive, nullable column rather than
-// trying to auto-detect and reassign ownership during schema init —
-// safer, but it means old data is invisible (every query filters by
+// trying to auto-detect and reassign ownership during schema init - // safer, but it means old data is invisible (every query filters by
 // user_id) until it's explicitly claimed. This script does that claim,
 // once, by hand.
 import "dotenv/config";
@@ -22,7 +21,7 @@ const TABLES = ["tags", "budgets", "sessions", "deadlines", "reminders", "tasks"
 async function main() {
   const { rows } = await pool.query(`SELECT id FROM users WHERE email = $1`, [email.toLowerCase()]);
   if (rows.length === 0) {
-    console.error(`No account found for ${email} — register through the app first, then run this.`);
+    console.error(`No account found for ${email} - register through the app first, then run this.`);
     process.exit(1);
   }
   const userId = rows[0].id;
@@ -33,14 +32,14 @@ async function main() {
   }
 
   // settings and google_account are one-row-per-user (unique on
-  // user_id) — if a legacy singleton row exists (from before multi-user)
+  // user_id) - if a legacy singleton row exists (from before multi-user)
   // it's claimed the same way, but only if this user doesn't already
   // have their own row from signup, since that would collide with the
   // unique constraint.
   for (const table of ["settings", "google_account"]) {
     const { rows: existing } = await pool.query(`SELECT id FROM ${table} WHERE user_id = $1`, [userId]);
     if (existing.length > 0) {
-      console.log(`${table}: you already have a row — skipping, legacy row (if any) left as-is`);
+      console.log(`${table}: you already have a row - skipping, legacy row (if any) left as-is`);
       continue;
     }
     const { rowCount } = await pool.query(
@@ -50,7 +49,7 @@ async function main() {
     console.log(`${table}: claimed ${rowCount} row(s)`);
   }
 
-  console.log(`Done — all unclaimed legacy data is now owned by ${email}.`);
+  console.log(`Done - all unclaimed legacy data is now owned by ${email}.`);
   await pool.end();
 }
 

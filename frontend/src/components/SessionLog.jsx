@@ -6,7 +6,7 @@ import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import SessionEditModal from "./SessionEditModal.jsx";
 
-// Same clock glyph as the Today tab icon — each row tints it with the
+// Same clock glyph as the Today tab icon - each row tints it with the
 // session's tag color when one is set, falling back to the session
 // category accent otherwise (matches how budget cards use their own
 // per-item color instead of one flat category color).

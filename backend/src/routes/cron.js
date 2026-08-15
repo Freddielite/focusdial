@@ -49,7 +49,7 @@ function shiftToLocal(date, tz) {
 }
 // Zero-padded ISO date (YYYY-MM-DD) from an already-shifted "local" Date,
 // reading its UTC-calendar fields (since shiftToLocal baked the offset
-// into the timestamp itself — see the module comment above). Used both
+// into the timestamp itself - see the module comment above). Used both
 // for same-day comparisons between sessions and for the plain-text
 // last_streak_nudge_date column, so it needs to be exactly this format
 // everywhere it's used, not just internally consistent.
@@ -99,8 +99,7 @@ async function checkDueReminders(userId) {
 }
 
 // Duplicates a slimmed-down version of the frontend's deadline pace
-// calculation (see frontend/src/analytics.js:computeDeadlineProgress) —
-// intentionally, not accidentally. The frontend uses the browser's real
+// calculation (see frontend/src/analytics.js:computeDeadlineProgress) - // intentionally, not accidentally. The frontend uses the browser's real
 // local timezone; this uses the fixed offset from settings instead (see
 // the module comment above). Keeping them as separate implementations
 // means the frontend's calculation doesn't need to compromise its
@@ -167,8 +166,7 @@ async function checkDeadlinePaceChanges(userId, tz) {
       else status = "behind";
     }
 
-    // Only push for the statuses someone would actually want to act on —
-    // a shift into "ahead" or "onTrack" isn't worth interrupting someone
+    // Only push for the statuses someone would actually want to act on - // a shift into "ahead" or "onTrack" isn't worth interrupting someone
     // for, but "tight"/"behind"/"overdue" are.
     const worthNotifying = ["tight", "behind", "overdue"].includes(status);
     if (status !== d.last_notified_status && worthNotifying) {
@@ -211,7 +209,7 @@ async function checkStreakAtRisk(userId, tz, settings) {
   if (localHour(nowLocal) < 19) return false; // not evening yet, locally
 
   // A configured rest day never breaks the streak, so there's nothing at
-  // risk to warn about — same rule the frontend's streak walk applies
+  // risk to warn about - same rule the frontend's streak walk applies
   // (see analytics.js's computeSummary), just checked here too since
   // this runs independently while the app is closed.
   if (settings.rest_day_of_week !== null && nowLocal.getUTCDay() === settings.rest_day_of_week) return false;
@@ -247,7 +245,7 @@ async function checkStreakAtRisk(userId, tz, settings) {
 }
 
 // Catches a session that's still running well past any reasonable
-// length — almost always means it was forgotten, not that someone's
+// length - almost always means it was forgotten, not that someone's
 // genuinely been heads-down for 4+ hours straight. Left running, it
 // silently skews todaySeconds and the streak calculation for as long as
 // it stays open. runaway_nudged_at (on the session row itself) makes
@@ -275,7 +273,7 @@ async function checkRunawayTimer(userId) {
 }
 
 // Monday-of-the-week key (YYYY-MM-DD, UTC-calendar fields on an
-// already-shifted "local" date — same convention as localDateISO above)
+// already-shifted "local" date - same convention as localDateISO above)
 // used only to dedupe the weekly digest to once per calendar week,
 // mirroring last_streak_nudge_date's per-day dedupe.
 function localMondayKey(localDate) {
@@ -286,10 +284,8 @@ function localMondayKey(localDate) {
   return localDateISO(monday);
 }
 
-// Configurable "here's your week" push (day/hour come from Settings —
-// see the db.js column comments on weekly_digest_day_of_week/hour —
-// defaulting to Sunday evening for anyone who hasn't touched the
-// setting) — reuses the same push infrastructure as the other
+// Configurable "here's your week" push (day/hour come from Settings - // see the db.js column comments on weekly_digest_day_of_week/hour - // defaulting to Sunday evening for anyone who hasn't touched the
+// setting) - reuses the same push infrastructure as the other
 // automations, just on a weekly cadence instead of reacting to an event.
 async function checkWeeklyDigest(userId, tz, settings) {
   const nowLocal = shiftToLocal(new Date(), tz);
@@ -343,7 +339,7 @@ async function checkWeeklyDigest(userId, tz, settings) {
   return true;
 }
 
-// Pull side of the two-way sync — the push side (mirroring FocusDial's
+// Pull side of the two-way sync - the push side (mirroring FocusDial's
 // own creates/edits/deletes out) lives in lib/google.js and is called
 // directly from routes/deadlines.js and routes/reminders.js, not from
 // here. This only looks for changes made *on Google's side*, for one
@@ -356,14 +352,14 @@ async function checkWeeklyDigest(userId, tz, settings) {
 // FocusDial's own last push, not a real remote edit, and is skipped. A
 // genuine known limitation: if the same item is edited in FocusDial and
 // in Google within the same poll window, whichever write actually
-// reaches Google's servers last wins — there's no merge, no per-field
+// reaches Google's servers last wins - there's no merge, no per-field
 // diff, no user-facing conflict prompt. Acceptable for personal use per
 // account; would need real operational-transform-style handling for
 // anything more.
 //
 // Also deliberate: an event Google returns that has no row in
 // google_event_links is left alone. This only syncs items FocusDial
-// itself created — it never imports pre-existing or manually-added
+// itself created - it never imports pre-existing or manually-added
 // Google Calendar events as new deadlines/reminders.
 async function checkGoogleCalendarSync(userId) {
   if (!googleConfigured) return { skipped: "not_configured" };
@@ -378,7 +374,7 @@ async function checkGoogleCalendarSync(userId) {
   const calendarId = account.calendar_id || "primary";
 
   // Normally set right after connecting (see routes/googleAuth.js's
-  // callback) — re-established here too in case it's ever missing, so
+  // callback) - re-established here too in case it's ever missing, so
   // this can self-heal rather than staying stuck.
   if (!account.sync_token) {
     try {
@@ -391,7 +387,7 @@ async function checkGoogleCalendarSync(userId) {
       console.error("failed to establish google sync token baseline:", err.message);
       return { skipped: "baseline_failed" };
     }
-    return { skipped: "baseline_established" }; // nothing to diff yet — next tick does real work
+    return { skipped: "baseline_established" }; // nothing to diff yet - next tick does real work
   }
 
   let events = [];
@@ -408,9 +404,9 @@ async function checkGoogleCalendarSync(userId) {
     if (err.code === 410) {
       // Google's documented recovery for an expired/invalid sync token:
       // drop it and re-baseline. Changes made on Google's side between
-      // now and the next successful poll are missed — a full historical
+      // now and the next successful poll are missed - a full historical
       // diff isn't attempted, out of scope for a periodic personal sync.
-      console.warn("google sync token expired (410) — re-establishing baseline");
+      console.warn("google sync token expired (410) - re-establishing baseline");
       try {
         const freshToken = await fetchSyncTokenBaseline(calendar, calendarId);
         await pool.query(`UPDATE google_account SET sync_token = $1, updated_at = now() WHERE user_id = $2`, [
@@ -435,7 +431,7 @@ async function checkGoogleCalendarSync(userId) {
     const { rows: linkRows } = await pool.query(`SELECT * FROM google_event_links WHERE google_event_id = $1`, [
       event.id,
     ]);
-    if (linkRows.length === 0) continue; // not something FocusDial created — leave it alone
+    if (linkRows.length === 0) continue; // not something FocusDial created - leave it alone
     const link = linkRows[0];
 
     if (event.status === "cancelled") {
@@ -470,7 +466,7 @@ async function checkGoogleCalendarSync(userId) {
       }
     } else {
       // Recurrence edits made on the Google side aren't parsed back into
-      // FocusDial's daily/weekly/monthly enum — only title/note/time.
+      // FocusDial's daily/weekly/monthly enum - only title/note/time.
       const remindAt = event.start?.dateTime;
       if (remindAt) {
         await pool.query(
@@ -497,7 +493,7 @@ async function checkGoogleCalendarSync(userId) {
 // Plain `!==` on a secret leaks timing information proportional to how
 // many leading bytes match, which is (in principle) usable to recover
 // the secret byte-by-byte. crypto.timingSafeEqual compares in constant
-// time — but it throws on mismatched buffer lengths, so the length is
+// time - but it throws on mismatched buffer lengths, so the length is
 // checked separately (comparing against a fixed-length hash of both
 // sides, rather than the raw values, sidesteps that without leaking the
 // real secret's length through a thrown/caught exception timing gap).
@@ -514,7 +510,7 @@ async function handleTick(req, res) {
     return res.status(401).json({ error: "unauthorized" });
   }
   try {
-    // One tick now runs every user's checks in a single pass — this used
+    // One tick now runs every user's checks in a single pass - this used
     // to read one global settings row; now it loops over every user who
     // has one (every user gets a settings row at signup, see
     // routes/auth.js), each with their own independent

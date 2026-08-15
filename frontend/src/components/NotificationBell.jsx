@@ -44,8 +44,8 @@ export default function NotificationBell({ notifications }) {
   const { items, unreadCount, markRead, markAllRead, clearAll } = notifications;
 
   // Anchoring the panel to the bell's own small wrapper (as before) broke
-  // on phones: the bell isn't flush against the screen edge — the theme
-  // toggle sits to its right — so a right:0 offset off that wrapper let
+  // on phones: the bell isn't flush against the screen edge - the theme
+  // toggle sits to its right - so a right:0 offset off that wrapper let
   // the panel's left edge run off-screen. Measuring the bell's actual
   // getBoundingClientRect and clamping against window width fixes that
   // on any layout, not just this one.
@@ -61,7 +61,7 @@ export default function NotificationBell({ notifications }) {
     );
     const top = rect.bottom + GAP_BELOW_BELL;
     // Where the bell's center falls within the panel's own box, for the
-    // grow-from-icon transform-origin — clamped so it never lands
+    // grow-from-icon transform-origin - clamped so it never lands
     // outside the panel itself on very narrow screens.
     const originX = Math.min(Math.max(rect.left + rect.width / 2 - left, 12), width - 12);
     setPos({ top, left, width, originX });

@@ -57,7 +57,7 @@ const VALID_TABS = new Set(["today", "insights", "budgets", "deadlines", "remind
 export default function App({ user, onLogout, onUserUpdated }) {
   const [showSplash, setShowSplash] = useState(true);
   // Home-screen shortcuts (see manifest.webmanifest's `shortcuts`) deep
-  // link via ?tab=... — read once at mount rather than defaulting to
+  // link via ?tab=... - read once at mount rather than defaulting to
   // "today" and switching in an effect, so there's no visible flash of
   // the wrong tab before the switch happens.
   const [activeTab, setActiveTab] = useState(() => {
@@ -74,7 +74,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
   const toast = useToast();
   const notifications = useNotifications();
   // Every event that's worth a toast is also worth a line in the bell
-  // panel — one call keeps both in sync instead of duplicating the
+  // panel - one call keeps both in sync instead of duplicating the
   // payload at each of the six call sites below.
   const notify = useCallback(
     (payload) => {
@@ -158,7 +158,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
 
     // Backend's OAuth callback (routes/googleAuth.js) redirects back
     // here with this query param rather than the frontend polling for
-    // connection state — the handshake itself happens entirely on
+    // connection state - the handshake itself happens entirely on
     // Google's + the backend's side, so this is just picking up the
     // result. history.replaceState strips the param afterward so a
     // refresh doesn't re-show the toast.
@@ -171,7 +171,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
       toast({ title: "Couldn't connect Google Calendar", body: "Please try again.", tone: "danger" });
     } else if (authResult === "success") {
       // The failure case (authResult=error) is handled in AuthGate.jsx
-      // instead — a failed sign-in never reaches this component at all,
+      // instead - a failed sign-in never reaches this component at all,
       // since AuthRoot only renders App once there's an authenticated
       // user.
       toast({ title: "Signed in with Google" });
@@ -191,7 +191,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
     }
 
     // Drives the streak-at-risk check and the in-app reminder toasts
-    // without needing fresh server data — just re-evaluates the current
+    // without needing fresh server data - just re-evaluates the current
     // time every minute.
     const tickTimer = setInterval(() => setNowTick(Date.now()), 60000);
 
@@ -247,7 +247,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
   );
 
   // In-app version of the same "streak at risk" check the backend cron
-  // job does for push notifications — this one only needs to run while
+  // job does for push notifications - this one only needs to run while
   // the app is actually open. A configured rest day is never "at risk"
   // since it doesn't break the streak either way (see analytics.js).
   const streakAtRisk = useMemo(() => {
@@ -260,8 +260,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
 
   // Same-pace "will I hit today's goal" projection, only worth surfacing
   // once enough of the day has actually happened to extrapolate from
-  // (see computeGoalProjection) and only shown in the evening window —
-  // an 11am reminder about tonight's goal is noise, not signal.
+  // (see computeGoalProjection) and only shown in the evening window - // an 11am reminder about tonight's goal is noise, not signal.
   const goalProjection = useMemo(() => {
     const nowDate = new Date(nowTick);
     if (nowDate.getHours() < 18) return null;
@@ -334,7 +333,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
           maybePushEvent("budget_reached", "Budget goal reached", `“${b.name}” hit its weekly target.`);
         }
       } else if (b.pct < 1 && wasMet) {
-        // New week / target raised — allow it to fire again later.
+        // New week / target raised - allow it to fire again later.
         budgetMetRef.current.delete(b.id);
       }
     }

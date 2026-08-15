@@ -39,7 +39,7 @@ tagsRouter.patch("/tags/:id", async (req, res) => {
   // budget", and "explicitly clear it" (null). A plain COALESCE can't tell
   // "not mentioned" apart from "explicitly null," so it's handled with its
   // own CASE branch, gated on whether the key was present in the body at
-  // all — otherwise a request that only updates a tag's name/color would
+  // all - otherwise a request that only updates a tag's name/color would
   // silently wipe out its existing budget assignment.
   const hasBudgetField = Object.prototype.hasOwnProperty.call(req.body, "budget_id");
   try {
@@ -61,7 +61,7 @@ tagsRouter.patch("/tags/:id", async (req, res) => {
 
 tagsRouter.delete("/tags/:id", async (req, res) => {
   try {
-    // Sessions referencing this tag keep their history — tag_id just goes
+    // Sessions referencing this tag keep their history - tag_id just goes
     // null on them (ON DELETE SET NULL in the schema) rather than the
     // sessions themselves being deleted. Losing a session because you
     // renamed/removed a category would be a surprising, destructive side

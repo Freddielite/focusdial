@@ -67,7 +67,7 @@ remindersRouter.patch("/reminders/:id", async (req, res) => {
 });
 
 // Converts a fired reminder into a Deadline. The reminder's own note (if
-// any) isn't carried over automatically — estimated_hours has to come
+// any) isn't carried over automatically - estimated_hours has to come
 // from the person converting it, since a reminder has no sense of how
 // long the resulting work will take.
 remindersRouter.post("/reminders/:id/convert-to-deadline", async (req, res) => {

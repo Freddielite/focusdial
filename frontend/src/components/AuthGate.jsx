@@ -25,10 +25,10 @@ export default function AuthGate({ onAuthenticated }) {
       .catch(() => setGoogleLoginEnabled(false));
 
     // A failed Google sign-in redirects here with ?authResult=error
-    // (see routes/auth.js's callback) — this component is the only place
+    // (see routes/auth.js's callback) - this component is the only place
     // that failure is ever visible, since App.jsx/AuthRoot only render
     // once there's an authenticated user. Without this, a failed Google
-    // sign-in previously gave no feedback at all — just silently dumped
+    // sign-in previously gave no feedback at all - just silently dumped
     // back on this same screen with nothing explaining why.
     const params = new URLSearchParams(window.location.search);
     if (params.get("authResult") === "error") {

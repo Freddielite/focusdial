@@ -15,7 +15,7 @@ export function isValidPassword(password) {
 }
 
 // Every data route (sessions, tags, deadlines, everything) goes through
-// this. Attaches req.userId from the session cookie set at login — a
+// this. Attaches req.userId from the session cookie set at login - a
 // missing/invalid session is a 401, not a redirect, since this is an API
 // consumed by the SPA, not server-rendered pages.
 export function requireAuth(req, res, next) {

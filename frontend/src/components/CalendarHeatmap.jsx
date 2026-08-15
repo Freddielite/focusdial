@@ -8,7 +8,7 @@ export default function CalendarHeatmap({ daily, streakDays }) {
 
   // daily is 84 entries, oldest first, ending today. Reshape into 12
   // columns of 7 (weeks) for the grid, padding the first column if the
-  // data doesn't start on a natural week boundary — simplest to just
+  // data doesn't start on a natural week boundary - simplest to just
   // chunk sequentially rather than aligning to actual calendar weeks,
   // since the point is "recent consistency at a glance," not a literal
   // calendar.

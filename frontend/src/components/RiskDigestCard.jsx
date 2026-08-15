@@ -10,8 +10,7 @@ function WarnIcon() {
 }
 
 // One glanceable "what needs attention" list on Today, combining
-// Budgets and Deadlines instead of leaving it to two separate tabs —
-// see analytics.js's computeRiskDigest for the cross-matching (a tag
+// Budgets and Deadlines instead of leaving it to two separate tabs - // see analytics.js's computeRiskDigest for the cross-matching (a tag
 // behind on both its budget and a deadline shows as one line, not two).
 // Renders nothing when everything's on track, rather than a hollow
 // "all clear" card taking up space every single day.

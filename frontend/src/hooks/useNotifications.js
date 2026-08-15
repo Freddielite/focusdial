@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 // device-local rather than synced to the server: the app already has a
 // real cross-device notification channel (Web Push), so this is just a
 // glanceable "what did I miss" list, not a second source of truth. That
-// keeps it a plain client-side concern — no migration, no endpoint, no
+// keeps it a plain client-side concern - no migration, no endpoint, no
 // extra request waking the free-tier backend on every load.
 const STORAGE_KEY = "fd-notifications";
 const MAX_ENTRIES = 30;
@@ -25,7 +25,7 @@ function save(list) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   } catch {
-    // Storage full or unavailable (private browsing, etc.) — the bell
+    // Storage full or unavailable (private browsing, etc.) - the bell
     // still works for the current session, it just won't persist.
   }
 }
