@@ -329,7 +329,7 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
   );
 }
 
-export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, onDataChanged }) {
+export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, avgDailyFocusWindowDays, onDataChanged }) {
   const [formOpen, setFormOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [tagId, setTagId] = useState("");
@@ -489,8 +489,9 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, o
       </div>
 
       <div className="fd-pace-note">
-        Your real average: <strong>{formatDuration(avgDailyFocusSeconds)}/day</strong> over the last
-        30 days, used below to judge whether each plan is realistic.
+        Your real average: <strong>{formatDuration(avgDailyFocusSeconds)}/day</strong> over the last{" "}
+        {avgDailyFocusWindowDays} day{avgDailyFocusWindowDays === 1 ? "" : "s"}, used below to judge whether each
+        plan is realistic.
       </div>
 
       <AnimatePresence>

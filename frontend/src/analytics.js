@@ -116,25 +116,71 @@ function computeMonthlyTotals(sessions, monthsBack = 6) {
   return result;
 }
 
-// Average seconds of focus per calendar day, over the last 30 days (or
-// since your first-ever session, if you've been using this less than 30
-// days). Deliberately averaged over every day in the window - including
-// zero-session days - not just the days you happened to work, since a
-// deadline plan needs a realistic "what can I actually sustain every
-// day," not a best-case "when I do sit down, how long" number.
-export function computeAvgDailyFocusSeconds(sessions) {
+// Average seconds of focus per calendar day, over the last 30 completed
+// days (or since your first-ever session, if you've been using this
+// less than 30 days). Deliberately averaged over every completed day in
+// the window - including zero-session days - not just the days you
+// happened to work, since a deadline plan needs a realistic "what can I
+// actually sustain every day," not a best-case "when I do sit down, how
+// long" number.
+//
+// Day-granular window, stopping at yesterday - same "today's still in
+// progress, don't compare it against finished days" convention as
+// computeConsistencyScore and the Trend chart's average line (see
+// HANDOVER Session 2/20/21). This used to use the *exact timestamp* of
+// your earliest session through the current moment instead, which both
+// pulled today's still-accumulating total into the sum and rounded the
+// day-count with Math.round on a continuously moving elapsed time -
+// meaning it could report a different "per day" figure than
+// computeConsistencyScore for the same underlying data depending on
+// what time of day you happened to check, exactly the kind of
+// disagreement Session 17 already fixed once for weekSeconds. Matching
+// the same completed-days convention here fixes that class of bug for
+// this figure too.
+export function computeAvgDailyFocusSeconds(sessions, now = new Date()) {
   if (sessions.length === 0) return 0;
-  const now = new Date();
   const earliest = sessions.reduce(
     (min, s) => (new Date(s.started_at) < min ? new Date(s.started_at) : min),
     new Date(sessions[0].started_at)
   );
-  const windowStart = new Date(Math.max(earliest.getTime(), now.getTime() - 30 * 24 * 60 * 60 * 1000));
-  const daysInWindow = Math.max(1, Math.round((now.getTime() - windowStart.getTime()) / (24 * 60 * 60 * 1000)));
+  const earliestDayStart = startOfLocalDay(earliest);
+  const yesterday = new Date(startOfLocalDay(now).getTime() - 24 * 60 * 60 * 1000);
+  const daysSinceEarliest =
+    Math.floor((yesterday.getTime() - earliestDayStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  // No completed days yet (account created today, nothing logged before
+  // today) - nothing to average, same "not enough history" read as a
+  // brand-new consistency score returning null.
+  if (daysSinceEarliest <= 0) return 0;
+  const daysInWindow = Math.min(30, daysSinceEarliest);
+  const windowStart = new Date(yesterday.getTime() - (daysInWindow - 1) * 24 * 60 * 60 * 1000);
+  const windowEnd = new Date(yesterday.getTime() + 24 * 60 * 60 * 1000); // start of today, exclusive
   const secondsInWindow = sessions
-    .filter((s) => new Date(s.started_at) >= windowStart)
+    .filter((s) => {
+      const started = new Date(s.started_at);
+      return started >= windowStart && started < windowEnd;
+    })
     .reduce((sum, s) => sum + durationSeconds(s), 0);
   return secondsInWindow / daysInWindow;
+}
+
+// How many completed days actually feed the average above - exposed
+// separately so the UI can say "over the last N days" truthfully for a
+// newer account, instead of a hardcoded "30 days" that's wrong until an
+// account is actually a month old. Deliberately duplicates the window
+// math above rather than changing computeAvgDailyFocusSeconds's return
+// shape - keeps every existing caller of that function (which just wants
+// the number) untouched.
+export function computeAvgDailyFocusWindowDays(sessions, now = new Date()) {
+  if (sessions.length === 0) return 0;
+  const earliest = sessions.reduce(
+    (min, s) => (new Date(s.started_at) < min ? new Date(s.started_at) : min),
+    new Date(sessions[0].started_at)
+  );
+  const earliestDayStart = startOfLocalDay(earliest);
+  const yesterday = new Date(startOfLocalDay(now).getTime() - 24 * 60 * 60 * 1000);
+  const daysSinceEarliest =
+    Math.floor((yesterday.getTime() - earliestDayStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  return Math.min(30, Math.max(0, daysSinceEarliest));
 }
 
 // How steady your daily focus time actually is, not just how much of
@@ -971,6 +1017,7 @@ export function computeSummary(sessions, restDayOfWeek = null, graceEnabled = fa
     weeklyTotals: computeWeeklyTotals(sessions),
     monthlyTotals: computeMonthlyTotals(sessions),
     avgDailyFocusSeconds: computeAvgDailyFocusSeconds(sessions),
+    avgDailyFocusWindowDays: computeAvgDailyFocusWindowDays(sessions),
     hourlyTagSuggestions: computeHourlyTagSuggestions(sessions),
     consistency: computeConsistencyScore(sessions, now),
     startTimeAnomaly: computeStartTimeAnomaly(sessions, now),

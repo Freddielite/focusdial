@@ -513,6 +513,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     deadlines={deadlinesWithProgress}
                     tags={tags}
                     avgDailyFocusSeconds={summary.avgDailyFocusSeconds}
+                    avgDailyFocusWindowDays={summary.avgDailyFocusWindowDays}
                     onDataChanged={loadAll}
                   />
                 )}
