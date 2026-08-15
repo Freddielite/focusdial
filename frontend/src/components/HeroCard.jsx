@@ -14,7 +14,7 @@ function statusPill(summary, streakAtRisk, goalMet) {
   return { label: "Fresh start", tone: "dim" };
 }
 
-export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds }) {
+export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds, goalProjection, startTimeAnomaly }) {
   const hasGoal = dailyGoalSeconds != null && dailyGoalSeconds > 0;
   const goalPct = hasGoal ? Math.min(1, summary.todaySeconds / dailyGoalSeconds) : 0;
   const goalMet = hasGoal && summary.todaySeconds >= dailyGoalSeconds;
@@ -33,6 +33,15 @@ export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds }) {
           <span className={`fd-hero__pill fd-hero__pill--${pill.tone}`}>{pill.label}</span>
         </div>
 
+        {startTimeAnomaly && (
+          <div className="fd-hero__anomaly">
+            Later start than usual today — first session at{" "}
+            {Math.round(startTimeAnomaly.todayStartMinute / 60)}h{String(startTimeAnomaly.todayStartMinute % 60).padStart(2, "0")},
+            vs your typical {Math.round(startTimeAnomaly.avgStartMinute / 60)}h
+            {String(Math.round(startTimeAnomaly.avgStartMinute) % 60).padStart(2, "0")}.
+          </div>
+        )}
+
         <div className="fd-hero__value">{formatDuration(summary.todaySeconds)}</div>
 
         {hasGoal && (
@@ -47,6 +56,15 @@ export default function HeroCard({ summary, streakAtRisk, dailyGoalSeconds }) {
               {goalMet ? "Goal met, " : ""}
               {formatDuration(summary.todaySeconds)} of {formatDuration(dailyGoalSeconds)} today
             </span>
+            {goalProjection && (
+              <div
+                className={`fd-hero__projection ${goalProjection.onPace ? "fd-hero__projection--good" : "fd-hero__projection--warn"}`}
+              >
+                {goalProjection.onPace
+                  ? "At today's pace, you're on track to hit your goal."
+                  : `At today's pace, you'll fall short. ${formatDuration(goalProjection.remainingSeconds)} more needed to catch up.`}
+              </div>
+            )}
           </div>
         )}
 

@@ -5,6 +5,7 @@ import TagBreakdown from "./TagBreakdown.jsx";
 import TrendChart from "./TrendChart.jsx";
 import WeekdayBreakdown from "./WeekdayBreakdown.jsx";
 import FocusQualityCard from "./FocusQualityCard.jsx";
+import ConsistencyCard from "./ConsistencyCard.jsx";
 import RiskDigestCard from "./RiskDigestCard.jsx";
 import WeeklyReviewCard from "./WeeklyReviewCard.jsx";
 import DeadlineTrackRecordCard from "./DeadlineTrackRecordCard.jsx";
@@ -26,6 +27,7 @@ export default function InsightsView({ summary, riskDigest, weeklyReview, deadli
         <TagBreakdown byTag={summary.byTag} mostSustainedTag={summary.mostSustainedTag} />
         <WeekdayBreakdown weekday={summary.weekday} bestWeekday={summary.bestWeekday} />
         <FocusQualityCard quality={summary.quality} />
+        <ConsistencyCard consistency={summary.consistency} />
         <DeadlineTrackRecordCard trackRecord={deadlineTrackRecord} />
       </div>
       <TrendChart

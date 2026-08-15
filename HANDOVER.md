@@ -1687,3 +1687,51 @@ notification is *about*, not when it was posted"), so the OS renders and
 keeps ticking up an accurate relative time on its own. No polling/
 interval needed on our side to keep it live.
 
+
+## Session 19 — four local-logic features (no backend changes)
+
+All client-side, computed in `analytics.js` from data already in
+memory — same "cheap, explainable stats over a black box" philosophy
+as the rest of this file. No schema changes, no new endpoints.
+
+**Consistency score** (`computeConsistencyScore`). Population stddev
+of daily totals over the trailing 14 days (zero-filled), scored as
+`100 * (1 - min(1, stddev/mean))` — a coefficient-of-variation read.
+Answers "how steady," a different question from the existing
+average/streak stats, which only answer "how much"/"how long." Needs
+>=5 of the 14 days active before trusting a score — same
+don't-manufacture-a-pattern bar as `mostSustainedTag`/
+`computeHourlyTagSuggestions`, just tuned for a 14-day window instead
+of a session count. New `ConsistencyCard.jsx` on Insights, same panel
+style as `FocusQualityCard`.
+
+**Context-switch cost** (`computeContextSwitchCost`). Buckets days by
+tag-change count (>=5 switches = "high," else "low"), compares average
+session length between buckets. Surfaces only once each bucket has
+>=3 days and the gap is >=15% relative — folded into
+`computeInsightOfTheDay` as a new low-priority candidate rather than
+its own card, since it's a single observational sentence like the
+existing quality/streak ones, not a chart.
+
+**Goal projection** (`computeGoalProjection`). Naive same-pace
+extrapolation: today's total divided by the fraction of the day
+elapsed, projected to midnight. Deliberately not session-pattern-aware
+— a number a person can sanity-check beats a cleverer model they'd
+have to trust blindly. Gated in `App.jsx` to the evening (>=6pm) and
+to >=25% of the day elapsed, so an 8am projection off one early
+session can't swing wildly. Renders as a line under `HeroCard`'s
+existing goal bar, on-pace in green / short in rust.
+
+**Start-time anomaly** (`computeStartTimeAnomaly`). Mean/stddev of the
+last 30 days' first-session start time (minutes since local midnight,
+excluding today); flags when today's first session is >2 stddevs
+later than that baseline. Needs >=7 baseline days and a nonzero
+stddev. Quiet single line under `HeroCard`'s top row, only when it
+fires — no card, no dismiss state, since it's meant to be a passive
+signal, not another action item.
+
+**Not done:** the other ideas from the same brainstorm (streaks with
+recovery grace, voice/quick-add, session templates, comparative
+insights, shareable weekly review image, tag archiving, multi-device
+running-session conflict, recurring deadlines/tasks) — feature-level,
+not local-logic, held back per this session's scope.

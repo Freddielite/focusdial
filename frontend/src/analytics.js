@@ -137,6 +137,192 @@ export function computeAvgDailyFocusSeconds(sessions) {
   return secondsInWindow / daysInWindow;
 }
 
+// How steady your daily focus time actually is, not just how much of
+// it there is -- two people can average the same 2h/day with totally
+// different feels: one logging ~2h every day, the other alternating
+// 5h binges with multi-day gaps. Total/average alone can't tell those
+// apart; this looks at the *spread* of daily totals instead.
+//
+// Population stddev (not sample) over the trailing 14 calendar days,
+// zero-filling days with no sessions (a skipped day is real signal
+// here, not missing data to ignore -- same reasoning as
+// computeAvgDailyFocusSeconds averaging over every day, not just
+// worked ones). Score is 100 * (1 - min(1, stddev/mean)): a
+// coefficient-of-variation read, clamped so a wildly spiky history
+// floors at 0 instead of going negative.
+//
+// Needs at least 5 of the 14 days to have any logged time before
+// trusting a score at all -- same "don't manufacture a pattern from
+// too little evidence" bar as computeHourlyTagSuggestions/
+// mostSustainedTag (those use >=3 sessions; this uses >=5 days since
+// it's a 14-day window, not an all-time one).
+const CONSISTENCY_WINDOW_DAYS = 14;
+const CONSISTENCY_MIN_ACTIVE_DAYS = 5;
+export function computeConsistencyScore(sessions, now = new Date()) {
+  const dayTotals = new Map();
+  for (const s of sessions) {
+    for (const seg of splitSessionByLocalDay(s)) {
+      const key = localDayKey(seg.date);
+      dayTotals.set(key, (dayTotals.get(key) || 0) + seg.seconds);
+    }
+  }
+  const values = [];
+  for (let i = 0; i < CONSISTENCY_WINDOW_DAYS; i++) {
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    values.push(dayTotals.get(localDayKey(d)) || 0);
+  }
+  const activeDays = values.filter((v) => v > 0).length;
+  if (activeDays < CONSISTENCY_MIN_ACTIVE_DAYS) return null;
+
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  if (mean <= 0) return null;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  const stddev = Math.sqrt(variance);
+  const score = Math.round(100 * Math.max(0, 1 - Math.min(1, stddev / mean)));
+
+  return { score, avgSeconds: mean, stddevSeconds: stddev, activeDays, windowDays: CONSISTENCY_WINDOW_DAYS };
+}
+
+// Whether jumping between tags a lot in a day comes with a real cost to
+// how long individual sessions run -- a different question from the
+// existing "which hour/tag am I best in," this looks at same-day
+// churn instead of time-of-day or subject matter.
+//
+// Groups sessions by the local day they *started* on (not split across
+// midnight -- a session belongs to one day for switch-counting, unlike
+// the duration-attribution elsewhere in this file), sorts each day's
+// sessions by start time, and counts how many times the tag actually
+// changes between consecutive sessions. Days are bucketed
+// high-switch (>=5 tag changes) vs low-switch (0-4), then average
+// session length is compared between the two buckets -- only surfaced
+// once both buckets have >=3 days behind them (same sample-size bar as
+// qualityByDuration) and the gap is at least 15% relative, so a couple
+// of noisy days can't manufacture a false "switching costs you" story.
+const HIGH_SWITCH_THRESHOLD = 5;
+const CONTEXT_SWITCH_MIN_DAYS = 3;
+const CONTEXT_SWITCH_MIN_GAP_PCT = 0.15;
+export function computeContextSwitchCost(sessions) {
+  const byDay = new Map(); // localDayKey -> sessions[]
+  for (const s of sessions) {
+    const key = localDayKey(new Date(s.started_at));
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(s);
+  }
+
+  const highSwitchDurations = [];
+  const lowSwitchDurations = [];
+  byDay.forEach((daySessions) => {
+    if (daySessions.length === 0) return;
+    const sorted = [...daySessions].sort((a, b) => new Date(a.started_at) - new Date(b.started_at));
+    let switches = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      if ((sorted[i].tag_id ?? null) !== (sorted[i - 1].tag_id ?? null)) switches += 1;
+    }
+    const avgDuration = sorted.reduce((sum, s) => sum + durationSeconds(s), 0) / sorted.length;
+    (switches >= HIGH_SWITCH_THRESHOLD ? highSwitchDurations : lowSwitchDurations).push(avgDuration);
+  });
+
+  if (highSwitchDurations.length < CONTEXT_SWITCH_MIN_DAYS || lowSwitchDurations.length < CONTEXT_SWITCH_MIN_DAYS) {
+    return null;
+  }
+
+  const highAvg = highSwitchDurations.reduce((a, b) => a + b, 0) / highSwitchDurations.length;
+  const lowAvg = lowSwitchDurations.reduce((a, b) => a + b, 0) / lowSwitchDurations.length;
+  if (lowAvg <= 0) return null;
+  const pctShorter = (lowAvg - highAvg) / lowAvg;
+  if (pctShorter < CONTEXT_SWITCH_MIN_GAP_PCT) return null;
+
+  return {
+    highSwitchAvgSeconds: highAvg,
+    lowSwitchAvgSeconds: lowAvg,
+    highSwitchDayCount: highSwitchDurations.length,
+    lowSwitchDayCount: lowSwitchDurations.length,
+    pctShorter,
+  };
+}
+
+// Linear same-pace projection of today's total, for the one question
+// the existing goal bar (HeroCard) can't answer on its own: "at this
+// rate, will I actually get there." Deliberately naive (today's total
+// divided by how much of the day has elapsed, extrapolated to
+// midnight) rather than anything session-pattern-aware -- a simple,
+// legible number a person can sanity-check in their head beats a
+// cleverer model they'd have to trust blindly.
+//
+// Returns null once the goal's already met (nothing to project) or
+// before there's enough of the day elapsed to extrapolate from
+// (before 6am, or on a goal-free day) -- an 8am projection off of one
+// early session would swing wildly and just be noise.
+const GOAL_PROJECTION_MIN_DAY_FRACTION = 0.25; // 6am
+export function computeGoalProjection({ todaySeconds, dailyGoalSeconds, now = new Date() }) {
+  if (!dailyGoalSeconds || dailyGoalSeconds <= 0) return null;
+  if (todaySeconds >= dailyGoalSeconds) return null;
+
+  const dayStart = startOfLocalDay(now);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const elapsedFraction = (now.getTime() - dayStart.getTime()) / dayMs;
+  if (elapsedFraction < GOAL_PROJECTION_MIN_DAY_FRACTION) return null;
+
+  const projectedSeconds = todaySeconds / elapsedFraction;
+  const onPace = projectedSeconds >= dailyGoalSeconds;
+  const remainingSeconds = Math.max(0, dailyGoalSeconds - todaySeconds);
+  const remainingDayMs = Math.max(0, dayMs - (now.getTime() - dayStart.getTime()));
+
+  return { projectedSeconds, onPace, remainingSeconds, remainingDayMs };
+}
+
+// Flags when today's first session started meaningfully later than
+// usual, purely from mean/stddev of past start times -- no ML, same
+// spirit as the rest of this file's "cheap, explainable stats beat a
+// black box" approach. A late start is often the earliest visible
+// sign of a day slipping, before it shows up in any totals.
+//
+// Baseline is each of the last 30 days' *first* session's start time
+// (minutes since local midnight), excluding today. Needs at least 7
+// of those days present -- a full week's worth -- before trusting a
+// mean/stddev enough to call anything "unusual" against it; fewer than
+// that and one early riser or one late night skews the baseline too
+// much to mean anything. Requires stddev > 0 too, since a baseline
+// with zero spread would flag any deviation at all as an "anomaly."
+const START_TIME_LOOKBACK_DAYS = 30;
+const START_TIME_MIN_BASELINE_DAYS = 7;
+const START_TIME_ANOMALY_STDDEVS = 2;
+export function computeStartTimeAnomaly(sessions, now = new Date()) {
+  const todayKey = localDayKey(now);
+  const windowStart = new Date(now.getTime() - START_TIME_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+
+  const firstStartByDay = new Map(); // dayKey -> earliest started_at
+  for (const s of sessions) {
+    const started = new Date(s.started_at);
+    if (started < windowStart) continue;
+    const key = localDayKey(started);
+    const existing = firstStartByDay.get(key);
+    if (!existing || started < existing) firstStartByDay.set(key, started);
+  }
+
+  const minuteOfDay = (d) => d.getHours() * 60 + d.getMinutes();
+  const todayFirst = firstStartByDay.get(todayKey);
+  if (!todayFirst) return null; // nothing logged yet today, nothing to compare
+
+  const baselineMinutes = [];
+  firstStartByDay.forEach((d, key) => {
+    if (key === todayKey) return;
+    baselineMinutes.push(minuteOfDay(d));
+  });
+  if (baselineMinutes.length < START_TIME_MIN_BASELINE_DAYS) return null;
+
+  const mean = baselineMinutes.reduce((a, b) => a + b, 0) / baselineMinutes.length;
+  const variance = baselineMinutes.reduce((sum, v) => sum + (v - mean) ** 2, 0) / baselineMinutes.length;
+  const stddev = Math.sqrt(variance);
+  if (stddev <= 0) return null;
+
+  const todayMinute = minuteOfDay(todayFirst);
+  const deltaMinutes = todayMinute - mean;
+  if (deltaMinutes <= stddev * START_TIME_ANOMALY_STDDEVS) return null;
+
+  return { todayStartMinute: todayMinute, avgStartMinute: mean, deltaMinutes, baselineDays: baselineMinutes.length };
+}
+
 // Rolls each budget's assigned tags up into "how much of this week's
 // target have I actually logged," using the same Monday-start week
 // convention as the weekly trend chart.
@@ -644,6 +830,9 @@ export function computeSummary(sessions, restDayOfWeek = null) {
     monthlyTotals: computeMonthlyTotals(sessions),
     avgDailyFocusSeconds: computeAvgDailyFocusSeconds(sessions),
     hourlyTagSuggestions: computeHourlyTagSuggestions(sessions),
+    consistency: computeConsistencyScore(sessions, now),
+    startTimeAnomaly: computeStartTimeAnomaly(sessions, now),
+    contextSwitchCost: computeContextSwitchCost(sessions),
   };
 }
 
@@ -744,6 +933,14 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
     candidates.push({
       tone: "neutral",
       message: `Your longest average sessions are on "${summary.mostSustainedTag.name}" (${Math.round(summary.mostSustainedTag.avgSeconds / 60)}m each). That's where your focus holds up best.`,
+    });
+  }
+
+  if (summary.contextSwitchCost) {
+    const c = summary.contextSwitchCost;
+    candidates.push({
+      tone: "neutral",
+      message: `Days with ${HIGH_SWITCH_THRESHOLD}+ tag switches average ${Math.round(c.pctShorter * 100)}% shorter sessions (${Math.round(c.highSwitchAvgSeconds / 60)}m vs ${Math.round(c.lowSwitchAvgSeconds / 60)}m). Fewer switches, longer stretches.`,
     });
   }
 

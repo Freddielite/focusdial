@@ -27,7 +27,7 @@ import {
   updateSettings,
   setSlowRequestHandler,
 } from "./api.js";
-import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord } from "./analytics.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection } from "./analytics.js";
 
 const DEFAULT_SETTINGS = {
   push_enabled: true,
@@ -258,6 +258,21 @@ export default function App({ user, onLogout, onUserUpdated }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowTick, summary.todaySeconds, summary.streakDays, settings.rest_day_of_week]);
 
+  // Same-pace "will I hit today's goal" projection, only worth surfacing
+  // once enough of the day has actually happened to extrapolate from
+  // (see computeGoalProjection) and only shown in the evening window —
+  // an 11am reminder about tonight's goal is noise, not signal.
+  const goalProjection = useMemo(() => {
+    const nowDate = new Date(nowTick);
+    if (nowDate.getHours() < 18) return null;
+    return computeGoalProjection({
+      todaySeconds: summary.todaySeconds,
+      dailyGoalSeconds: settings.daily_focus_goal_seconds,
+      now: nowDate,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowTick, summary.todaySeconds, settings.daily_focus_goal_seconds]);
+
   // ---- Notification orchestration --------------------------------
   // Every event shows an in-app toast. The three "in-app events"
   // (session/deadline/budget) additionally fire a push, but only when
@@ -453,6 +468,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     tasks={tasks}
                     insightOfTheDay={insightOfTheDay}
                     dailyGoalSeconds={settings.daily_focus_goal_seconds}
+                    goalProjection={goalProjection}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
                     onSessionDeleted={handleSessionDeleted}
