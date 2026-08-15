@@ -1899,4 +1899,30 @@ partial unique index only applies where `ended_at IS NULL`, so backfill
 entries (which always have both timestamps) were never part of this
 race to begin with.
 
+## Session 23 — comparative insights empty-state message
+
+Reported: 9-day streak, Comparative Insights card showing nothing.
+Checked the account-age clamping specifically (the exact class of bug
+Session 20/21 fixed in `computeConsistencyScore`) — that part's correct;
+verified with synthetic data that the window does read from the
+account's actual first session and does fire once there's enough of it
+(tested a 20-day series with an exaggerated Tuesday pattern, correctly
+surfaced "111% more on Tuesdays").
+
+Not a bug: the `>=3 occurrences per weekday` bar (see Session 22) can't
+mathematically clear for *any* weekday before day 15 of an account's
+history — occurrences of a single weekday land 7 days apart, so the 3rd
+one is day 15 at the earliest, regardless of streak length or how
+complete the logging is. A 9-day-old account, even a perfect daily
+streak, is going to see this empty no matter what.
+
+Kept the 3-occurrence bar as-is (per explicit choice, not an oversight —
+lowering it to 2 was considered and declined) and instead fixed the
+empty-state copy in `ComparativeInsightsCard.jsx` to say the actual
+number ("minimum of 15 days of history") rather than the previous vague
+"keep logging for a few weeks," plus a matching note in
+`computeComparativeInsights`'s comment block in `analytics.js` — the
+"why is this empty despite a real streak" question is exactly the one
+worth answering inline, not just being accurate-but-unhelpful about.
+
 

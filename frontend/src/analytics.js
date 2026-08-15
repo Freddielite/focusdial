@@ -293,6 +293,15 @@ export function computeContextSwitchCost(sessions) {
 // uses for the same reason: a 4% difference is real but not a useful
 // thing to tell someone. Returns up to 3 candidates, largest deviation
 // first, so a very lopsided week doesn't drown a shorter list in noise.
+//
+// Concretely: no weekday can clear the >=3-occurrences bar before day
+// 15 of an account's history at the very earliest (occurrences of any
+// single weekday land 7 days apart, so the 3rd one is day 15) — a
+// brand-new account, even a perfect daily streak, will see this stay
+// empty until then. ComparativeInsightsCard's empty state says so
+// explicitly rather than a vague "check back later," since "why is
+// this empty despite a real streak" is the obvious question to ask
+// before that point.
 const COMPARATIVE_WINDOW_DAYS = 56;
 const COMPARATIVE_MIN_OCCURRENCES = 3;
 const COMPARATIVE_MIN_DEVIATION_PCT = 0.15;

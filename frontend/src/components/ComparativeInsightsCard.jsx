@@ -17,8 +17,9 @@ export default function ComparativeInsightsCard({ insights }) {
       <div className="fd-panel fd-comparative-card">
         <div className="fd-panel__label">Comparative Insights</div>
         <div className="fd-empty">
-          Keep logging sessions across a few weeks and this will start calling out days that
-          run noticeably above or below your usual pace.
+          Needs at least 3 logged occurrences of a given weekday before comparing it to your
+          average — that's a minimum of 15 days of history (longer if some weekdays are sparser
+          than others). Keep logging and this will start filling in.
         </div>
       </div>
     );
