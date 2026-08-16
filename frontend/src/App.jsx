@@ -495,6 +495,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     riskDigest={riskDigest}
                     weeklyReview={weeklyReview}
                     deadlineTrackRecord={deadlineTrackRecord}
+                    history={history}
                   />
                 )}
                 {activeTab === "budgets" && (

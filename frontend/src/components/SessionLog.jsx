@@ -19,7 +19,7 @@ function ClockIcon() {
   );
 }
 
-const QUALITY_LABEL = { focused: "Focused", neutral: "Neutral", distracted: "Distracted" };
+export const QUALITY_LABEL = { focused: "Focused", neutral: "Neutral", distracted: "Distracted" };
 const PAGE_SIZE = 10;
 
 export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDeleted, onSessionUpdated }) {

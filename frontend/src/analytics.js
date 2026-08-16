@@ -36,7 +36,7 @@ function localDayKey(date) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
-function startOfLocalDay(date) {
+export function startOfLocalDay(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;

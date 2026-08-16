@@ -1503,6 +1503,27 @@ button {
   gap: 12px;
 }
 
+.fd-day-detail-panel {
+  width: min(440px, 100%);
+}
+
+.fd-day-detail__total {
+  margin-top: 4px;
+  margin-bottom: 16px;
+  font-family: var(--font-mono);
+  color: var(--parchment-dim);
+  font-size: 13px;
+}
+
+.fd-day-detail__list {
+  margin-bottom: 16px;
+}
+
+.fd-day-detail__close {
+  width: 100%;
+  text-align: center;
+}
+
 /* ---------- Trend chart ---------- */
 
 .fd-trend-panel__head {
@@ -1771,6 +1792,18 @@ button {
   height: 11px;
   border-radius: 2px;
   background: var(--grad-input);
+  /* Was a plain <div>; now a real <button> for click + keyboard access,
+     so the browser's default button chrome needs resetting back to how
+     the div looked. */
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: block;
+}
+
+.fd-heatmap__cell:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
 }
 
 .fd-heatmap__cell--1 {

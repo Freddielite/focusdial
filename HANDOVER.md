@@ -2057,3 +2057,50 @@ fixed *after* with the same script (not just eyeballing the diff).
 **Not verified this session:** the actual `computeInsightOfTheDay`
 context-switch card wasn't viewed in a browser — no environment for
 that here.
+
+## Session 28 — clickable heatmap cells (day detail modal)
+
+Added: clicking any Consistency heatmap cell opens a modal with that
+day's real date, its total (same number already backing the cell's
+shade), and the list of sessions that touched it — tag, time range,
+duration, quality dot if rated. Empty days show a plain "nothing
+logged" state rather than doing nothing on click.
+
+**Data plumbing:** `CalendarHeatmap` previously only got the
+pre-aggregated `daily`/`streakDays`, no raw sessions to list. Threaded
+`history` (already loaded in `App.jsx`) down through `InsightsView` as
+a new prop rather than fetching anything new — the list is built
+client-side from data already in memory.
+
+**Cells are real `<button>`s now,** not `<div>`s — keyboard/screen
+reader accessible, with a focus ring reset to match. `startOfLocalDay`
+got `export`ed from `analytics.js` (was module-private) since the
+day-boundary math needs to match the rest of the app's convention
+exactly, not a hand-rolled duplicate that could quietly drift from it.
+`QUALITY_LABEL` similarly got `export`ed out of `SessionLog.jsx` rather
+than copy-pasting the three-entry map a second time.
+
+**The one thing worth being deliberate about:** `history` (the
+`/sessions/history` endpoint) doesn't carry `note` or `task_title` -
+see that endpoint's own comment on why it's a leaner shape than the
+Session Log's paginated fetch. So the day-detail modal shows tag, time,
+duration, and quality, but not note or task - not an oversight, just
+what's actually available without adding a second fetch for something
+this secondary.
+
+**A session crossing midnight shows up in both days it touches,** each
+time flagged with which direction it crosses (`\u2190 started the day
+before` / `continues past midnight \u2192`), and the day's total shown
+above the list is still only that day's actual split portion - not the
+session's full duration - so the modal can't visually contradict the
+cell's own shading the way a naive "which day did this session start
+on" filter would have. Verified directly: fed the same 23:45\u201300:15
+session into the day-filter for both the day it started and the day it
+ended, confirmed it appears in both lists with the correct
+crossesBefore/crossesAfter flag on each side.
+
+Verified: `npm run build` clean, filtering logic confirmed with a
+standalone script (not just read through). **Not verified this
+session:** no browser here to actually click a cell and see the modal
+render - worth a manual check the first time this runs somewhere with
+one.
