@@ -69,6 +69,7 @@ export default function SessionEditModal({ session, tags, tasks, onCancel, onSav
             {tags.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
+                {t.archived ? " (archived)" : ""}
               </option>
             ))}
           </Dropdown>

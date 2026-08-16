@@ -78,6 +78,16 @@ export async function initSchema() {
 
     ALTER TABLE tags ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
     ALTER TABLE tags DROP CONSTRAINT IF EXISTS tags_name_key;
+
+    -- Archiving hides a tag from every "pick a tag for something new"
+    -- picker (starting a session, quick-start, manual entry, assigning
+    -- to a budget/deadline) without touching its existing sessions,
+    -- budget/deadline assignment, or history the way DELETE's ON DELETE
+    -- SET NULL does. The one place archived tags still need to surface
+    -- is anywhere reviewing/editing *existing* records that already
+    -- reference one - see /tags's include_archived param and
+    -- SessionEditModal's use of it.
+    ALTER TABLE tags ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name ON tags(user_id, name);
 
     CREATE TABLE IF NOT EXISTS sessions (

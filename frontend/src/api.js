@@ -136,10 +136,13 @@ export const updateProfile = (displayName) =>
 // below.
 export const googleLoginStartUrl = () => `${BASE_URL}/auth/google/login/start`;
 
-export const listTags = () => apiFetch("/tags");
+export const listTags = (includeArchived = false) =>
+  apiFetch(includeArchived ? "/tags?include_archived=1" : "/tags");
 export const createTag = (name, color) =>
   apiFetch("/tags", { method: "POST", body: JSON.stringify({ name, color }) });
 export const deleteTag = (id) => apiFetch(`/tags/${id}`, { method: "DELETE" });
+export const setTagArchived = (id, archived) =>
+  apiFetch(`/tags/${id}`, { method: "PATCH", body: JSON.stringify({ archived }) });
 
 export const getRunningSession = () => apiFetch("/sessions/running");
 export const startSession = (tag_id, note, task_id) =>

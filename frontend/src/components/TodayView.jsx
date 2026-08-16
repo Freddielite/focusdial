@@ -9,6 +9,7 @@ import TasksWidget from "./TasksWidget.jsx";
 
 export default function TodayView({
   tags,
+  allTags,
   summary,
   streakAtRisk,
   sessionsVersion,
@@ -62,7 +63,7 @@ export default function TodayView({
       </div>
       <SessionLog
         sessionsVersion={sessionsVersion}
-        tags={tags}
+        tags={allTags}
         tasks={tasks}
         onSessionDeleted={onSessionDeleted}
         onSessionUpdated={onDataChanged}

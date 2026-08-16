@@ -2039,6 +2039,26 @@ button {
   font-size: 12px;
 }
 
+.fd-tag-chip .fd-icon-btn {
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 0;
+}
+
+.fd-tag-chip--archived {
+  opacity: 0.7;
+}
+
+.fd-tag-manager__archived-toggle {
+  align-self: flex-start;
+}
+
+.fd-tag-manager__list--archived {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
 .fd-tag-manager__form {
   display: flex;
   flex-wrap: wrap;

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createTag, deleteTag } from "../api.js";
+import { createTag, deleteTag, listTags, setTagArchived } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 
@@ -14,6 +14,22 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
+
+  // Archived tags aren't in `tags` (that's the active-only list every
+  // other picker in the app uses too) - fetched separately, and only
+  // once someone actually opens this section, since most visits here
+  // are just "add a tag" and don't need it.
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [archivedTags, setArchivedTags] = useState(null); // null = not fetched yet
+  const [archivedBusyId, setArchivedBusyId] = useState(null);
+
+  async function toggleArchivedSection() {
+    if (!archivedOpen && archivedTags === null) {
+      const all = await listTags(true);
+      setArchivedTags(all.filter((t) => t.archived));
+    }
+    setArchivedOpen((v) => !v);
+  }
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -54,6 +70,37 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
     });
   }
 
+  // Unlike delete, archiving isn't destructive or undo-worthy in the
+  // same way - the tag and all its history stay exactly as they were,
+  // it just stops showing up as a choice for new sessions. No confirm
+  // dialog, no undo toast needed for something this reversible (a
+  // second click un-does it).
+  async function handleArchive(tag) {
+    setPendingIds((prev) => new Set(prev).add(tag.id));
+    try {
+      await setTagArchived(tag.id, true);
+      onTagsChanged();
+      setArchivedTags(null); // stale until reopened - simplest way to keep it correct
+    } finally {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tag.id);
+        return next;
+      });
+    }
+  }
+
+  async function handleUnarchive(tag) {
+    setArchivedBusyId(tag.id);
+    try {
+      await setTagArchived(tag.id, false);
+      setArchivedTags((prev) => (prev ? prev.filter((t) => t.id !== tag.id) : prev));
+      onTagsChanged();
+    } finally {
+      setArchivedBusyId(null);
+    }
+  }
+
   if (!open) {
     return (
       <button className="fd-link-btn" onClick={() => setOpen(true)}>
@@ -71,6 +118,14 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
           <span key={t.id} className="fd-tag-chip" style={{ borderColor: t.color }}>
             <span className="fd-tag-dot" style={{ background: t.color }} />
             {t.name}
+            <button
+              className="fd-icon-btn"
+              onClick={() => handleArchive(t)}
+              aria-label={`Archive ${t.name}`}
+              title="Archive - hides it from new sessions, keeps its history"
+            >
+              Archive
+            </button>
             <button className="fd-icon-btn" onClick={() => handleDelete(t)} aria-label={`Delete ${t.name}`}>
               ✕
             </button>
@@ -102,6 +157,36 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
         </button>
       </form>
       {error && <div className="fd-inline-error">{error}</div>}
+
+      <button type="button" className="fd-link-btn fd-tag-manager__archived-toggle" onClick={toggleArchivedSection}>
+        {archivedOpen ? "Hide archived tags" : "Show archived tags"}
+      </button>
+      {archivedOpen && (
+        <div className="fd-tag-manager__list fd-tag-manager__list--archived">
+          {archivedTags === null ? (
+            <span className="fd-empty">Loading…</span>
+          ) : archivedTags.length === 0 ? (
+            <span className="fd-empty">No archived tags.</span>
+          ) : (
+            archivedTags.map((t) => (
+              <span key={t.id} className="fd-tag-chip fd-tag-chip--archived" style={{ borderColor: t.color }}>
+                <span className="fd-tag-dot" style={{ background: t.color }} />
+                {t.name}
+                <button
+                  className="fd-icon-btn"
+                  onClick={() => handleUnarchive(t)}
+                  disabled={archivedBusyId === t.id}
+                  aria-label={`Unarchive ${t.name}`}
+                  title="Unarchive - makes it available for new sessions again"
+                >
+                  {archivedBusyId === t.id ? "…" : "Unarchive"}
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+      )}
+
       {!embedded && (
         <button className="fd-link-btn" onClick={() => setOpen(false)}>
           Done

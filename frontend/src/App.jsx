@@ -86,6 +86,12 @@ export default function App({ user, onLogout, onUserUpdated }) {
   );
 
   const [tags, setTags] = useState([]);
+  // Active + archived, fetched in parallel with the active-only `tags`
+  // above. Only threaded to SessionLog (see below) - the one place that
+  // needs to correctly display/edit a past session that already
+  // references a tag someone's since archived, without surfacing
+  // archived tags in every other "pick a tag" picker in the app.
+  const [allTags, setAllTags] = useState([]);
   const [history, setHistory] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [deadlines, setDeadlines] = useState([]);
@@ -113,9 +119,10 @@ export default function App({ user, onLogout, onUserUpdated }) {
 
   async function loadAll() {
     try {
-      const [tagData, hist, budgetData, deadlineData, reminderData, taskData, settingsData] =
+      const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, settingsData] =
         await Promise.all([
           listTags(),
+          listTags(true),
           getSessionHistory(),
           listBudgets(),
           listDeadlines(),
@@ -124,6 +131,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
           getSettings().catch(() => DEFAULT_SETTINGS),
         ]);
       setTags(tagData);
+      setAllTags(allTagData);
       setHistory(hist);
       setBudgets(budgetData);
       setDeadlines(deadlineData);
@@ -504,6 +512,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                   <TodayView
                     key="today"
                     tags={tags}
+                    allTags={allTags}
                     summary={summary}
                     streakAtRisk={streakAtRisk}
                     sessionsVersion={sessionsVersion}

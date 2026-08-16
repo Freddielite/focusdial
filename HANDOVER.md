@@ -2253,3 +2253,63 @@ script covering real matches, an unrelated word, empty input, and an
 empty vocabulary. **Not verified this session:** no browser here to
 actually type into the field and watch the tag pre-select live - worth
 a real click-through next chance you get.
+
+## Session 32 — tag archiving (last backlog item)
+
+Hide a tag from every "pick one" picker without deleting it or its
+history - the last item on the original backlog list.
+
+**Schema:** `tags.archived BOOLEAN NOT NULL DEFAULT false`. Deliberately
+not reusing DELETE's existing `ON DELETE SET NULL` behavior - that
+strips `tag_id` off every session that used it, which is exactly the
+destructive side effect archiving is meant to avoid.
+
+**`GET /tags`** now filters to `archived = false` by default;
+`?include_archived=1` returns everything (archived sorted last). Every
+existing caller of `listTags()` needed zero changes - they now
+transparently get the active-only list, which is what they actually
+wanted all along (starting a session, quick-start, manual entry,
+assigning a tag to a budget/deadline - none of those should be able to
+pick something someone archived on purpose).
+
+**The one place that needed to see archived tags anyway:** `SessionEditModal`,
+via `SessionLog` - if a past session already references a tag that's
+since been archived, the edit dropdown needs that option present or it
+renders with a selection that matches nothing in the list. Solved with
+a second, parallel App.jsx fetch (`allTags = listTags(true)`), threaded
+only down the one path that needs it (`App.jsx` → `TodayView` →
+`SessionLog` → `SessionEditModal`) - every other consumer still gets
+the plain active-only `tags`. The dropdown labels an archived option
+with "(archived)" so it's clear why it's not in the normal list.
+
+**Budgets and deadlines needed no changes at all** - a budget's own
+`.tags` array already comes from its own server-side join by
+`budget_id`, independent of the `/tags` list, so an archived-but-still-
+assigned tag keeps reporting its rolled-up progress correctly. The
+"assign a tag to this budget" picker in `BudgetManager` already reads
+from the active-only `tags`, so archived tags simply stop being
+assignable going forward - no special-casing needed, it just fell out
+of the existing architecture correctly.
+
+**TagManager.jsx:** active tags get a new "Archive" action next to the
+existing delete - no confirm dialog or undo toast, unlike delete,
+since archiving is fully and trivially reversible (unlike delete's
+`ON DELETE SET NULL`, which can't be undone once committed). A
+"Show archived tags" toggle lazily fetches the archived-only set on
+first open (not on every render of this panel, since most visits here
+are just adding a new tag) and offers "Unarchive" on each.
+
+**Corrected mid-build:** first pass used Tabler icon classes
+(`ti ti-archive` etc.) for the action buttons, copying a convention
+from an unrelated mockup tool - this project doesn't actually load that
+icon font. Caught before shipping and swapped to plain text labels
+("Archive" / "Unarchive"), matching how the existing delete button
+here is already a plain "✕" glyph, not an icon-font dependency.
+
+Verified: `node --check` clean on both touched backend files, `npm run
+build` clean, and the two SQL branches (filtered vs. include_archived)
+confirmed to produce the intended queries. **Not verified this
+session:** no live database or browser here, so the actual
+archive → confirm it disappears from TimerPanel's dropdown →
+unarchive → confirm it comes back round-trip wasn't clicked through -
+worth doing once you're set up to run it.
