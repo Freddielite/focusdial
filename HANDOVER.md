@@ -2204,3 +2204,52 @@ timing), which isn't something a standalone Node script can exercise
 the way the analytics.js logic bugs earlier could be - needs an actual
 browser click-through (start a timer, switch tabs, switch back) to see
 the flash is really gone, which isn't available here.
+
+## Session 31 — quick-start via free text (backlog item, built)
+
+Type what you're doing in a new field above the tag dropdown, and it
+tries to match it to a tag - the last open backlog item besides tag
+archiving. Two decisions were made explicit before building: the match
+should get smarter over time (not a fixed keyword list), and a miss
+should fall back to manual picking, never a guessed default.
+
+**Learns from real history, not a keyword list.** `buildTagVocabulary`
+(analytics.js) scans every completed, tagged session's `note` and
+linked task `title`, and builds a per-tag word-frequency map - this
+person's own vocabulary for "Coding" or "Writing," not a fixed guess at
+what those words should mean for everyone. `/sessions/history` had to
+gain two columns (`note`, `task_title` via a join to `tasks`) to make
+this possible - it previously only carried the leaner shape
+CalendarHeatmap's day-detail modal already had to work around the
+absence of. Every completed, noted session is already a data point, so
+this keeps improving on its own with no separate training step.
+
+**`matchTagForText`** scores every tag's vocabulary against the typed
+text and requires at least 2 points of matched word-frequency before
+returning a tag - one coincidental word match isn't enough to act on.
+Below that bar, or with nothing learned yet (new account, or a tag
+nobody's ever left a note on), it returns `null` on purpose. Verified
+directly, not just by reading the code: fed it a small set of tagged,
+noted sessions and confirmed real phrases matched the right tag, an
+unrelated word ("gardening"), empty input, and an empty vocabulary
+(brand-new account) all correctly returned `null` rather than a guess.
+
+**On `null`, TimerPanel does nothing** - `selectedTag` is left exactly
+as it was, so the existing dropdown is what the person actually uses,
+same as before this feature existed. On a confident match, it's the
+same "quietly pre-select, don't force it" pattern the hourly-suggestion
+nudge already used: gated behind the same `userPickedTag` flag, so a
+manual dropdown choice always wins and further typing can't override
+it, but continued typing before any manual pick keeps re-matching live.
+
+**What gets saved:** the typed text becomes the session's `note` at
+start (via `startSession`'s existing `note` param), and also seeds the
+stop-time note field so adding detail when stopping edits what was
+already said instead of starting from blank.
+
+Verified: `node --check` clean on the backend route, `npm run build`
+clean, and the vocabulary/matching logic confirmed with a standalone
+script covering real matches, an unrelated word, empty input, and an
+empty vocabulary. **Not verified this session:** no browser here to
+actually type into the field and watch the tag pre-select live - worth
+a real click-through next chance you get.

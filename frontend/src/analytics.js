@@ -680,6 +680,68 @@ export function computeDeadlineTrackRecord(deadlinesProgress) {
   };
 }
 
+// Common enough in "what are you working on" phrasing that they'd
+// otherwise pollute every tag's vocabulary about equally and add
+// nothing distinguishing - filtered out before counting.
+const QUICK_START_STOPWORDS = new Set([
+  "the", "a", "an", "to", "of", "for", "and", "or", "in", "on", "at",
+  "with", "my", "this", "that", "it", "is", "was", "be", "do", "doing",
+  "working", "work", "today", "some", "just", "up", "about", "on",
+]);
+
+function quickStartTokenize(text) {
+  return (text.toLowerCase().match(/[a-z0-9]+/g) || []).filter(
+    (w) => w.length > 2 && !QUICK_START_STOPWORDS.has(w)
+  );
+}
+
+// Builds, per tag, how often each word has actually appeared in that
+// tag's own session notes and linked task titles - this person's own
+// vocabulary for each tag, learned from their real history, rather than
+// a fixed guess at what words "should" mean Coding vs Writing for
+// everyone. Only sessions with both a tag and some note/task text
+// contribute; a tagged session with neither has nothing to learn from.
+// Naturally gets better over time as more tagged sessions carry a note
+// or a linked task - there's no separate "training" step, every
+// completed session is already a data point.
+export function buildTagVocabulary(sessions) {
+  const byTag = new Map(); // tagId -> Map(word -> count)
+  for (const s of sessions) {
+    if (!s.tag_id) continue;
+    const text = [s.note, s.task_title].filter(Boolean).join(" ");
+    const words = quickStartTokenize(text);
+    if (words.length === 0) continue;
+    if (!byTag.has(s.tag_id)) byTag.set(s.tag_id, new Map());
+    const wordCounts = byTag.get(s.tag_id);
+    for (const w of words) wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
+  }
+  return byTag;
+}
+
+// Scores every tag in `vocabulary` against freshly-typed quick-start
+// text and returns the tag id with the strongest match - but only once
+// it clears a minimum bar (2+ points of matched word-frequency), so one
+// word that happened to appear once in some tag's history doesn't force
+// a confident-looking guess. Below that bar, or with no vocabulary yet
+// (a brand-new account, or a tag nobody's ever left a note on) this
+// returns null on purpose - per how this is meant to be used, null
+// means "leave it to the person to pick," not "guess something anyway."
+export function matchTagForText(text, vocabulary) {
+  const words = quickStartTokenize(text);
+  if (words.length === 0 || vocabulary.size === 0) return null;
+  let bestTagId = null;
+  let bestScore = 0;
+  for (const [tagId, wordCounts] of vocabulary) {
+    let score = 0;
+    for (const w of words) score += wordCounts.get(w) || 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestTagId = tagId;
+    }
+  }
+  return bestScore >= 2 ? bestTagId : null;
+}
+
 // For each hour of day (0-23), which tag has the most historical seconds
 // logged starting in that hour - used both to pre-select a tag when
 // starting a new timer around that time, and (see TimerPanel's

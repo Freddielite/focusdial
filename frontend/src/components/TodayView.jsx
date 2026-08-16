@@ -17,6 +17,7 @@ export default function TodayView({
   dailyGoalSeconds,
   goalProjection,
   graceEnabled,
+  tagVocabulary,
   onRunningChange,
   onSessionCompleted,
   onSessionCreated,
@@ -47,6 +48,7 @@ export default function TodayView({
             tags={tags}
             tasks={tasks}
             hourlyTagSuggestions={summary.hourlyTagSuggestions}
+            tagVocabulary={tagVocabulary}
             onSessionCompleted={onSessionCompleted}
             onDataChanged={onDataChanged}
             onRunningChange={onRunningChange}

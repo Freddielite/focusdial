@@ -159,12 +159,19 @@ sessionsRouter.post("/sessions", async (req, res) => {
 // "today" and "this week" are timezone-sensitive, and the browser knows
 // the user's actual local timezone, while the server would otherwise have
 // to guess or assume UTC and get day boundaries subtly wrong.
+//
+// `note`/`task_title` were added on top of the original leaner shape
+// (see CalendarHeatmap's day-detail modal, which explicitly worked
+// around their absence) specifically so the frontend can build the
+// quick-start tag vocabulary - see buildTagVocabulary in analytics.js -
+// from what this person has actually typed against each tag in the
+// past, not a fixed guess at what words "should" mean what.
 sessionsRouter.get("/sessions/history", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT s.id, s.tag_id, s.started_at, s.ended_at, s.source, s.quality,
-              t.name AS tag_name, t.color AS tag_color
-       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id
+      `SELECT s.id, s.tag_id, s.started_at, s.ended_at, s.source, s.quality, s.note,
+              t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
+       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
        WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
        ORDER BY s.started_at ASC
        LIMIT 5000`,

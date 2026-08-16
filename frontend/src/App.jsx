@@ -27,7 +27,7 @@ import {
   updateSettings,
   setSlowRequestHandler,
 } from "./api.js";
-import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection } from "./analytics.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
 
 const DEFAULT_SETTINGS = {
   push_enabled: true,
@@ -246,6 +246,12 @@ export default function App({ user, onLogout, onUserUpdated }) {
     () => computeSummary(liveSessions, settings.rest_day_of_week ?? null, settings.streak_recovery_grace_enabled ?? false),
     [liveSessions, settings.rest_day_of_week, settings.streak_recovery_grace_enabled]
   );
+  // Learned from completed history only, deliberately not liveSessions -
+  // the running session (if any) has no note/task yet to learn from, and
+  // even if it did, using words from the session you're *currently*
+  // trying to match against to also help decide its own match would be
+  // circular.
+  const tagVocabulary = useMemo(() => buildTagVocabulary(history), [history]);
   const budgetsWithProgress = useMemo(
     () => computeBudgetProgress(budgets, liveSessions),
     [budgets, liveSessions]
@@ -506,6 +512,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     dailyGoalSeconds={settings.daily_focus_goal_seconds}
                     goalProjection={goalProjection}
                     graceEnabled={settings.streak_recovery_grace_enabled}
+                    tagVocabulary={tagVocabulary}
                     onRunningChange={setRunningSession}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}

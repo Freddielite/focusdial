@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getRunningSession, startSession, stopSession, updateSession, updateTask } from "../api.js";
 import { formatClock, formatDuration } from "../format.js";
 import { showRunningSessionNotification, clearRunningSessionNotification } from "../push.js";
+import { matchTagForText } from "../analytics.js";
 import Dropdown from "./Dropdown.jsx";
 
 const QUALITY_OPTIONS = [
@@ -41,7 +42,7 @@ function currentHourBucketKey() {
 
 const NUDGE_DISMISS_KEY = "fd-timer-nudge-dismissed-hour";
 
-export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessionCompleted, onDataChanged, onRunningChange }) {
+export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocabulary, onSessionCompleted, onDataChanged, onRunningChange }) {
   const [running, setRunning] = useState(null); // the running session row, or null
 
   // Reports the running session (or null) up to App.jsx so totals
@@ -71,6 +72,25 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   }
   const [selectedTag, setSelectedTag] = useState("");
   const [userPickedTag, setUserPickedTag] = useState(false);
+  const [quickStartText, setQuickStartText] = useState("");
+
+  // Live-matches typed text against buildTagVocabulary's learned
+  // per-tag words (see analytics.js) and pre-selects the tag on a
+  // confident match - same "quietly pre-select, don't force it" spirit
+  // as the hourly-suggestion effect further down, and deliberately
+  // gated the same way: a manual dropdown pick (userPickedTag) always
+  // wins and further typing won't override it. On no confident match,
+  // this does nothing at all - selectedTag is left exactly as it was,
+  // so the person picks manually from the dropdown below rather than
+  // getting a guessed fallback.
+  function handleQuickStartChange(e) {
+    const text = e.target.value;
+    setQuickStartText(text);
+    if (userPickedTag) return;
+    const matchedTagId = matchTagForText(text, tagVocabulary);
+    if (matchedTagId) setSelectedTag(matchedTagId);
+  }
+
   const [selectedTask, setSelectedTask] = useState("");
   // Defaults on whenever a task is linked -- most people linking a
   // session to a specific task are doing that task right now, so "yes,
@@ -263,10 +283,18 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
     setConflict(null);
     setAwayPrompt(null);
     const tagToUse = tagIdOverride !== undefined ? tagIdOverride : selectedTag || null;
+    const initialNote = quickStartText.trim() || null;
     try {
-      const s = await startSession(tagToUse, null, selectedTask || null);
+      const s = await startSession(tagToUse, initialNote, selectedTask || null);
       setSelectedTag(tagToUse || "");
       setUserPickedTag(true);
+      // Whatever was typed into quick-start already saved as the
+      // session's note above - also seeds the stop-time note field
+      // (below, in handleStop) so if the person adds more detail when
+      // they stop, it's an edit to what they already said, not a blank
+      // field that silently drops it.
+      setNote(quickStartText.trim());
+      setQuickStartText("");
       reportRunning(s);
       showRunningSessionNotification(s);
     } catch (err) {
@@ -426,6 +454,15 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
             </button>
           </div>
         </div>
+      )}
+      {!running && (
+        <input
+          type="text"
+          className="fd-quick-start-input"
+          placeholder="What are you working on?"
+          value={quickStartText}
+          onChange={handleQuickStartChange}
+        />
       )}
       {running ? (
         <div className="fd-timer-tag-live">

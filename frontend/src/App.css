@@ -939,6 +939,21 @@ button {
   margin-bottom: 14px;
 }
 
+.fd-quick-start-input {
+  width: 100%;
+  max-width: 320px;
+  padding: 8px 10px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  color: var(--parchment);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  margin-bottom: 8px;
+}
+.fd-quick-start-input::placeholder {
+  color: var(--parchment-dim);
+}
+
 /* ---------- Dropdown (custom select replacement) ---------- */
 /* .fd-select above still supplies the sizing/color/background; this
    part resets the fact that the trigger is a <button>, not a <select>,
