@@ -40,7 +40,7 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
     try {
       await createTag(name.trim(), color);
       setName("");
-      onTagsChanged();
+      await onTagsChanged();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -79,9 +79,23 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
   async function handleArchive(tag) {
     setPendingIds((prev) => new Set(prev).add(tag.id));
     try {
-      await setTagArchived(tag.id, true);
-      onTagsChanged();
-      setArchivedTags(null); // stale until reopened - simplest way to keep it correct
+      const updated = await setTagArchived(tag.id, true);
+      // Optimistically add it into the archived list right away instead
+      // of invalidating to null - nulling it out meant "Loading..."
+      // stuck forever unless the section was manually closed and
+      // reopened, since nothing else ever re-triggered a fetch. This
+      // stays correct either way, whether or not the section happens to
+      // be open right now, with no extra round trip.
+      setArchivedTags((prev) =>
+        prev === null ? prev : [...prev, updated].sort((a, b) => a.name.localeCompare(b.name))
+      );
+      // Wait for `tags` to actually be refetched before releasing
+      // pendingIds below. Releasing it first (as this used to) meant
+      // visibleTags briefly stopped hiding the tag while the still-
+      // stale `tags` prop hadn't caught up yet - the tag flashed back
+      // into view for a beat, then vanished again once the real
+      // refresh landed. That's the "goes, comes back, goes again."
+      await onTagsChanged();
     } finally {
       setPendingIds((prev) => {
         const next = new Set(prev);
@@ -96,7 +110,11 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
     try {
       await setTagArchived(tag.id, false);
       setArchivedTags((prev) => (prev ? prev.filter((t) => t.id !== tag.id) : prev));
-      onTagsChanged();
+      // Same reasoning as handleArchive above - wait for `tags` to
+      // reflect the change before this function's `finally` re-enables
+      // the button, so a fast double-click can't fire a second request
+      // against a still-stale view.
+      await onTagsChanged();
     } finally {
       setArchivedBusyId(null);
     }

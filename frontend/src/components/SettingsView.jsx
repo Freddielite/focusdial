@@ -447,6 +447,7 @@ export default function SettingsView({
   tags,
   budgets,
   onDataChanged,
+  onTagsRefresh,
   user,
   onUserUpdated,
   onLogout,
@@ -620,7 +621,7 @@ export default function SettingsView({
 
       <section className="fd-panel fd-set-card">
         <div className="fd-set-card__head">Manage tags</div>
-        <TagManager tags={tags} onTagsChanged={onDataChanged} embedded />
+        <TagManager tags={tags} onTagsChanged={onTagsRefresh} embedded />
       </section>
 
       <section

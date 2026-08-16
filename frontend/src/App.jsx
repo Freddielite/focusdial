@@ -145,6 +145,20 @@ export default function App({ user, onLogout, onUserUpdated }) {
     }
   }
 
+  // TagManager's create/delete/archive/unarchive only ever change the
+  // tags table - nothing about sessions, budgets, deadlines, reminders,
+  // tasks, or settings. Refetching all of those (loadAll's 7 parallel
+  // calls, including the full session history - potentially thousands
+  // of rows) just to reflect a tag edit was real, measurable overhead,
+  // not just a feeling: archiving a tag visibly took as long as the
+  // slowest of those 7 requests instead of the one PATCH it actually
+  // needed. This refetches only what TagManager can actually change.
+  async function refreshTags() {
+    const [tagData, allTagData] = await Promise.all([listTags(), listTags(true)]);
+    setTags(tagData);
+    setAllTags(allTagData);
+  }
+
   useEffect(() => {
     setSlowRequestHandler(setWaking);
     loadAll();
@@ -572,6 +586,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     tags={tags}
                     budgets={budgetsWithProgress}
                     onDataChanged={loadAll}
+                    onTagsRefresh={refreshTags}
                     user={user}
                     onUserUpdated={onUserUpdated}
                     onLogout={onLogout}

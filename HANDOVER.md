@@ -2359,3 +2359,55 @@ caveat as the last two - no browser here to watch the actual motion,
 though the animation shapes used are copied directly from working
 patterns already proven elsewhere in this app, not new unverified
 behavior.
+
+## Session 35 — fixed three real bugs in the archive flow from Session 32
+
+All three reported together, all traced to actual root causes rather
+than assumed to be perception:
+
+**"Loading… stays forever until Hide/Show again."** `handleArchive`
+was setting `archivedTags` back to `null` ("stale until reopened")
+after a successful archive, but nothing ever re-triggered a refetch
+except manually closing and reopening the section -
+`toggleArchivedSection` only fetches on the closed→open transition, so
+if the section was already open when a tag got archived, it stuck on
+"Loading…" indefinitely. Fixed by optimistically appending the newly-
+archived tag (using the PATCH response, which already returns the full
+updated row) into `archivedTags` directly instead of nulling it out -
+correct immediately, no wasted extra round trip either.
+
+**"Goes, comes back for a split sec, goes again."** `handleArchive`'s
+`finally` block was releasing the tag from `pendingIds` (which is what
+hides it from the active list) immediately after firing
+`onTagsChanged()` - but that call was never awaited, so `pendingIds`
+cleared before the parent's `tags` prop had actually been refetched.
+For that gap, `visibleTags` stopped hiding the tag (pendingIds no
+longer had it) while `tags` itself was still stale and hadn't dropped
+it yet - a real flash back into existence, not a rendering illusion.
+Fixed by `await`-ing the refresh before releasing `pendingIds`, so the
+tag only reappears if the server genuinely still has it. Applied the
+same fix to `handleUnarchive` for consistency, even though it wasn't
+independently reported.
+
+**"Archive logic seems slow."** `onTagsChanged` was wired to the full
+`loadAll()` - 7 parallel endpoints, including the entire session
+history (up to 5000 rows) - to reflect a single tag's `archived` flag
+flipping. Nothing TagManager does (create/delete/archive/unarchive)
+touches sessions, budgets, deadlines, reminders, tasks, or settings, so
+none of that needed refetching. Added `refreshTags()` in `App.jsx` -
+just the two tag-list calls - and wired it in as a new `onTagsRefresh`
+prop threaded through `SettingsView` specifically for `TagManager`,
+leaving `onDataChanged`/`loadAll` untouched for the things in Settings
+that genuinely do need the full reload (`BudgetManager`, the reset
+button, push settings). This also directly shrinks the window the
+first two bugs' race condition had to land in, since the awaited
+refresh is now much faster.
+
+Verified: `npm run build` clean, and confirmed by reading through the
+full sequence of each handler that pendingIds/archivedTags updates now
+happen in an order that can't produce the reported symptoms - not just
+patched and hoped. **Not verified this session:** no browser here to
+click through it firsthand, though this pass was specifically driven
+by three precise, reproducible-sounding symptom descriptions rather
+than a vague "feels off," which made tracing each to a concrete cause
+possible without needing to see it directly.
