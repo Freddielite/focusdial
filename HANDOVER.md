@@ -2165,3 +2165,42 @@ confirmed with a standalone script, not just read through. **Not
 verified this session:** no browser here to actually start a timer and
 watch the Trend chart/heatmap move - worth confirming visually first
 chance you get.
+
+## Session 30 — fixed a real regression from Session 29's live totals
+
+Reported precisely: start a timer with today at 45m, watch it climb to
+53m, switch to Insights and back to Today, and it'd flash 45m again
+before snapping back to 53m.
+
+**Root cause.** `TodayView` (and everything inside it, including
+`TimerPanel`) is conditionally rendered - `activeTab === "today" &&
+<TodayView .../>` - so switching tabs away and back fully unmounts and
+remounts `TimerPanel`, resetting its `running` state back to its
+`useState(null)` initial value. The `onRunningChange` reporting added
+in Session 29 was a `useEffect` watching `running`, which fired
+immediately with that transient `null` - before `refreshRunning()`'s
+async check on mount had a chance to confirm a session was actually
+still going - telling `App.jsx` "nothing's running" for a beat. That
+dropped the virtual live-session entry from `liveSessions`, so
+`todaySeconds` genuinely dipped back to the historical (pre-timer)
+total for a moment, exactly matching what was reported.
+
+**Fix.** Replaced the watching effect with `reportRunning(value)`, a
+small wrapper that does `setRunning` and `onRunningChange` together -
+called explicitly at each of the six places `running` is set to a
+value we're actually confident about (the mount/poll check resolving,
+a successful start, adopting a conflict, a retag, a stop, the
+away-trim update), and nowhere else. The raw `useState(null)`
+initializer is deliberately left untouched, so it's structurally
+impossible for that guess to reach `App.jsx` before the real check
+resolves.
+
+Verified: `npm run build` clean, and confirmed by reading through every
+`setRunning` call site that each one that represents a real, known
+answer now goes through `reportRunning`, and the only remaining bare
+`setRunning` is the initial-state declaration itself. **Not verified
+this session:** this is UI/component lifecycle behavior (mount/unmount
+timing), which isn't something a standalone Node script can exercise
+the way the analytics.js logic bugs earlier could be - needs an actual
+browser click-through (start a timer, switch tabs, switch back) to see
+the flash is really gone, which isn't available here.

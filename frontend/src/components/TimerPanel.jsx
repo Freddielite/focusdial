@@ -51,9 +51,24 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   // TimerPanel's own second-by-second `elapsed` display below is
   // unaffected either way - this is purely for everything *outside*
   // this panel.
-  useEffect(() => {
-    onRunningChange?.(running);
-  }, [running, onRunningChange]);
+  //
+  // Deliberately NOT a useEffect watching `running` - this panel fully
+  // unmounts/remounts every time the Today tab is switched away from
+  // and back to (see App.jsx, activeTab === "today" && <TodayView .../>),
+  // which resets `running` to its useState(null) initial value before
+  // refreshRunning()'s async check below has had a chance to confirm
+  // whether anything's actually running. A watching effect would report
+  // that guess immediately, so switching back to Today while a session
+  // was running would visibly dip today's total back to its pre-timer
+  // value for a beat before correcting - confirmed this exact flash
+  // happens before adding the guard below. Instead, only report at the
+  // handful of points where `running` is being set to a value we're
+  // actually sure of (a server response, a completed start/stop) - see
+  // reportRunning below, used in place of setRunning at each of those.
+  function reportRunning(value) {
+    setRunning(value);
+    onRunningChange?.(value);
+  }
   const [selectedTag, setSelectedTag] = useState("");
   const [userPickedTag, setUserPickedTag] = useState(false);
   const [selectedTask, setSelectedTask] = useState("");
@@ -150,7 +165,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   function refreshRunning() {
     return getRunningSession()
       .then((s) => {
-        setRunning(s || null);
+        reportRunning(s || null);
         if (s) {
           setSelectedTag(s.tag_id || "");
           setSelectedTask(s.task_id || "");
@@ -252,7 +267,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
       const s = await startSession(tagToUse, null, selectedTask || null);
       setSelectedTag(tagToUse || "");
       setUserPickedTag(true);
-      setRunning(s);
+      reportRunning(s);
       showRunningSessionNotification(s);
     } catch (err) {
       // A 409 here means this device's own view was stale: it thought
@@ -280,7 +295,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
   // refreshRunning() does on load.
   function handleAdoptConflict() {
     if (!conflict) return;
-    setRunning(conflict);
+    reportRunning(conflict);
     setSelectedTag(conflict.tag_id || "");
     setSelectedTask(conflict.task_id || "");
     showRunningSessionNotification(conflict);
@@ -299,7 +314,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
     setError(null);
     try {
       const updated = await updateSession(running.id, { tag_id: newTagId || null });
-      setRunning(updated);
+      reportRunning(updated);
       setSelectedTag(newTagId || "");
       setRetagging(false);
       showRunningSessionNotification(updated);
@@ -325,7 +340,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
         await updateTask(running.task_id, { status: "done" }).catch(() => {});
         onDataChanged?.();
       }
-      setRunning(null);
+      reportRunning(null);
       setElapsed(0);
       setNote("");
       setQuality(null);
@@ -347,7 +362,11 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessio
     setAwayPrompt(null);
     try {
       await updateSession(running.id, { started_at: newStart });
-      setRunning((r) => (r ? { ...r, started_at: newStart } : r));
+      setRunning((r) => {
+        const next = r ? { ...r, started_at: newStart } : r;
+        onRunningChange?.(next);
+        return next;
+      });
     } catch (err) {
       setError(err.message);
     }
