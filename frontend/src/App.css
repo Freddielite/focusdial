@@ -2075,6 +2075,14 @@ button {
 
 .fd-tag-manager__archived-toggle {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fd-tag-manager__chevron {
+  font-size: 10px;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .fd-tag-manager__list--archived {
@@ -2458,6 +2466,12 @@ button {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.fd-greeting {
+  margin: 0;
+  font-size: 15px;
+  color: var(--parchment-dim);
 }
 
 .fd-view__head {

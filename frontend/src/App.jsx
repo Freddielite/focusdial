@@ -14,6 +14,7 @@ import BudgetsView from "./components/BudgetsView.jsx";
 import DeadlinesView from "./components/DeadlinesView.jsx";
 import RemindersView from "./components/RemindersView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
+import NamePromptModal from "./components/NamePromptModal.jsx";
 import { maybePushEvent } from "./push.js";
 import { formatDuration } from "./format.js";
 import {
@@ -57,6 +58,10 @@ const VALID_TABS = new Set(["today", "insights", "budgets", "deadlines", "remind
 
 export default function App({ user, onLogout, onUserUpdated }) {
   const [showSplash, setShowSplash] = useState(true);
+  // Local-only, not persisted - "Skip for now" means "not this session,"
+  // not "never ask again." See NamePromptModal for why that's the
+  // deliberate choice rather than a stored dismissal flag.
+  const [namePromptDismissed, setNamePromptDismissed] = useState(false);
   // Home-screen shortcuts (see manifest.webmanifest's `shortcuts`) deep
   // link via ?tab=... - read once at mount rather than defaulting to
   // "today" and switching in an effect, so there's no visible flash of
@@ -283,8 +288,14 @@ export default function App({ user, onLogout, onUserUpdated }) {
     [deadlines, liveSessions, summary.avgDailyFocusSeconds]
   );
   const insightOfTheDay = useMemo(
-    () => computeInsightOfTheDay({ summary, budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
-    [summary, budgetsWithProgress, deadlinesWithProgress]
+    () =>
+      computeInsightOfTheDay({
+        summary,
+        budgetsProgress: budgetsWithProgress,
+        deadlinesProgress: deadlinesWithProgress,
+        displayName: user?.displayName || null,
+      }),
+    [summary, budgetsWithProgress, deadlinesWithProgress, user?.displayName]
   );
   const riskDigest = useMemo(
     () => computeRiskDigest({ budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
@@ -536,6 +547,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     goalProjection={goalProjection}
                     graceEnabled={settings.streak_recovery_grace_enabled}
                     tagVocabulary={tagVocabulary}
+                    userName={user?.displayName || null}
                     onRunningChange={setRunningSession}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
@@ -551,6 +563,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     weeklyReview={weeklyReview}
                     deadlineTrackRecord={deadlineTrackRecord}
                     history={history}
+                    userName={user?.displayName || null}
                   />
                 )}
                 {activeTab === "budgets" && (
@@ -598,6 +611,10 @@ export default function App({ user, onLogout, onUserUpdated }) {
             )}
           </main>
         </motion.div>
+      )}
+
+      {!showSplash && loaded && !user?.displayName && !namePromptDismissed && (
+        <NamePromptModal onUserUpdated={onUserUpdated} onDismiss={() => setNamePromptDismissed(true)} />
       )}
     </div>
   );

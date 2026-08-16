@@ -193,6 +193,9 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
 
       <button type="button" className="fd-link-btn fd-tag-manager__archived-toggle" onClick={toggleArchivedSection}>
         {archivedOpen ? "Hide archived tags" : "Show archived tags"}
+        <span className={`fd-dropdown__chevron fd-tag-manager__chevron ${archivedOpen ? "fd-dropdown__chevron--open" : ""}`}>
+          ▾
+        </span>
       </button>
       <AnimatePresence initial={false}>
         {archivedOpen && (
@@ -201,7 +204,7 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
             className="fd-tag-manager__list fd-tag-manager__list--archived"
             style={{ overflow: "hidden" }}
           >

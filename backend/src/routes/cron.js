@@ -6,6 +6,20 @@ import { googleConfigured, getAuthedClient, getCalendarClient, fetchSyncTokenBas
 
 export const cronRouter = Router();
 
+// Prefixes a push body with the person's name when they've set one -
+// "Wyntek — you haven't logged a session today" reads as written for
+// them, not a generic broadcast blast. An em-dash prefix rather than
+// grammatically merging into the sentence (e.g. lowercasing the first
+// word) since these bodies are built in several different places with
+// different casing conventions - a prefix works uniformly regardless.
+// Falls back to the body completely unchanged for anyone who hasn't
+// set a name yet (see /auth/me's PATCH and the frontend's first-run
+// prompt) - no guessing a name from their email here, a wrong-feeling
+// guess in a push notification is worse than staying generic.
+function greet(displayName, body) {
+  return displayName ? `${displayName} — ${body}` : body;
+}
+
 // --- Local-time helpers ----------------------------------------------
 // Historically the backend only had a fixed UTC offset the browser
 // reported once via PUT /api/settings -- shifting a timestamp by that
@@ -81,7 +95,7 @@ function nextOccurrence(date, recurrence) {
   return d;
 }
 
-async function checkDueReminders(userId) {
+async function checkDueReminders(userId, displayName) {
   const { rows: due } = await pool.query(
     `SELECT * FROM reminders
      WHERE user_id = $1 AND status = 'pending' AND remind_at <= now()
@@ -91,7 +105,7 @@ async function checkDueReminders(userId) {
   for (const r of due) {
     await sendPushToUser(userId, {
       title: "Reminder",
-      body: r.title,
+      body: greet(displayName, r.title),
       tag: `reminder-${r.id}`,
       url: "/",
     });
@@ -114,7 +128,7 @@ async function checkDueReminders(userId) {
 // the module comment above). Keeping them as separate implementations
 // means the frontend's calculation doesn't need to compromise its
 // accuracy to stay identical to this approximation, and vice versa.
-async function checkDeadlinePaceChanges(userId, tz) {
+async function checkDeadlinePaceChanges(userId, tz, displayName) {
   const { rows: deadlines } = await pool.query(`SELECT * FROM deadlines WHERE user_id = $1 AND status = 'active'`, [
     userId,
   ]);
@@ -198,10 +212,12 @@ async function checkDeadlinePaceChanges(userId, tz) {
           : `you need ${formatHoursShort(hoursPerDayNeeded)}/day`;
       await sendPushToUser(userId, {
         title: `Deadline update: ${d.title}`,
-        body:
+        body: greet(
+          displayName,
           status === "overdue"
             ? "This deadline is now overdue."
-            : `${paceText[0].toUpperCase()}${paceText.slice(1)} to finish in time, that's ${status === "tight" ? "tight" : "behind"} your usual pace.`,
+            : `${paceText[0].toUpperCase()}${paceText.slice(1)} to finish in time, that's ${status === "tight" ? "tight" : "behind"} your usual pace.`
+        ),
         tag: `deadline-${d.id}`,
         url: "/",
       });
@@ -273,7 +289,7 @@ async function checkStreakAtRisk(userId, tz, settings) {
 
   await sendPushToUser(userId, {
     title: "Your streak is at risk",
-    body: "You haven't logged a session today. Log one before midnight to keep your streak alive.",
+    body: greet(settings.display_name, "You haven't logged a session today. Log one before midnight to keep your streak alive."),
     tag: "streak-risk",
     url: "/",
   });
@@ -291,7 +307,7 @@ async function checkStreakAtRisk(userId, tz, settings) {
 // it stays open. runaway_nudged_at (on the session row itself) makes
 // this fire once per session rather than every cron tick until it's
 // finally stopped.
-async function checkRunawayTimer(userId) {
+async function checkRunawayTimer(userId, displayName) {
   const { rows } = await pool.query(
     `SELECT id, started_at FROM sessions
      WHERE user_id = $1 AND ended_at IS NULL AND runaway_nudged_at IS NULL
@@ -304,7 +320,7 @@ async function checkRunawayTimer(userId) {
   const hours = ((Date.now() - new Date(session.started_at).getTime()) / 3600000).toFixed(1);
   await sendPushToUser(userId, {
     title: "Still running?",
-    body: `A session has been running for ${hours}h. Stop it if you're done, or it'll keep counting.`,
+    body: greet(displayName, `A session has been running for ${hours}h. Stop it if you're done, or it'll keep counting.`),
     tag: `runaway-${session.id}`,
     url: "/",
   });
@@ -365,10 +381,10 @@ async function checkWeeklyDigest(userId, tz, settings) {
 
   await sendPushToUser(userId, {
     title: "Your week in focus",
-    body:
-      totalSeconds > 0
-        ? `You logged ${hours}h this week, best day was ${bestDayLabel}.`
-        : "No focus sessions logged this week.",
+    body: greet(
+      settings.display_name,
+      totalSeconds > 0 ? `You logged ${hours}h this week, best day was ${bestDayLabel}.` : "No focus sessions logged this week."
+    ),
     tag: "weekly-digest",
     url: "/",
   });
@@ -555,7 +571,12 @@ async function handleTick(req, res) {
     // has one (every user gets a settings row at signup, see
     // routes/auth.js), each with their own independent
     // automation flags, timezone offset, and dedupe bookkeeping.
-    const { rows: allSettings } = await pool.query(`SELECT * FROM settings WHERE user_id IS NOT NULL`);
+    // display_name is joined in here (not fetched separately per user)
+    // purely so every push body below can be personalized - see greet()
+    // above - without an extra query per user per tick.
+    const { rows: allSettings } = await pool.query(
+      `SELECT s.*, u.display_name FROM settings s JOIN users u ON u.id = s.user_id WHERE s.user_id IS NOT NULL`
+    );
 
     const perUser = [];
     for (const settings of allSettings) {
@@ -568,14 +589,16 @@ async function handleTick(req, res) {
       // (or state mutation like last_notified_status) happens for
       // something the user has opted out of. `push_enabled` is still
       // enforced separately in lib/push.js as the catch-all master mute.
-      const remindersFired = settings.automation_reminders ? await checkDueReminders(userId) : 0;
+      const remindersFired = settings.automation_reminders ? await checkDueReminders(userId, settings.display_name) : 0;
       const paceChanges = settings.automation_deadline_pace
-        ? await checkDeadlinePaceChanges(userId, tz)
+        ? await checkDeadlinePaceChanges(userId, tz, settings.display_name)
         : 0;
       const streakNudged = settings.automation_streak
         ? await checkStreakAtRisk(userId, tz, settings)
         : false;
-      const runawayNudged = settings.automation_runaway_timer ? await checkRunawayTimer(userId) : false;
+      const runawayNudged = settings.automation_runaway_timer
+        ? await checkRunawayTimer(userId, settings.display_name)
+        : false;
       const digestSent = settings.automation_weekly_digest
         ? await checkWeeklyDigest(userId, tz, settings)
         : false;

@@ -11,7 +11,7 @@ import RiskDigestCard from "./RiskDigestCard.jsx";
 import WeeklyReviewCard from "./WeeklyReviewCard.jsx";
 import DeadlineTrackRecordCard from "./DeadlineTrackRecordCard.jsx";
 
-export default function InsightsView({ summary, riskDigest, weeklyReview, deadlineTrackRecord, history }) {
+export default function InsightsView({ summary, riskDigest, weeklyReview, deadlineTrackRecord, history, userName }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -20,7 +20,7 @@ export default function InsightsView({ summary, riskDigest, weeklyReview, deadli
       transition={{ duration: 0.12 }}
       className="fd-view"
     >
-      <WeeklyReviewCard review={weeklyReview} />
+      <WeeklyReviewCard review={weeklyReview} userName={userName} />
       <div className="fd-main__insights">
         <HourDial hourly={summary.hourly} bestHour={summary.bestHour} />
         <RiskDigestCard digest={riskDigest} />

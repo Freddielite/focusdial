@@ -1112,7 +1112,7 @@ function hourLabel(hour) {
 // thing to know" last (your best-sustained tag), so the one thing shown
 // is the one most worth seeing today, not whichever happens to compute
 // first.
-export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadlinesProgress = [] }) {
+export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadlinesProgress = [], displayName = null }) {
   const candidates = [];
 
   const overdue = deadlinesProgress.filter((d) => d.status === "overdue");
@@ -1179,9 +1179,16 @@ export function computeInsightOfTheDay({ summary, budgetsProgress = [], deadline
   }
 
   if (summary.streakDays >= 3) {
+    // The one candidate here that's a direct, personal congratulation
+    // rather than an analytical observation - the natural place to use
+    // a name, if there is one, rather than mechanically tacking it onto
+    // every candidate below (most of which read like a data readout,
+    // not something you'd actually address to someone by name).
     candidates.push({
       tone: "positive",
-      message: `You're on a ${summary.streakDays}-day streak. Keep it going.`,
+      message: displayName
+        ? `You're on a ${summary.streakDays}-day streak, ${displayName}. Keep it going.`
+        : `You're on a ${summary.streakDays}-day streak. Keep it going.`,
     });
   }
 

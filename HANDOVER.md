@@ -2411,3 +2411,61 @@ click through it firsthand, though this pass was specifically driven
 by three precise, reproducible-sounding symptom descriptions rather
 than a vague "feels off," which made tracing each to a concrete cause
 possible without needing to see it directly.
+
+## Session 36 — smoother archived-tags dropdown + name personalization
+
+Two asks, confirmed scope on the second before building anything (the
+person explicitly asked to be checked with first, since "insights and
+all" could have meant a much bigger rewrite than what actually got
+built).
+
+**Archived-tags dropdown:** was a flat, un-eased height/opacity
+transition. Bumped to a proper ease-out curve (`[0.4, 0, 0.2, 1]`,
+0.32s) and added a rotating chevron next to the toggle text, matching
+the existing convention `Dropdown.jsx` already uses for its own open/
+closed indicator (`.fd-dropdown__chevron--open`, 180° rotation).
+
+**Name personalization - confirmed scope was "everywhere" (greetings,
+insights, notifications) plus a first-run prompt for anyone without a
+name set.** Turned out `users.display_name` already existed and was
+editable in Settings, just never read anywhere else - this is
+entirely about actually using data that was already being collected.
+
+- **`NamePromptModal.jsx`** (new) - shown in `App.jsx` whenever
+  `!user?.displayName`, dismissible via "Skip for now" (session-only,
+  not persisted - reappears next full reload until a name's actually
+  set, which is the literal "first time they open the app" behavior
+  that was asked for).
+- **`Greeting.jsx`** (new) - time-of-day-aware line above HeroCard on
+  the Today tab. Returns `null` entirely with no name rather than
+  showing a bare "Good morning" with nothing to greet, which would've
+  read as an unfinished template rather than a deliberate choice.
+- **`WeeklyReviewCard`** - panel title becomes "{name}'s Weekly Review"
+  when set, falls back to plain "Weekly Review" otherwise.
+- **`computeInsightOfTheDay`** - gained an optional `displayName` param,
+  used only in the streak-congratulation candidate. Deliberately did
+  NOT thread it into the other ~9 candidate messages (deadline pace,
+  focus-rate change, best-hour, context-switch cost, etc.) - those read
+  as data readouts, not something you'd naturally address by name, and
+  mechanically prefixing every one of them would've read as gimmicky
+  rather than personal. Verified this scoping actually holds, not just
+  assumed it: fed a non-streak insight a name and confirmed the message
+  never contains it.
+- **`cron.js`** - every push notification (streak risk, deadline pace
+  changes, due reminders, runaway timer, weekly digest) now runs
+  through a new `greet(displayName, body)` helper, prefixing with
+  "{name} — " when set. The main per-tick query now joins `users` for
+  `display_name` alongside the existing `settings` row, instead of a
+  second query per user. Falls back to the plain body untouched for
+  anyone without a name - no guessing one from their email, since a
+  wrong-feeling guess in a push notification is worse than staying
+  generic.
+
+Verified: `node --check` clean on the backend, `npm run build` clean,
+and both the streak-message personalization and the `greet()` helper
+confirmed with standalone scripts covering the with-name, without-name,
+and "name given but shouldn't apply here" cases. **Not verified this
+session:** no browser here to see the actual greeting/modal/weekly-
+review rendering, and no way to trigger a real cron tick to see a
+formatted push notification - the logic is verified in isolation, the
+visual result isn't yet.

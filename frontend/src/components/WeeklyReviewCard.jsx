@@ -42,13 +42,13 @@ function formatRemindIn(remindAt, now) {
 // same "how was this week" question, richer answer, always available
 // rather than a one-shot notification you either saw or didn't. See
 // analytics.js's computeWeeklyReview for what feeds this.
-export default function WeeklyReviewCard({ review }) {
+export default function WeeklyReviewCard({ review, userName }) {
   const now = new Date();
   const hasData = review.totalSeconds > 0;
 
   return (
     <div className="fd-panel fd-weekly-review">
-      <div className="fd-panel__label">Weekly Review</div>
+      <div className="fd-panel__label">{userName ? `${userName}'s Weekly Review` : "Weekly Review"}</div>
 
       {!hasData ? (
         <div className="fd-empty">No focus sessions logged yet this week.</div>

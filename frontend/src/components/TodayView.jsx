@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import Greeting from "./Greeting.jsx";
 import HeroCard from "./HeroCard.jsx";
 import InsightCard from "./InsightCard.jsx";
 import TimerPanel from "./TimerPanel.jsx";
@@ -19,6 +20,7 @@ export default function TodayView({
   goalProjection,
   graceEnabled,
   tagVocabulary,
+  userName,
   onRunningChange,
   onSessionCompleted,
   onSessionCreated,
@@ -33,6 +35,7 @@ export default function TodayView({
       transition={{ duration: 0.12 }}
       className="fd-view"
     >
+      <Greeting name={userName} />
       <HeroCard
         summary={summary}
         streakAtRisk={streakAtRisk}
