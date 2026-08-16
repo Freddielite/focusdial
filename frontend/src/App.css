@@ -2052,6 +2052,7 @@ button {
   background: var(--grad-input);
   color: var(--parchment-dim);
   line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .fd-tag-chip .fd-icon-btn:hover {

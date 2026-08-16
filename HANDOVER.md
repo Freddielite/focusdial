@@ -2334,3 +2334,28 @@ caveat as Session 32 - no browser here to see it rendered for real,
 though the person did confirm the specific problem (the old underlined-
 link look) from a screenshot before this fix, which the redesign
 directly targets.
+
+## Session 34 — animated the archive/unarchive interactions
+
+Reported as "too stiff": archiving a tag made it vanish from the
+active list instantly, the "Show archived tags" section snapped open
+with no transition, and unarchiving snapped items back just as
+abruptly. All plain conditional rendering, no motion at all.
+
+Brought it in line with how every other list in this app already
+animates - `TasksWidget`'s `AnimatePresence` + `motion.div` row
+pattern (`layout`, fade in, fade+slide out) for both the active and
+archived tag-chip lists, and `SessionEditModal`'s height-animated
+`motion.form` pattern for the archived section's expand/collapse.
+Nothing novel invented - same durations, same easing, same shape as
+what's already established elsewhere, just applied to a spot from
+Session 32 that got built before this pass. Also added a short CSS
+transition on the action buttons' hover background/color, since an
+instant color snap on hover read as part of the same stiffness even
+though it's unrelated to the list animations.
+
+Verified: `npm run build` clean. **Not verified this session:** same
+caveat as the last two - no browser here to watch the actual motion,
+though the animation shapes used are copied directly from working
+patterns already proven elsewhere in this app, not new unverified
+behavior.

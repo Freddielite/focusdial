@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { createTag, deleteTag, listTags, setTagArchived } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
@@ -114,27 +115,37 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
   return (
     <div className={`fd-tag-manager ${embedded ? "fd-tag-manager--embedded" : ""}`}>
       <div className="fd-tag-manager__list">
-        {visibleTags.map((t) => (
-          <span key={t.id} className="fd-tag-chip" style={{ borderColor: t.color }}>
-            <span className="fd-tag-dot" style={{ background: t.color }} />
-            <span className="fd-tag-chip__name">{t.name}</span>
-            <button
-              className="fd-icon-btn"
-              onClick={() => handleArchive(t)}
-              aria-label={`Archive ${t.name}`}
-              title="Archive - hides it from new sessions, keeps its history"
+        <AnimatePresence initial={false}>
+          {visibleTags.map((t) => (
+            <motion.span
+              key={t.id}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="fd-tag-chip"
+              style={{ borderColor: t.color }}
             >
-              Archive
-            </button>
-            <button
-              className="fd-icon-btn fd-icon-btn--delete"
-              onClick={() => handleDelete(t)}
-              aria-label={`Delete ${t.name}`}
-            >
-              ✕
-            </button>
-          </span>
-        ))}
+              <span className="fd-tag-dot" style={{ background: t.color }} />
+              <span className="fd-tag-chip__name">{t.name}</span>
+              <button
+                className="fd-icon-btn"
+                onClick={() => handleArchive(t)}
+                aria-label={`Archive ${t.name}`}
+                title="Archive - hides it from new sessions, keeps its history"
+              >
+                Archive
+              </button>
+              <button
+                className="fd-icon-btn fd-icon-btn--delete"
+                onClick={() => handleDelete(t)}
+                aria-label={`Delete ${t.name}`}
+              >
+                ✕
+              </button>
+            </motion.span>
+          ))}
+        </AnimatePresence>
       </div>
       <form className="fd-tag-manager__form" onSubmit={handleAdd}>
         <input
@@ -165,31 +176,51 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
       <button type="button" className="fd-link-btn fd-tag-manager__archived-toggle" onClick={toggleArchivedSection}>
         {archivedOpen ? "Hide archived tags" : "Show archived tags"}
       </button>
-      {archivedOpen && (
-        <div className="fd-tag-manager__list fd-tag-manager__list--archived">
-          {archivedTags === null ? (
-            <span className="fd-empty">Loading…</span>
-          ) : archivedTags.length === 0 ? (
-            <span className="fd-empty">No archived tags.</span>
-          ) : (
-            archivedTags.map((t) => (
-              <span key={t.id} className="fd-tag-chip fd-tag-chip--archived" style={{ borderColor: t.color }}>
-                <span className="fd-tag-dot" style={{ background: t.color }} />
-                <span className="fd-tag-chip__name">{t.name}</span>
-                <button
-                  className="fd-icon-btn"
-                  onClick={() => handleUnarchive(t)}
-                  disabled={archivedBusyId === t.id}
-                  aria-label={`Unarchive ${t.name}`}
-                  title="Unarchive - makes it available for new sessions again"
-                >
-                  {archivedBusyId === t.id ? "…" : "Unarchive"}
-                </button>
-              </span>
-            ))
-          )}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {archivedOpen && (
+          <motion.div
+            key="archived-section"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fd-tag-manager__list fd-tag-manager__list--archived"
+            style={{ overflow: "hidden" }}
+          >
+            {archivedTags === null ? (
+              <span className="fd-empty">Loading…</span>
+            ) : archivedTags.length === 0 ? (
+              <span className="fd-empty">No archived tags.</span>
+            ) : (
+              <AnimatePresence initial={false}>
+                {archivedTags.map((t) => (
+                  <motion.span
+                    key={t.id}
+                    layout
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="fd-tag-chip fd-tag-chip--archived"
+                    style={{ borderColor: t.color }}
+                  >
+                    <span className="fd-tag-dot" style={{ background: t.color }} />
+                    <span className="fd-tag-chip__name">{t.name}</span>
+                    <button
+                      className="fd-icon-btn"
+                      onClick={() => handleUnarchive(t)}
+                      disabled={archivedBusyId === t.id}
+                      aria-label={`Unarchive ${t.name}`}
+                      title="Unarchive - makes it available for new sessions again"
+                    >
+                      {archivedBusyId === t.id ? "…" : "Unarchive"}
+                    </button>
+                  </motion.span>
+                ))}
+              </AnimatePresence>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {!embedded && (
         <button className="fd-link-btn" onClick={() => setOpen(false)}>
