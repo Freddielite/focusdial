@@ -2006,3 +2006,54 @@ two averages now agree exactly on identical input. **Not verified this
 session:** no browser here, so the actual Consistency card and Deadline
 Planner note weren't viewed side-by-side in the running app — worth
 confirming visually the first time this runs somewhere with a browser.
+
+## Session 27 — audited every date-windowed metric for the same bug class
+
+Asked directly: does everything else follow the "today is still in
+progress, don't average it in as if it were a finished day" rule Session
+26 just re-established for `computeAvgDailyFocusSeconds`? Went through
+every function in `analytics.js` that buckets or windows by calendar
+day, one at a time, rather than assuming:
+
+**Correctly excluding today already:** `computeConsistencyScore`,
+`computeComparativeInsights` (both day-bucketed averages, stop at
+yesterday), `computeStartTimeAnomaly` (today's own start time is what
+gets compared, explicitly kept out of its own baseline), `computeGoalProjection`
+(different job entirely — it's specifically projecting today's partial
+total forward, not averaging it against other days).
+
+**Correctly including today, by design (not a bug):** anything that's
+an all-time running total or pattern rather than a "per completed day"
+average — `computeHourlyTagSuggestions`, `qualityRate`/`qualityByDuration`,
+the hourly/weekday/tag totals inside `computeSummary`, `computeWeeklyReview`
+(explicitly a "this week so far" comparison, matches its own equivalent
+partial slice of last week). None of these claim to represent a
+completed day, so today's real, already-logged time belongs in them.
+
+**Found a second real instance of the same bug:** `computeContextSwitchCost`
+buckets sessions into calendar days and classifies each as "high
+switch" or "low switch" to compare session length between the two — the
+exact same per-day-bucketing shape as `computeConsistencyScore` and
+`computeComparativeInsights` — but had no exclusion for today at all.
+Confirmed with a reproduction, not just inspection: a single 20-minute
+session logged so far today got counted as its own zero-switch "low
+switch" day, sitting next to three real 3-hour low-switch days and
+dragging that bucket's average down (`lowSwitchDayCount` 3→4,
+`lowSwitchAvgSeconds` 10800s→8400s). Fixed by adding the same `now`
+param and today-exclusion the other two already have; re-ran the same
+reproduction after the fix and got the correct numbers back
+(`lowSwitchDayCount` back to 3, average back to the true 10800s).
+
+This is what feeds `computeInsightOfTheDay`'s context-switch callout, so
+before this fix that specific insight could flicker in and out of
+existence (or change its stated percentage) purely based on whether
+you'd logged anything yet today — same failure shape as the original
+Session 26 report, just surfacing somewhere else in the app instead of
+between two visible numbers.
+
+Verified: `node --check` clean, `npm run build` clean, both bugs
+reproduced with a standalone script *before* the fix and confirmed
+fixed *after* with the same script (not just eyeballing the diff).
+**Not verified this session:** the actual `computeInsightOfTheDay`
+context-switch card wasn't viewed in a browser — no environment for
+that here.

@@ -270,10 +270,21 @@ export function computeConsistencyScore(sessions, now = new Date()) {
 const HIGH_SWITCH_THRESHOLD = 5;
 const CONTEXT_SWITCH_MIN_DAYS = 3;
 const CONTEXT_SWITCH_MIN_GAP_PCT = 0.15;
-export function computeContextSwitchCost(sessions) {
+// Same "today's still in progress, don't judge it yet" rule as
+// computeConsistencyScore and computeComparativeInsights - a day with
+// only one session logged so far would otherwise look like a
+// zero-switch day and get bucketed as "low switch" with a short average
+// duration, even though the day isn't over and more tag-hopping (or a
+// longer session) could still happen. Confirmed this actually flipped a
+// day's bucket in practice before the fix: a single 20-minute session
+// logged so far today landed in the "low switch" bucket next to three
+// real 3-hour low-switch days, dragging that bucket's average down.
+export function computeContextSwitchCost(sessions, now = new Date()) {
+  const todayKey = localDayKey(now);
   const byDay = new Map(); // localDayKey -> sessions[]
   for (const s of sessions) {
     const key = localDayKey(new Date(s.started_at));
+    if (key === todayKey) continue;
     if (!byDay.has(key)) byDay.set(key, []);
     byDay.get(key).push(s);
   }
@@ -1021,7 +1032,7 @@ export function computeSummary(sessions, restDayOfWeek = null, graceEnabled = fa
     hourlyTagSuggestions: computeHourlyTagSuggestions(sessions),
     consistency: computeConsistencyScore(sessions, now),
     startTimeAnomaly: computeStartTimeAnomaly(sessions, now),
-    contextSwitchCost: computeContextSwitchCost(sessions),
+    contextSwitchCost: computeContextSwitchCost(sessions, now),
     comparativeInsights: computeComparativeInsights(sessions, now),
   };
 }
