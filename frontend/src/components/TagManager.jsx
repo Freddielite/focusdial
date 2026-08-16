@@ -117,7 +117,7 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
         {visibleTags.map((t) => (
           <span key={t.id} className="fd-tag-chip" style={{ borderColor: t.color }}>
             <span className="fd-tag-dot" style={{ background: t.color }} />
-            {t.name}
+            <span className="fd-tag-chip__name">{t.name}</span>
             <button
               className="fd-icon-btn"
               onClick={() => handleArchive(t)}
@@ -126,7 +126,11 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
             >
               Archive
             </button>
-            <button className="fd-icon-btn" onClick={() => handleDelete(t)} aria-label={`Delete ${t.name}`}>
+            <button
+              className="fd-icon-btn fd-icon-btn--delete"
+              onClick={() => handleDelete(t)}
+              aria-label={`Delete ${t.name}`}
+            >
               ✕
             </button>
           </span>
@@ -171,7 +175,7 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
             archivedTags.map((t) => (
               <span key={t.id} className="fd-tag-chip fd-tag-chip--archived" style={{ borderColor: t.color }}>
                 <span className="fd-tag-dot" style={{ background: t.color }} />
-                {t.name}
+                <span className="fd-tag-chip__name">{t.name}</span>
                 <button
                   className="fd-icon-btn"
                   onClick={() => handleUnarchive(t)}

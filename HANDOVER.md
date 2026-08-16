@@ -2313,3 +2313,24 @@ session:** no live database or browser here, so the actual
 archive → confirm it disappears from TimerPanel's dropdown →
 unarchive → confirm it comes back round-trip wasn't clicked through -
 worth doing once you're set up to run it.
+
+## Session 33 — fixed the archive button's styling
+
+Reported with a screenshot: the "Archive" action from Session 32 was an
+underlined text link crammed directly against the tag name inside the
+chip - read as a broken/mismatched element, not an intentional button.
+
+Restyled both action buttons as proper small pill buttons inside the
+chip (muted background, no underline, rounded), with archive and
+delete now visually distinct on hover - archive brightens gold
+(`--brass`), delete brightens red (`--rust`) - so a non-destructive
+action and a destructive one don't share the same hover cue. Wrapped
+the tag name in its own `.fd-tag-chip__name` span for cleaner spacing
+against the new buttons. Applied identically to the archived-section
+chips' "Unarchive" button for consistency.
+
+Verified: `npm run build` clean. **Not verified this session:** same
+caveat as Session 32 - no browser here to see it rendered for real,
+though the person did confirm the specific problem (the old underlined-
+link look) from a screenshot before this fix, which the redesign
+directly targets.

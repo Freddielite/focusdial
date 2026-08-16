@@ -2032,18 +2032,40 @@ button {
 .fd-tag-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 12px;
 }
 
+.fd-tag-chip__name {
+  margin-right: 2px;
+}
+
 .fd-tag-chip .fd-icon-btn {
-  font-size: 11px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  padding: 0;
+  font-size: 10px;
+  font-family: var(--font-body);
+  text-decoration: none;
+  padding: 3px 7px;
+  border-radius: 10px;
+  background: var(--grad-input);
+  color: var(--parchment-dim);
+  line-height: 1;
+}
+
+.fd-tag-chip .fd-icon-btn:hover {
+  background: rgba(201, 150, 44, 0.18);
+  color: var(--brass);
+}
+
+.fd-tag-chip .fd-icon-btn--delete {
+  padding: 3px 8px;
+}
+
+.fd-tag-chip .fd-icon-btn--delete:hover {
+  background: rgba(178, 74, 58, 0.18);
+  color: var(--rust);
 }
 
 .fd-tag-chip--archived {
