@@ -99,6 +99,14 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // landed, go back to page 1 and reload."
   const [sessionsVersion, setSessionsVersion] = useState(0);
 
+  // The currently-running timer session (or null), reported up from
+  // TimerPanel via onRunningChange. Used below to build `liveSessions` -
+  // `history` with this session's live elapsed time appended as a
+  // virtual entry, so today's total/this week's bar/streak/heatmap
+  // reflect an active session instead of staying frozen until it's
+  // stopped and actually lands in `history`.
+  const [runningSession, setRunningSession] = useState(null);
+
   const [waking, setWaking] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(null);
@@ -218,17 +226,33 @@ export default function App({ user, onLogout, onUserUpdated }) {
     }
   }
 
+  // `history` plus the running session's live elapsed time, if one is
+  // active - clamped so the very first tick after starting a timer
+  // (before nowTick has caught up) can't produce a negative duration.
+  // Everything that should feel "live" (today's total, this week's/
+  // month's current bar, the heatmap's today cell, streak, deadline
+  // pace) is derived from this instead of raw `history`. Deliberately
+  // NOT used for the Session Log or the day-detail modal's session
+  // list - those are meant to show actual completed records, the same
+  // way they never showed an in-progress session before this existed.
+  const liveSessions = useMemo(() => {
+    if (!runningSession) return history;
+    const startedAtMs = new Date(runningSession.started_at).getTime();
+    const endedAt = new Date(Math.max(nowTick, startedAtMs));
+    return [...history, { ...runningSession, ended_at: endedAt.toISOString() }];
+  }, [history, runningSession, nowTick]);
+
   const summary = useMemo(
-    () => computeSummary(history, settings.rest_day_of_week ?? null, settings.streak_recovery_grace_enabled ?? false),
-    [history, settings.rest_day_of_week, settings.streak_recovery_grace_enabled]
+    () => computeSummary(liveSessions, settings.rest_day_of_week ?? null, settings.streak_recovery_grace_enabled ?? false),
+    [liveSessions, settings.rest_day_of_week, settings.streak_recovery_grace_enabled]
   );
   const budgetsWithProgress = useMemo(
-    () => computeBudgetProgress(budgets, history),
-    [budgets, history]
+    () => computeBudgetProgress(budgets, liveSessions),
+    [budgets, liveSessions]
   );
   const deadlinesWithProgress = useMemo(
-    () => computeDeadlineProgress(deadlines, history, summary.avgDailyFocusSeconds),
-    [deadlines, history, summary.avgDailyFocusSeconds]
+    () => computeDeadlineProgress(deadlines, liveSessions, summary.avgDailyFocusSeconds),
+    [deadlines, liveSessions, summary.avgDailyFocusSeconds]
   );
   const insightOfTheDay = useMemo(
     () => computeInsightOfTheDay({ summary, budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
@@ -239,8 +263,8 @@ export default function App({ user, onLogout, onUserUpdated }) {
     [budgetsWithProgress, deadlinesWithProgress]
   );
   const weeklyReview = useMemo(
-    () => computeWeeklyReview({ sessions: history, deadlinesProgress: deadlinesWithProgress, reminders }),
-    [history, deadlinesWithProgress, reminders]
+    () => computeWeeklyReview({ sessions: liveSessions, deadlinesProgress: deadlinesWithProgress, reminders }),
+    [liveSessions, deadlinesWithProgress, reminders]
   );
   const deadlineTrackRecord = useMemo(
     () => computeDeadlineTrackRecord(deadlinesWithProgress),
@@ -482,6 +506,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     dailyGoalSeconds={settings.daily_focus_goal_seconds}
                     goalProjection={goalProjection}
                     graceEnabled={settings.streak_recovery_grace_enabled}
+                    onRunningChange={setRunningSession}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
                     onSessionDeleted={handleSessionDeleted}

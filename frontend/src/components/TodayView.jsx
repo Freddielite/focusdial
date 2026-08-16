@@ -17,6 +17,7 @@ export default function TodayView({
   dailyGoalSeconds,
   goalProjection,
   graceEnabled,
+  onRunningChange,
   onSessionCompleted,
   onSessionCreated,
   onSessionDeleted,
@@ -48,6 +49,7 @@ export default function TodayView({
             hourlyTagSuggestions={summary.hourlyTagSuggestions}
             onSessionCompleted={onSessionCompleted}
             onDataChanged={onDataChanged}
+            onRunningChange={onRunningChange}
           />
           <ManualEntryForm tags={tags} tasks={tasks} onSessionCreated={onSessionCreated} onDataChanged={onDataChanged} />
         </div>

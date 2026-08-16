@@ -2104,3 +2104,64 @@ standalone script (not just read through). **Not verified this
 session:** no browser here to actually click a cell and see the modal
 render - worth a manual check the first time this runs somewhere with
 one.
+
+## Session 29 — live totals while a timer is running
+
+The gap flagged back when the Trend chart's average line came up: the
+whole app - today's total, the current week's/month's trend bar, the
+heatmap's today cell, streak, deadline pace - was frozen at whatever it
+was before you hit Start, only refreshing once a session actually
+stopped (`history` only ever refetched on session create/complete, see
+`loadAll()`). TimerPanel's own running clock was the only thing that
+ever moved live.
+
+**Fix:** `TimerPanel` now reports its `running` session up to `App.jsx`
+via a new `onRunningChange` callback (a `useEffect` watching `running`,
+so every existing `setRunning` call site - start, stop, the visibility-
+triggered poll - picks it up for free, no need to touch each one).
+`App.jsx` builds a new `liveSessions` array: `history` plus, if a
+session's currently running, a virtual entry for it with `ended_at`
+set to the live clock (`nowTick`, already ticking every 60s for the
+streak-risk/goal-projection checks - reused rather than adding a second
+timer). `computeSummary`, `computeBudgetProgress`,
+`computeDeadlineProgress`, and `computeWeeklyReview` all now take
+`liveSessions` instead of raw `history`.
+
+**Deliberately NOT threaded into:** the Session Log or the day-detail
+modal's session list (still get raw `history`) - those are meant to
+show actual completed records, same as they never showed an
+in-progress session before this existed. Only the aggregate totals feel
+live; the logs stay historical.
+
+**Why this couldn't quietly break the completed-day averages Sessions
+26/27 just finished auditing:** every one of those functions
+(`computeConsistencyScore`, `computeAvgDailyFocusSeconds`,
+`computeComparativeInsights`, `computeContextSwitchCost`) already
+excludes today entirely by design - so a live virtual "today" entry has
+nowhere to leak into them. Verified directly rather than trusting the
+reasoning: fed the same history both with and without a live running
+session into `computeConsistencyScore` and got the identical average
+both times, while `computeSummary`'s `todaySeconds` correctly jumped by
+the running session's elapsed time (1200s for a 20-minute-old session).
+
+**One edge case worth documenting:** `nowTick` only ticks once a
+minute, so it can occasionally be a stale timestamp from *before* a
+session that was just started - naively that produces a negative
+duration. Clamped with `Math.max(nowTick, startedAtMs)`; verified this
+returns exactly 0 (not negative) for that case rather than assuming the
+clamp was right.
+
+**Known limitation, not fixed:** there's a small window when stopping a
+session where `running` clears (virtual entry disappears) slightly
+before `loadAll()`'s refetch lands the real completed session back into
+`history` - today's total can briefly dip and recover within roughly a
+second. Cosmetic, not a data bug (nothing is ever miscounted, just
+briefly stale), and not worth the complexity of a "pending" overlay
+for something this short.
+
+Verified: `npm run build` clean, and the three properties above
+(`todaySeconds` updates live, averages stay untouched, clamp holds)
+confirmed with a standalone script, not just read through. **Not
+verified this session:** no browser here to actually start a timer and
+watch the Trend chart/heatmap move - worth confirming visually first
+chance you get.

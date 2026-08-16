@@ -41,8 +41,19 @@ function currentHourBucketKey() {
 
 const NUDGE_DISMISS_KEY = "fd-timer-nudge-dismissed-hour";
 
-export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessionCompleted, onDataChanged }) {
+export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, onSessionCompleted, onDataChanged, onRunningChange }) {
   const [running, setRunning] = useState(null); // the running session row, or null
+
+  // Reports the running session (or null) up to App.jsx so totals
+  // elsewhere in the app - today's total, the current week's trend bar,
+  // the heatmap's today cell, deadline pace - can reflect a session's
+  // live elapsed time instead of staying frozen until it's stopped.
+  // TimerPanel's own second-by-second `elapsed` display below is
+  // unaffected either way - this is purely for everything *outside*
+  // this panel.
+  useEffect(() => {
+    onRunningChange?.(running);
+  }, [running, onRunningChange]);
   const [selectedTag, setSelectedTag] = useState("");
   const [userPickedTag, setUserPickedTag] = useState(false);
   const [selectedTask, setSelectedTask] = useState("");
