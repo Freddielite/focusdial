@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Splash from "./components/Splash.jsx";
 import TabNav from "./components/TabNav.jsx";
@@ -95,7 +95,17 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // the time this one does, and resetting to 0 here would immediately
   // undo that smooth scroll to the target section right after it
   // happened.
-  useEffect(() => {
+  //
+  // useLayoutEffect, not useEffect: plain useEffect fires after the
+  // browser has already painted, so for one frame the new tab's
+  // content would render at whatever scrollY the old tab was left at
+  // (cut off mid-content, or floating in blank space if the new tab is
+  // shorter) before snapping to top - a jump that was only visible
+  // when there was scroll to correct, which made switching tabs feel
+  // inconsistent depending on scroll position. useLayoutEffect runs
+  // synchronously before paint, so the reset lands in the same frame
+  // as the tab swap regardless of where you scrolled from.
+  useLayoutEffect(() => {
     if (activeTab === "settings" && settingsScrollTarget) return;
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [activeTab, settingsScrollTarget]);
