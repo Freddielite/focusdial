@@ -2591,3 +2591,68 @@ browser here to click through the actual repro (scroll Settings to the
 bottom, click Today) or the "Manage budgets" deep-link case this fix
 had to be careful not to break - both are reasoned through from the
 code, not watched happen.
+
+## Session 39 — optimistic timer start
+
+Asked for "local logic" in general terms; narrowed down to instant
+client-side feedback rather than waiting on a server round trip,
+picking one concrete case to build: starting the timer.
+
+### Why this one
+
+`api.js`'s own comments already flag the actual pain point: Render's
+free tier spins the backend down when idle, and waking it back up can
+take 20-50s (`REQUEST_TIMEOUT_MS = 45000`, the "Waking up the server"
+banner). Before this change, clicking "Start Session" against a
+cold-started backend meant staring at a disabled button for up to 45
+seconds with zero indication anything had registered.
+
+### What changed
+
+`TimerPanel.jsx`'s `handleStart()` now shows the timer as running
+immediately - ticking clock, "Tracking: {tag}" label, note/quality
+inputs all appear the instant you click, built from a local object
+carrying the click's own timestamp as `started_at` and `id: null`.
+`id: null` is how the rest of the component tells an optimistic guess
+apart from a real running session:
+- The "Change tag" button is hidden while pending (nothing to `PATCH`
+  yet - `handleRetag` also bails early on `running.id == null` as a
+  second line of defense).
+- `handleStop` bails the same way, though this is mostly redundant
+  in practice - the Start/Stop button stays `disabled={busy}` for the
+  whole pending window already, same as before this change.
+- The OS push notification (`showRunningSessionNotification`) still
+  only fires once the server confirms, not on the optimistic guess -
+  it needs a real id to build a working "Stop" action's URL.
+
+On success, the optimistic object is swapped for the server's real one
+(same `reportRunning(s)` call this already did). On failure - including
+a 409 (something's already running elsewhere) - it's rolled back to
+`null` rather than left claiming a session is running that was never
+created, before showing the conflict banner or error same as before.
+
+**The one real trade-off, worth knowing about:** the elapsed-time
+display is driven by `running.started_at`, and that's the local click
+time during the pending window but the server's actual insert time
+(`now()` at the database, set in `POST /sessions/start`) once
+confirmed. Normally these are milliseconds apart and the swap is
+invisible. After a real cold-start wait, though, the server's
+timestamp will be however long the wake-up took *later* than the
+click - so the counter can visibly jump backward by that amount right
+when the "Waking up the server" banner clears. Deliberately left this
+as an honest correction rather than keeping the optimistic time
+forever: the recorded session's actual duration (what Today's total,
+history, and everything downstream will show from then on) is always
+built from the server's timestamp, so a counter that never
+corrected itself would just be quietly lying for the rest of that
+session. Making the client's own guess authoritative instead - having
+`POST /sessions/start` accept and trust a client-supplied start
+time - would remove the jump entirely, but is a materially bigger
+change (server now trusting a client clock) than what was asked for
+here.
+
+Verified: `npm run build` clean. **Not verified this session:** no
+browser here to actually click Start against a slow/cold-started
+backend and watch the optimistic-then-reconciled behavior happen -
+reasoned through from the code (including the cold-start jump above),
+not watched.

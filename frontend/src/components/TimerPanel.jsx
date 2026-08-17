@@ -284,6 +284,24 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
     setAwayPrompt(null);
     const tagToUse = tagIdOverride !== undefined ? tagIdOverride : selectedTag || null;
     const initialNote = quickStartText.trim() || null;
+    // Shows the timer running from the instant of this click rather than
+    // waiting on the round trip - meaningful given how long that trip
+    // can be against a cold-started backend (up to 45s, see api.js's
+    // REQUEST_TIMEOUT_MS/"waking up" banner). `id: null` is how the rest
+    // of this component tells this apart from a real running session
+    // (see the "Change tag" guard and handleRetag/handleStop below) -
+    // there's nothing to PATCH or stop yet. Deliberately NOT passed to
+    // showRunningSessionNotification below - that needs a real id to
+    // build a working "Stop" action, so the OS notification still only
+    // appears once the server actually confirms.
+    reportRunning({
+      id: null,
+      tag_id: tagToUse,
+      task_id: selectedTask || null,
+      started_at: new Date().toISOString(),
+      note: initialNote,
+      source: "timer",
+    });
     try {
       const s = await startSession(tagToUse, initialNote, selectedTask || null);
       setSelectedTag(tagToUse || "");
@@ -298,6 +316,11 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
       reportRunning(s);
       showRunningSessionNotification(s);
     } catch (err) {
+      // Nothing actually started (or, for a 409, something already was
+      // running elsewhere and the optimistic guess above was simply
+      // wrong) - roll it back rather than leave the UI claiming a
+      // session is running that the server never created.
+      reportRunning(null);
       // A 409 here means this device's own view was stale: it thought
       // nothing was running, but another device (or another tab) already
       // has a session going -- started after this device last checked,
@@ -337,7 +360,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
   // also what a Deadline card's "Switch running timer to X" action
   // relies on when it's the one initiating the change instead.
   async function handleRetag(newTagId) {
-    if (!running) return;
+    if (!running || running.id == null) return;
     setRetagBusy(true);
     setError(null);
     try {
@@ -355,7 +378,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
   }
 
   async function handleStop() {
-    if (!running) return;
+    if (!running || running.id == null) return;
     setBusy(true);
     setError(null);
     try {
@@ -469,14 +492,16 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
           <span className="fd-timer-tag-live__label">
             Tracking: <strong>{tags.find((t) => t.id === running.tag_id)?.name || "No tag"}</strong>
           </span>
-          <button
-            type="button"
-            className="fd-link-btn"
-            onClick={() => setRetagging((v) => !v)}
-            disabled={retagBusy}
-          >
-            {retagging ? "Cancel" : "Change tag"}
-          </button>
+          {running.id != null && (
+            <button
+              type="button"
+              className="fd-link-btn"
+              onClick={() => setRetagging((v) => !v)}
+              disabled={retagBusy}
+            >
+              {retagging ? "Cancel" : "Change tag"}
+            </button>
+          )}
         </div>
       ) : (
         <Dropdown
