@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Splash from "./components/Splash.jsx";
+import TopLoadingBar from "./components/TopLoadingBar.jsx";
 import TabNav from "./components/TabNav.jsx";
 import { useNotifications } from "./hooks/useNotifications.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
@@ -515,6 +516,8 @@ export default function App({ user, onLogout, onUserUpdated }) {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
+          <TopLoadingBar active={!loaded || waking} />
+
           <header className="fd-header">
             <div className="fd-header__brand">
               <FocusMark size={22} strokeWidth={2.1} className="fd-header__mark" />

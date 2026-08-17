@@ -320,6 +320,9 @@ button {
 }
 
 .fd-crash__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin-top: 6px;
   padding: 10px 22px;
   border: none;
@@ -630,6 +633,23 @@ button {
   margin: auto;
   font-family: var(--font-mono);
   color: var(--parchment-dim);
+}
+
+.fd-loadbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  height: 2.5px;
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+  overflow: hidden;
+}
+
+.fd-loadbar__fill {
+  height: 100%;
+  background: var(--grad-brass);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--brass) 70%, transparent);
 }
 
 .fd-main__top {
