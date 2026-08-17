@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
 // Inline stroke icons (no icon dependency). Each is drawn at 22×22 in a
@@ -36,23 +37,63 @@ export const TABS = [
   { id: "settings", label: "Settings" },
 ];
 
+// The indicator used to be a per-button element animated via framer-motion's
+// layoutId shared-layout transition. That approach measures start/end
+// position with getBoundingClientRect(), which is viewport-relative - if the
+// page had been scrolled since the last measurement, the FLIP delta framer
+// computes is off by the scroll amount, so instead of sliding across it
+// snaps. offsetLeft/offsetWidth are relative to the nearest positioned
+// ancestor (the nav itself), not the viewport, so they're unaffected by
+// scroll position entirely - sidesteps the bug rather than chasing it.
 export default function TabNav({ active, onChange }) {
+  const navRef = useRef(null);
+  const btnRefs = useRef({});
+  const [indicator, setIndicator] = useState(null);
+
+  useLayoutEffect(() => {
+    function measure() {
+      const btn = btnRefs.current[active];
+      if (!btn) return;
+      const isMobile = window.matchMedia("(max-width: 720px)").matches;
+      const left = isMobile
+        ? btn.offsetLeft + btn.offsetWidth / 2 - 13
+        : btn.offsetLeft + 12;
+      const width = isMobile ? 26 : btn.offsetWidth - 24;
+      setIndicator({ left, width });
+    }
+    measure();
+
+    window.addEventListener("resize", measure);
+    const ro = new ResizeObserver(measure);
+    if (navRef.current) ro.observe(navRef.current);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro.disconnect();
+    };
+  }, [active]);
+
   return (
-    <nav className="fd-tabnav" aria-label="Sections">
+    <nav className="fd-tabnav" aria-label="Sections" ref={navRef}>
       {TABS.map((tab) => (
         <button
           key={tab.id}
+          ref={(el) => (btnRefs.current[tab.id] = el)}
           className={`fd-tabnav__btn ${active === tab.id ? "fd-tabnav__btn--active" : ""}`}
           onClick={() => onChange(tab.id)}
           aria-current={active === tab.id ? "page" : undefined}
         >
           <span className="fd-tabnav__icon"><TabIcon id={tab.id} /></span>
           <span className="fd-tabnav__label">{tab.label}</span>
-          {active === tab.id && (
-            <motion.div className="fd-tabnav__indicator" layoutId="tabnav-indicator" />
-          )}
         </button>
       ))}
+      {indicator && (
+        <motion.div
+          className="fd-tabnav__indicator"
+          initial={false}
+          animate={{ left: indicator.left, width: indicator.width }}
+          transition={{ type: "spring", stiffness: 500, damping: 40 }}
+        />
+      )}
     </nav>
   );
 }

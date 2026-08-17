@@ -351,6 +351,7 @@ button {
 /* ---------- Tab nav (desktop: pills in header) ---------- */
 
 .fd-tabnav {
+  position: relative;
   display: flex;
   gap: 4px;
   margin-left: auto;
@@ -393,9 +394,10 @@ button {
 }
 
 .fd-tabnav__indicator {
+  /* left/width are set inline by TabNav.jsx (offsetLeft/offsetWidth math) -
+     don't hardcode them here, that's what let the indicator slide across
+     tabs instead of being scoped to one button. */
   position: absolute;
-  left: 12px;
-  right: 12px;
   bottom: 2px;
   height: 2px;
   border-radius: 2px;
@@ -447,18 +449,9 @@ button {
   }
 
   .fd-tabnav__indicator {
-    /* Deliberately NOT using left:50% + transform:translateX(-50%) here - framer-motion's layoutId shared-element animation takes ownership
-       of this element's `transform` style every frame (that's how the
-       slide-between-tabs animation works), which silently overwrites any
-       transform set via CSS. The result was the indicator sitting at its
-       un-corrected `left` position instead of centered - visible as the
-       bar drifting away from the active tab's icon/label. Centering via
-       left/width math (no transform) sidesteps the conflict entirely. */
-    left: calc(50% - 13px);
-    right: auto;
+    /* left/width come from TabNav.jsx inline styles (see base rule above) */
     top: -4px;
     bottom: auto;
-    width: 26px;
     height: 3px;
   }
 }
