@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FocusDial - Offline</title>
+<style>
+  :root {
+    --bg: radial-gradient(ellipse 1200px 800px at 20% -10%, #16161a 0%, #0b0b0d 60%);
+    --parchment: #f5f5f7;
+    --parchment-dim: #98989f;
+    --brass: #e0a93d;
+    --grad-brass: linear-gradient(135deg, #f2c368 0%, #d9922c 100%);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: radial-gradient(ellipse 1200px 800px at 20% -10%, #ffffff 0%, #f5f5f7 60%);
+      --parchment: #1c1c1e;
+      --parchment-dim: #6e6e76;
+      --brass: #c98a1b;
+      --grad-brass: linear-gradient(135deg, #e0a93d 0%, #c98a1b 100%);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 32px;
+    text-align: center;
+    background: var(--bg);
+    color: var(--parchment);
+    font-family: "Manrope", "Segoe UI", sans-serif;
+  }
+  .mark { color: var(--brass); opacity: 0.9; }
+  h1 { font-size: 22px; font-weight: 800; margin: 0; }
+  p {
+    max-width: 340px;
+    margin: 0;
+    color: var(--parchment-dim);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  button {
+    margin-top: 6px;
+    padding: 10px 22px;
+    border: none;
+    border-radius: 10px;
+    background: var(--grad-brass);
+    color: #1a1305;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button:active { transform: scale(0.98); }
+</style>
+</head>
+<body>
+  <svg class="mark" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M8 4H5a1 1 0 0 0-1 1v3" />
+    <path d="M16 4h3a1 1 0 0 1 1 1v3" />
+    <path d="M4 16v3a1 1 0 0 0 1 1h3" />
+    <path d="M20 16v3a1 1 0 0 1-1 1h-3" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+  </svg>
+  <h1>You're offline</h1>
+  <p id="msg">FocusDial can't reach the network right now. Check your connection and try again.</p>
+  <button onclick="location.reload()">Retry</button>
+  <script>
+    // Auto-retry the moment the connection comes back, instead of making
+    // the user notice and tap Retry themselves.
+    window.addEventListener("online", () => location.reload());
+  </script>
+</body>
+</html>

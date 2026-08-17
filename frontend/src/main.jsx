@@ -3,15 +3,18 @@ import ReactDOM from "react-dom/client";
 import AuthRoot from "./AuthRoot.jsx";
 import { ToastProvider } from "./components/Toast.jsx";
 import { ConfirmProvider } from "./components/ConfirmDialog.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import "./App.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ToastProvider>
-      <ConfirmProvider>
-        <AuthRoot />
-      </ConfirmProvider>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <ConfirmProvider>
+          <AuthRoot />
+        </ConfirmProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
 

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -32,6 +33,13 @@ const app = express();
 // when the original request really was HTTPS, which breaks
 // secure-cookie sessions in production.
 app.set("trust proxy", 1);
+
+// This is a pure JSON API (no HTML/assets served from here), so the
+// default CSP - built for pages that load scripts/styles/images - has
+// nothing to apply to and just adds header noise. Turn it off and keep
+// the other defaults (X-Content-Type-Options, X-Frame-Options,
+// Strict-Transport-Security, etc.), which are the ones that matter here.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(express.json());
 

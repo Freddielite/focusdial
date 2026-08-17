@@ -10,9 +10,18 @@
 // the fetch handler below) -- bumping the cache name so any shell
 // entries cached under the old cache-first behavior get dropped by the
 // activate handler instead of lingering forever under the same key.
-const CACHE_NAME = "focusdial-shell-v2";
+// v3: precaches offline.html on install so a nav request that fails
+// (network down) and has no matching cached shell yet - e.g. the very
+// first visit, or right after a cache clear - has something better to
+// fall back to than the browser's own ERR_FAILED page. Bumping the
+// cache name isn't required for this change alone (no existing cache
+// keys are invalidated), but keeping it in sync with the file avoids
+// confusion later.
+const CACHE_NAME = "focusdial-shell-v3";
+const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.add(OFFLINE_URL)));
   self.skipWaiting();
 });
 
@@ -50,7 +59,12 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => caches.open(CACHE_NAME).then((cache) => cache.match(request)))
+        .catch(() =>
+          caches.open(CACHE_NAME).then(async (cache) => {
+            const cached = await cache.match(request);
+            return cached || cache.match(OFFLINE_URL);
+          })
+        )
     );
     return;
   }

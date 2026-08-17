@@ -283,6 +283,58 @@ button {
   flex-direction: column;
 }
 
+/* ---------- Crash fallback (ErrorBoundary) ---------- */
+
+.fd-crash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  background: var(--grad-bg);
+  color: var(--parchment);
+}
+
+.fd-crash__mark {
+  color: var(--brass);
+  opacity: 0.9;
+}
+
+.fd-crash__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.fd-crash__body {
+  max-width: 360px;
+  margin: 0;
+  color: var(--parchment-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.fd-crash__btn {
+  margin-top: 6px;
+  padding: 10px 22px;
+  border: none;
+  border-radius: 10px;
+  background: var(--grad-brass);
+  color: #1a1305;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.fd-crash__btn:hover {
+  background: var(--grad-brass-hover);
+}
+
 /* ---------- Splash ---------- */
 
 .fd-splash {
