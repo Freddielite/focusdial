@@ -24,18 +24,24 @@ function calendarDaysUntil(target, now) {
   return Math.round(diffMs / (24 * 60 * 60 * 1000));
 }
 
-function formatDueIn(dueAt, now) {
-  const days = calendarDaysUntil(dueAt, now);
+function formatDaysUntil(days) {
   if (days <= 0) return "today";
   if (days === 1) return "tomorrow";
   return `in ${days}d`;
 }
 
+function formatDueIn(dueAt, now) {
+  return formatDaysUntil(calendarDaysUntil(dueAt, now));
+}
+
 function formatRemindIn(remindAt, now) {
-  const days = calendarDaysUntil(remindAt, now);
-  if (days <= 0) return "today";
-  if (days === 1) return "tomorrow";
-  return `in ${days}d`;
+  return formatDaysUntil(calendarDaysUntil(remindAt, now));
+}
+
+// "Urgent" here just means the due/remind date lands today or tomorrow --
+// used to give those rows extra visual weight in the upcoming list.
+function isUrgent(target, now) {
+  return calendarDaysUntil(target, now) <= 1;
 }
 
 // The in-app counterpart to the Sunday push digest (routes/cron.js) --
@@ -101,18 +107,33 @@ export default function WeeklyReviewCard({ review, userName }) {
           <div className="fd-empty">Nothing due in the next 7 days.</div>
         ) : (
           <ul className="fd-weekly-review__upcoming-list">
-            {review.upcomingDeadlines.map((d) => (
-              <li key={`deadline-${d.id}`}>
-                <span className="fd-weekly-review__upcoming-tag fd-weekly-review__upcoming-tag--deadline">Deadline</span>
-                {d.title}, {formatDueIn(d.dueAt, now)}
-              </li>
-            ))}
-            {review.upcomingReminders.map((r) => (
-              <li key={`reminder-${r.id}`}>
-                <span className="fd-weekly-review__upcoming-tag fd-weekly-review__upcoming-tag--reminder">Reminder</span>
-                {r.title}, {formatRemindIn(new Date(r.remind_at), now)}
-              </li>
-            ))}
+            {review.upcomingDeadlines.map((d) => {
+              const urgent = isUrgent(d.dueAt, now);
+              return (
+                <li
+                  key={`deadline-${d.id}`}
+                  className={`fd-upcoming-row fd-upcoming-row--deadline${urgent ? " fd-upcoming-row--urgent" : ""}`}
+                >
+                  <span className="fd-upcoming-row__type">Deadline</span>
+                  <span className="fd-upcoming-row__title">{d.title}</span>
+                  <span className="fd-upcoming-row__when">{formatDueIn(d.dueAt, now)}</span>
+                </li>
+              );
+            })}
+            {review.upcomingReminders.map((r) => {
+              const remindAt = new Date(r.remind_at);
+              const urgent = isUrgent(remindAt, now);
+              return (
+                <li
+                  key={`reminder-${r.id}`}
+                  className={`fd-upcoming-row fd-upcoming-row--reminder${urgent ? " fd-upcoming-row--urgent" : ""}`}
+                >
+                  <span className="fd-upcoming-row__type">Reminder</span>
+                  <span className="fd-upcoming-row__title">{r.title}</span>
+                  <span className="fd-upcoming-row__when">{formatRemindIn(remindAt, now)}</span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

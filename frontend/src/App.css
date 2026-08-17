@@ -761,35 +761,86 @@ button {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
-.fd-weekly-review__upcoming-list li {
+/* Each upcoming item is a small row card: a colored left bar carries the
+   deadline/reminder distinction (matching the dot/tag colors used
+   elsewhere), a type + title sit on the left, and the due-in badge is
+   right-aligned so the whole list scans as a column of dates. */
+.fd-upcoming-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2.5px solid transparent;
+}
+
+.fd-upcoming-row--deadline {
+  border-left-color: var(--accent-deadline);
+}
+
+.fd-upcoming-row--reminder {
+  border-left-color: var(--accent-reminder);
+}
+
+.fd-upcoming-row__type {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--parchment-dim);
+  white-space: nowrap;
+}
+
+.fd-upcoming-row--deadline .fd-upcoming-row__type {
+  color: var(--accent-deadline);
+}
+
+.fd-upcoming-row--reminder .fd-upcoming-row__type {
+  color: var(--accent-reminder);
+}
+
+.fd-upcoming-row__title {
   font-size: 13px;
   color: var(--parchment);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.fd-weekly-review__upcoming-tag {
-  flex-shrink: 0;
+.fd-upcoming-row__when {
   font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: 11px;
+  color: var(--parchment-dim);
+  white-space: nowrap;
 }
 
-.fd-weekly-review__upcoming-tag--deadline {
+/* Today/tomorrow items get a brighter, filled badge instead of the plain
+   dim text the further-out items use -- the eye should land on what's
+   close before reading the rest of the list. */
+.fd-upcoming-row--urgent {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fd-upcoming-row--urgent .fd-upcoming-row__when {
+  color: var(--parchment);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.fd-upcoming-row--deadline.fd-upcoming-row--urgent .fd-upcoming-row__when {
+  background: rgba(255, 122, 92, 0.18);
   color: var(--accent-deadline);
-  background: rgba(255, 122, 92, 0.14);
 }
 
-.fd-weekly-review__upcoming-tag--reminder {
+.fd-upcoming-row--reminder.fd-upcoming-row--urgent .fd-upcoming-row__when {
+  background: rgba(255, 111, 163, 0.18);
   color: var(--accent-reminder);
-  background: rgba(255, 111, 163, 0.14);
 }
 
 /* ---------- Shared panel chrome ---------- */
