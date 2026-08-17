@@ -9,7 +9,7 @@ import FocusMark from "./FocusMark.jsx";
 
 // Was its own line above this card (see HANDOVER.md's "name
 // personalization" session for the original Greeting.jsx) - moved into
-// the eyebrow slot on request, since a name-aware "Still up, Freddie."
+// the eyebrow slot on request, since a name-aware "Still up, Freddie?"
 // reads better sitting right on the card it's introducing than
 // floating separately above it. Falls back to the plain "Focus today"
 // label whenever there's no name to greet - same reasoning
@@ -23,9 +23,15 @@ function timeOfDayGreeting(hour) {
   return "Good evening";
 }
 
+// "Still up, Freddie?" is a question (checking in on a late night), the
+// other three are statements ("Good morning, Freddie.") - a single
+// trailing period for all four would make the late-night one read like
+// a flat observation instead of the nudge it's meant to be.
 function eyebrowLabel(name) {
   if (!name) return "Focus today";
-  return `${timeOfDayGreeting(new Date().getHours())}, ${name}.`;
+  const greeting = timeOfDayGreeting(new Date().getHours());
+  const punctuation = greeting === "Still up" ? "?" : ".";
+  return `${greeting}, ${name}${punctuation}`;
 }
 
 function statusPill(summary, streakAtRisk, goalMet) {

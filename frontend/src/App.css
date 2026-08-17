@@ -2867,7 +2867,7 @@ button {
   flex-shrink: 0;
 }
 
-/* The name-aware greeting ("Still up, Freddie.") reuses the eyebrow's
+/* The name-aware greeting ("Still up, Freddie?") reuses the eyebrow's
    position but not its all-caps data-label styling -- a greeting read
    in small caps loses the direct-address warmth it's going for (it's
    competing with actual data-label eyebrows elsewhere in the app for
