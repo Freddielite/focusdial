@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 
-const FULL_TEXT = "Focus.";
-const TYPE_SPEED_MS = 110;
-const TYPE_START_DELAY_MS = 850; // let the reticle lock before the word appears
-const HOLD_AFTER_MS = 650;
+const LOCK_DELAY_MS = 650; // when the brackets finish closing and the dot/flash fire
+const HOLD_AFTER_LOCK_MS = 750;
 
 // Reticle mark: same four corner-bracket paths as FocusMark.jsx (kept as a
 // separate static component there since it's used elsewhere - header, toast
@@ -13,26 +11,9 @@ const HOLD_AFTER_MS = 650;
 // viewBox toward center, so they visually "converge" onto the focus point
 // like a camera racking into focus, instead of just fading in place.
 export default function Splash({ onComplete }) {
-  const [typed, setTyped] = useState("");
-
   useEffect(() => {
-    let typeTimer;
-    const startTimer = setTimeout(() => {
-      let i = 0;
-      typeTimer = setInterval(() => {
-        i += 1;
-        setTyped(FULL_TEXT.slice(0, i));
-        if (i >= FULL_TEXT.length) {
-          clearInterval(typeTimer);
-          setTimeout(onComplete, HOLD_AFTER_MS);
-        }
-      }, TYPE_SPEED_MS);
-    }, TYPE_START_DELAY_MS);
-
-    return () => {
-      clearTimeout(startTimer);
-      clearInterval(typeTimer);
-    };
+    const timer = setTimeout(onComplete, LOCK_DELAY_MS + HOLD_AFTER_LOCK_MS);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -95,16 +76,6 @@ export default function Splash({ onComplete }) {
             transition={{ delay: 0.65, duration: 0.55, ease: "easeOut" }}
           />
         </svg>
-
-        <motion.div
-          className="fd-splash__text"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.85, duration: 0.4 }}
-        >
-          {typed}
-          <span className="fd-splash__cursor" aria-hidden="true" />
-        </motion.div>
       </div>
     </motion.div>
   );
