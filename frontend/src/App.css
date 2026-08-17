@@ -295,6 +295,17 @@ button {
   background: var(--grad-bg);
 }
 
+.fd-splash__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.fd-splash__mark {
+  color: var(--brass);
+}
+
 .fd-splash__text {
   font-family: var(--font-display);
   font-size: 56px;
