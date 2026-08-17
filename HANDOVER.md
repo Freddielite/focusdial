@@ -2539,3 +2539,55 @@ clean on the frontend. **Not verified this session:** no browser here
 to actually backfill a midnight-crossing session and watch it land at
 the top of Recent Sessions - the fix is confirmed against a standalone
 reproduction of the reported symptom, not a live click-through.
+
+## Session 38 — greeting punctuation fix, then a real scroll-position bug
+
+Two follow-ups to Session 37.
+
+### "Still up, Freddie?" not "Still up, Freddie."
+
+Flagged directly: `eyebrowLabel()`'s single trailing period on all four
+time-of-day greetings made the late-night one read as a flat statement
+when it's meant to be a check-in question. `eyebrowLabel()` now picks
+the punctuation based on which greeting fired - `?` for "Still up",
+`.` for the other three - rather than hardcoding one for all of them.
+Also swept the rest of the diff for other grammar issues while asked:
+the Weekly Review possessive, the streak message, and the push
+notification prefix in `cron.js`'s `greet()` all read fine as written
+and didn't need changes.
+
+### Real bug: switching tabs kept the old tab's scroll position
+
+Reported precisely: scroll to the bottom of Settings, click "Today,"
+land on the bottom of Today instead of the top.
+
+**Root cause.** `.fd-main` has no `overflow-y` of its own - the actual
+page (`window`) is what scrolls - and nothing in the tab-switch path
+ever reset that scroll position. Settings is a long tab; Today is
+shorter. Scroll deep into Settings, click Today, and the browser just
+keeps the same `scrollY`, which now lands somewhere in the middle or
+bottom of Today's shorter content instead of its top.
+
+**Fix.** A `useEffect` keyed on `activeTab` in `App.jsx` now resets
+`window.scrollTo({ top: 0 })` on every tab switch.
+
+**The one thing that made this not a one-line fix:** Settings already
+has its own deliberate non-top scroll behavior - the Budgets tab's
+"Manage budgets" link sets `settingsScrollTarget`, and `SettingsView`
+has its own effect that smoothly `scrollIntoView`s that section once
+mounted. Both effects fire in the same commit when that link is
+clicked (activeTab flips to "settings" and SettingsView mounts
+together), and React fires a mounting child's effects before its
+parent's in the same commit - so `SettingsView`'s smooth scroll would
+run first, and this new effect running unconditionally straight after
+it would immediately yank the page back to 0, undoing it. The new
+effect checks for that case (`activeTab === "settings" &&
+settingsScrollTarget`) and skips the reset when it's true, letting
+`SettingsView` own the scroll position for that one deliberate case;
+every other tab switch still resets to top same as before.
+
+Verified: `npm run build` clean. **Not verified this session:** no
+browser here to click through the actual repro (scroll Settings to the
+bottom, click Today) or the "Manage budgets" deep-link case this fix
+had to be careful not to break - both are reasoned through from the
+code, not watched happen.

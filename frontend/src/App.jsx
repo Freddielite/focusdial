@@ -81,6 +81,24 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // section, instead of just landing at the top. SettingsView consumes
   // and clears it once it's scrolled there.
   const [settingsScrollTarget, setSettingsScrollTarget] = useState(null);
+  // The page itself is the scroll container (.fd-main has no overflow
+  // of its own), and nothing else resets that scroll position on tab
+  // switches - so scrolling to the bottom of a long tab (Settings) and
+  // then clicking a shorter one (Today) left the window sitting at the
+  // same scrollY, which now lands somewhere in the middle or bottom of
+  // the new tab instead of its top.
+  //
+  // Skipped when landing on Settings with a pending scrollTarget (the
+  // Budgets tab's "Manage budgets" link): React fires a mounting
+  // child's effects before its parent's in the same commit, so
+  // SettingsView's own scrollIntoView effect would already have run by
+  // the time this one does, and resetting to 0 here would immediately
+  // undo that smooth scroll to the target section right after it
+  // happened.
+  useEffect(() => {
+    if (activeTab === "settings" && settingsScrollTarget) return;
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [activeTab, settingsScrollTarget]);
   const [theme, setTheme] = useTheme();
   const [nowTick, setNowTick] = useState(Date.now());
   const toast = useToast();
