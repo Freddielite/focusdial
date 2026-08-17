@@ -1,3 +1,19 @@
+// Reduces a stored display name down to just its first word, for every
+// spot the app addresses someone directly (greeting, weekly review
+// title, streak-congratulation message, push notifications) -- "Freddie
+// Elite" reads as a nickname/title combo, not a first+last name a
+// greeting should spell out in full. A plain space-split rather than
+// anything fancier (no honorific stripping, no locale-aware name
+// parsing): this app only ever collects one free-text display-name
+// field, so "first word" is the only signal available, and it's the
+// same signal a person would use reading it themselves.
+export function firstName(name) {
+  if (!name) return name;
+  const trimmed = name.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.split(/\s+/)[0];
+}
+
 export function formatDuration(totalSeconds) {
   const seconds = Math.round(totalSeconds);
   const h = Math.floor(seconds / 3600);

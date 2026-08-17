@@ -2468,12 +2468,6 @@ button {
   gap: 20px;
 }
 
-.fd-greeting {
-  margin: 0;
-  font-size: 15px;
-  color: var(--parchment-dim);
-}
-
 .fd-view__head {
   display: flex;
   align-items: center;
@@ -2871,6 +2865,22 @@ button {
   display: inline-flex;
   color: var(--brass);
   flex-shrink: 0;
+}
+
+/* The name-aware greeting ("Still up, Freddie.") reuses the eyebrow's
+   position but not its all-caps data-label styling -- a greeting read
+   in small caps loses the direct-address warmth it's going for (it's
+   competing with actual data-label eyebrows elsewhere in the app for
+   the same visual language, when it should read more like the plain
+   sentence the old standalone .fd-greeting line used to be). Keeps the
+   same slot/icon/color family, just switches off the uppercase
+   treatment and bumps size/weight down to sentence-case body text. */
+.fd-hero__eyebrow--greeting {
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--font-body, inherit);
+  font-size: 15px;
+  font-weight: 500;
 }
 
 .fd-hero__pill {

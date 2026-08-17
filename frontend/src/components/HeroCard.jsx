@@ -6,6 +6,28 @@ import FocusMark from "./FocusMark.jsx";
 // number that answers "how's today going"), with this-week and streak
 // as the supporting stats, and a status pill that reads the way "In the
 // black" does: a plain-language verdict, not a metric.
+
+// Was its own line above this card (see HANDOVER.md's "name
+// personalization" session for the original Greeting.jsx) - moved into
+// the eyebrow slot on request, since a name-aware "Still up, Freddie."
+// reads better sitting right on the card it's introducing than
+// floating separately above it. Falls back to the plain "Focus today"
+// label whenever there's no name to greet - same reasoning
+// Greeting.jsx originally used for returning null: a greeting with
+// nothing to greet reads as an unfinished template, not a deliberate
+// choice.
+function timeOfDayGreeting(hour) {
+  if (hour < 5) return "Still up";
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function eyebrowLabel(name) {
+  if (!name) return "Focus today";
+  return `${timeOfDayGreeting(new Date().getHours())}, ${name}.`;
+}
+
 function statusPill(summary, streakAtRisk, goalMet) {
   if (streakAtRisk) return { label: "Streak at risk", tone: "warn" };
   if (goalMet) return { label: "Goal met", tone: "good" };
@@ -21,6 +43,7 @@ export default function HeroCard({
   goalProjection,
   startTimeAnomaly,
   graceEnabled,
+  userName,
 }) {
   const hasGoal = dailyGoalSeconds != null && dailyGoalSeconds > 0;
   const goalPct = hasGoal ? Math.min(1, summary.todaySeconds / dailyGoalSeconds) : 0;
@@ -37,8 +60,8 @@ export default function HeroCard({
       <div className="fd-hero__glow" aria-hidden="true" />
       <div className="fd-hero__inner">
         <div className="fd-hero__top">
-          <span className="fd-hero__eyebrow">
-            <FocusMark size={13} strokeWidth={2.4} className="fd-hero__mark" /> Focus today
+          <span className={`fd-hero__eyebrow ${userName ? "fd-hero__eyebrow--greeting" : ""}`}>
+            <FocusMark size={13} strokeWidth={2.4} className="fd-hero__mark" /> {eyebrowLabel(userName)}
           </span>
           <span className={`fd-hero__pill fd-hero__pill--${pill.tone}`}>{pill.label}</span>
         </div>

@@ -16,7 +16,7 @@ import RemindersView from "./components/RemindersView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
 import NamePromptModal from "./components/NamePromptModal.jsx";
 import { maybePushEvent } from "./push.js";
-import { formatDuration } from "./format.js";
+import { formatDuration, firstName } from "./format.js";
 import {
   listTags,
   getSessionHistory,
@@ -57,6 +57,12 @@ const PACE_COPY = {
 const VALID_TABS = new Set(["today", "insights", "budgets", "deadlines", "reminders", "settings"]);
 
 export default function App({ user, onLogout, onUserUpdated }) {
+  // Every place this app addresses someone by name (greeting, weekly
+  // review title, streak message, push notifications) wants just the
+  // first word of whatever's in `displayName` - see firstName's own
+  // comment in format.js. Computed once here rather than at each call
+  // site so there's one place, not several, doing that reduction.
+  const userFirstName = user?.displayName ? firstName(user.displayName) : null;
   const [showSplash, setShowSplash] = useState(true);
   // Local-only, not persisted - "Skip for now" means "not this session,"
   // not "never ask again." See NamePromptModal for why that's the
@@ -293,9 +299,9 @@ export default function App({ user, onLogout, onUserUpdated }) {
         summary,
         budgetsProgress: budgetsWithProgress,
         deadlinesProgress: deadlinesWithProgress,
-        displayName: user?.displayName || null,
+        displayName: userFirstName,
       }),
-    [summary, budgetsWithProgress, deadlinesWithProgress, user?.displayName]
+    [summary, budgetsWithProgress, deadlinesWithProgress, userFirstName]
   );
   const riskDigest = useMemo(
     () => computeRiskDigest({ budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
@@ -547,7 +553,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     goalProjection={goalProjection}
                     graceEnabled={settings.streak_recovery_grace_enabled}
                     tagVocabulary={tagVocabulary}
-                    userName={user?.displayName || null}
+                    userName={userFirstName}
                     onRunningChange={setRunningSession}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
@@ -563,7 +569,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     weeklyReview={weeklyReview}
                     deadlineTrackRecord={deadlineTrackRecord}
                     history={history}
-                    userName={user?.displayName || null}
+                    userName={userFirstName}
                   />
                 )}
                 {activeTab === "budgets" && (

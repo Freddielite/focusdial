@@ -829,11 +829,6 @@ before deploying for real.
 
 Verified: `npm run build` clean.
 
-
-
-
-
-
 ## Multi-user accounts (Aug 2026)
 
 The single biggest change to this app so far — went from "one person, no
@@ -2469,3 +2464,78 @@ session:** no browser here to see the actual greeting/modal/weekly-
 review rendering, and no way to trigger a real cron tick to see a
 formatted push notification - the logic is verified in isolation, the
 visual result isn't yet.
+
+## Session 37 — Today greeting moved into HeroCard, first-name-only, and a real Recent Sessions bug
+
+Three asks together: reposition the greeting, use first names everywhere
+a name is shown, and look into a reported Recent Sessions issue.
+
+### Greeting moved into HeroCard's eyebrow
+
+The standalone `Greeting.jsx` line above `HeroCard` ("Still up, Freddie
+Elite.") is gone - that text now replaces the card's own "Focus today"
+eyebrow label instead, on request ("I feel it'll be better there").
+`HeroCard` takes a new `userName` prop and picks between the greeting
+and the plain "Focus today" fallback itself (`eyebrowLabel()`, same
+`timeOfDayGreeting()` logic Greeting.jsx used, just relocated). The
+eyebrow's existing all-caps/letter-spacing styling reads fine for a
+short data label ("FOCUS TODAY") but not for a full sentence greeting,
+so a new `.fd-hero__eyebrow--greeting` modifier switches those off
+specifically when a name's present, closer to the original
+`.fd-greeting` line's sentence-case look. `TodayView.jsx` no longer
+renders `<Greeting />` at all; `Greeting.jsx` itself and the now-unused
+`.fd-greeting` CSS block were deleted rather than left as dead code.
+
+### First names only, everywhere a name is shown
+
+`displayName` can be more than one word ("Freddie Elite"), and every
+personalization added in the earlier "name personalization" session
+was showing the whole thing. New `firstName()` in `format.js` (plain
+`trim()` + split on whitespace, first word) is now what every frontend
+call site actually uses - computed once in `App.jsx` as `userFirstName`
+and threaded into the Today greeting, the Insights tab's
+`userName`/Weekly Review title, and `computeInsightOfTheDay`'s
+streak-congratulation message, replacing the raw `user?.displayName`
+each of those read before. `cron.js`'s `greet()` helper (the backend's
+own separate personalization path for push notifications - see the
+original session's note on why frontend/backend duplicate this rather
+than sharing code) got the equivalent treatment: a small `firstNameOf()`
+duplicate of the same one-line reduction, applied inside `greet()`
+itself so every automation that calls it (reminders, deadline pace,
+streak risk, runaway timer, weekly digest) picks it up without each
+call site changing.
+
+### Real bug: Recent Sessions could bury a just-logged backfill
+
+Reported precisely: backfilled a session, it correctly showed up in
+Today's total (35m), but never appeared in Recent Sessions at all -
+not even after checking further pages.
+
+**Root cause.** `GET /sessions` (what `SessionLog`'s "Recent Sessions"
+paginates through) was `ORDER BY s.started_at DESC` - sorting by when
+each session *began*, not when it *finished*. That's usually
+indistinguishable from "most recently completed," since most sessions
+are short and same-day. It breaks for a long session that started
+*before* another entry's start time but (having run for hours) *ends*
+after it: sorted by `started_at`, the older-starting/newer-ending
+session ranks below the other one and can miss page 1 of a list whose
+entire point is "what did I just do." Confirmed with a standalone
+script before touching the query: two sessions, one starting earlier
+but ending later than the other, sorted by `started_at DESC` put the
+wrong one first; sorted by `ended_at DESC` (the fix) put the actually-
+more-recent one first, matching what Today's total already agreed with.
+
+**Fix.** Changed that one `ORDER BY` to `s.ended_at DESC`. Nothing else
+needed to change - `ended_at IS NOT NULL` is already required by the
+route's own `WHERE` clause, so this can't accidentally surface a still-
+running session at the top the way sorting by `ended_at` on an
+in-progress row would. `GET /sessions/history` (analytics' own copy,
+iterated chronologically for streaks/hourly buckets/etc.) intentionally
+stays `ORDER BY started_at ASC` - a different consumer with a different,
+correct reason for that ordering, not the same bug.
+
+Verified: `node --check` clean on every backend file, `npm run build`
+clean on the frontend. **Not verified this session:** no browser here
+to actually backfill a midnight-crossing session and watch it land at
+the top of Recent Sessions - the fix is confirmed against a standalone
+reproduction of the reported symptom, not a live click-through.

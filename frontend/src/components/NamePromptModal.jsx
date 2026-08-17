@@ -6,7 +6,7 @@ import { updateProfile } from "../api.js";
 // covers both a genuinely new signup and any existing account from
 // before this existed. "Skip for now" is a real, respected option, not
 // a nag: if skipped, this just won't reappear until the app is
-// reloaded, and every place that would've used the name (see Greeting,
+// reloaded, and every place that would've used the name (see HeroCard,
 // WeeklyReviewCard, computeInsightOfTheDay, and the push notifications
 // in cron.js) already falls back to reading fine without one - nothing
 // downstream assumes a name is set.

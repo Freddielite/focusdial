@@ -271,11 +271,22 @@ sessionsRouter.get("/sessions", async (req, res) => {
   // delete).
   const includeTotal = req.query.count !== "0";
   try {
+    // Ordered by ended_at, not started_at -- "Recent Sessions" means
+    // "what did I most recently finish," and those disagree for any
+    // session long enough to span a boundary another session's start
+    // falls inside. Concretely: backfill a long session that started
+    // before an existing entry's start time but (having run for hours)
+    // ends after it -- sorting by started_at would rank the newly
+    // logged, more-recently-completed session below the older one, so
+    // it silently misses page 1 of a list that's supposed to lead with
+    // whatever just happened. ended_at is also never null here (the
+    // WHERE clause already requires it), so this can't push a running
+    // session to the top the way it would on an in-progress row.
     const rowsPromise = pool.query(
       `SELECT s.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
        FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
        WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
-       ORDER BY s.started_at DESC LIMIT $2 OFFSET $3`,
+       ORDER BY s.ended_at DESC LIMIT $2 OFFSET $3`,
       [req.userId, limit, offset]
     );
     const countPromise = includeTotal

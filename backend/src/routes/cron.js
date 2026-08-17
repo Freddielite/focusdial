@@ -16,8 +16,25 @@ export const cronRouter = Router();
 // set a name yet (see /auth/me's PATCH and the frontend's first-run
 // prompt) - no guessing a name from their email here, a wrong-feeling
 // guess in a push notification is worse than staying generic.
+// Reduces a stored display name to just its first word before it goes
+// into a push body - same reasoning, and the same plain space-split,
+// as firstName() in the frontend's format.js (duplicated rather than
+// imported: this is a separate Node project from the frontend bundle,
+// with no shared-package boundary between them, same trade-off already
+// made for checkDeadlinePaceChanges' deliberate duplication of its
+// frontend counterpart - see the handover notes). "Freddie Elite - you
+// haven't logged a session today" should read like a name, not a
+// name-plus-title getting stapled onto every notification.
+function firstNameOf(displayName) {
+  if (!displayName) return displayName;
+  const trimmed = displayName.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.split(/\s+/)[0];
+}
+
 function greet(displayName, body) {
-  return displayName ? `${displayName} — ${body}` : body;
+  const name = firstNameOf(displayName);
+  return name ? `${name} — ${body}` : body;
 }
 
 // --- Local-time helpers ----------------------------------------------
