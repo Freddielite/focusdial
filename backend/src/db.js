@@ -163,6 +163,21 @@ export async function initSchema() {
     -- check, which would be noisy.
     ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS last_notified_status TEXT;
 
+    -- Recurring deadlines - same idea and same allowed values as
+    -- reminders.recurrence above, but deadlines don't advance the same
+    -- row in place the way a reminder does (see routes/deadlines.js).
+    -- A deadline carries real progress -- manual_hours_logged, and a
+    -- tag-linked one accrues from actual session history -- that a
+    -- reminder's remind_at never does, and completed deadlines stay
+    -- visible in the completed list and feed computeDeadlineTrackRecord's
+    -- on-time/late stats. Advancing due_date on the same row would both
+    -- wipe that history and erase the completed record it should have
+    -- left behind. Marking a recurring deadline done instead spawns a
+    -- fresh row for the next occurrence and leaves the completed one
+    -- exactly as any other completed deadline would be left.
+    ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS recurrence TEXT NOT NULL DEFAULT 'none'
+      CHECK (recurrence IN ('none', 'daily', 'weekly', 'monthly'));
+
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       endpoint    TEXT UNIQUE NOT NULL,

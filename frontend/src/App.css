@@ -217,6 +217,40 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Long-press-to-select/copy on plain UI text (labels, stats, card
+   titles, buttons - anything that isn't an actual textbox) reads as a
+   web page, not an app, on a phone - most installed apps don't let you
+   select their chrome the way a browser tab lets you select any text
+   on a page. Scoped to `display-mode: standalone` (set by
+   manifest.webmanifest's `"display": "standalone"`, and by Safari once
+   `apple-mobile-web-app-capable` is set - see index.html) specifically
+   so this only kicks in for the installed/home-screen app, never for
+   someone using the site in an ordinary browser tab, where normal
+   page-text selection is still expected.
+   -webkit-touch-callout is the other half of this on iOS specifically
+   - without it, Safari still pops its selection magnifier/callout on a
+   long press even with user-select: none, since that callout isn't
+   gated on selectability the way it is on other browsers.
+   Re-enabled on actual textboxes (input/textarea) and contenteditable
+   elements below - copy/paste/select-all inside a field the person
+   typed into (session notes, deadline titles, etc.) still needs to
+   work exactly like it would anywhere else. */
+@media (display-mode: standalone) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+}
+
 button,
 a {
   touch-action: manipulation;
@@ -1454,6 +1488,20 @@ button {
 .fd-deadline-create-preview__text {
   font-size: 12px;
   color: var(--parchment-dim);
+}
+
+/* Small explanatory text under a form field - currently just the
+   deadline "Repeat" dropdown, which needs a line reminding people it's
+   not the same trigger as a reminder's recurrence (time-based, fires on
+   its own) - a deadline only advances to its next occurrence once it's
+   actually marked done. Generic enough to reuse elsewhere if another
+   field ever needs the same treatment. */
+.fd-form-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--parchment-dim);
+  font-weight: 400;
+  margin-top: 4px;
 }
 
 .fd-manual-form__actions {

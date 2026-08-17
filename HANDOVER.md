@@ -2656,3 +2656,124 @@ browser here to actually click Start against a slow/cold-started
 backend and watch the optimistic-then-reconciled behavior happen -
 reasoned through from the code (including the cold-start jump above),
 not watched.
+
+## Session 40 — recurring deadlines (backlog item, built)
+
+Asked for a feature suggestion; picked from a short list of genuine
+gaps found by cross-referencing what's already built against the
+open backlog items list further up this file. Went with recurring
+deadlines - reminders already support `recurrence` (`none`/`daily`/
+`weekly`/`monthly`), deadlines never got the same treatment.
+
+### Why deadlines don't just reuse the reminder pattern
+
+A reminder's recurrence advances `remind_at` on the *same row* once
+it fires (`nextOccurrence()` in `routes/cron.js`) - there's nothing
+else on a reminder worth preserving between occurrences. A deadline
+is different: it carries real progress (`manual_hours_logged`, or for
+a tag-linked one, actual accrued session time), and a completed one
+stays visible in the "completed" list feeding
+`computeDeadlineTrackRecord`'s on-time/late stats. Advancing the same
+row's `due_date` in place would both wipe that progress and erase the
+completed record it should have left behind.
+
+So a recurring deadline instead spawns a **new row** for the next
+occurrence, only when it's actually marked done - the completed one is
+left exactly as any other completed deadline would be, and the new one
+starts clean (`manual_hours_logged = 0`, or a fresh accrual window if
+tag-linked).
+
+### What changed
+
+`db.js`: new `deadlines.recurrence` column, same allowed values and
+`CHECK` constraint as `reminders.recurrence`.
+
+`routes/deadlines.js`:
+- `nextDueDate()` - the same date-stepping logic as cron.js's
+  `nextOccurrence()`, but operating on a plain `DATE` rather than a
+  `TIMESTAMPTZ` (a deadline's `due_time` is a separate column, carried
+  over unchanged rather than advanced).
+- `spawnNextOccurrence()` - called from `PATCH /deadlines/:id` only on
+  the actual transition into `status: "done"` for a deadline whose
+  `recurrence !== "none"` (checked *after* the update, off the
+  already-COALESCEd row, so a recurrence set in the same request that
+  completes it still spawns correctly). Guarding on the transition
+  rather than just "status is done" matters - without it, a later
+  unrelated edit to an already-completed recurring deadline (say,
+  fixing a typo in its title) would spawn a duplicate occurrence every
+  time it saved.
+- Carries forward title/tag/due_time/estimated_hours/recurrence as-is,
+  and recreates a linked task too if the just-completed deadline had
+  one (checked via `tasks.deadline_id`) - the point of a recurring
+  deadline is that each occurrence behaves like a fresh one, task
+  included, not just the deadline card by itself.
+- New occurrence gets pushed to Google Calendar the same way a
+  normally-created deadline would (`pushItemToGoogle`, no-op if not
+  connected).
+
+`DeadlinesView.jsx`: both the create form and the inline edit form get
+a "Repeat" dropdown (same options/copy as `RemindersView`'s), with a
+hint line underneath whenever a repeat interval is selected - reminders
+fire on their own once due, but a deadline's recurrence only ever
+advances once *marked done*, which is a real enough difference in
+mental model that it seemed worth spelling out rather than assuming
+the reminder pattern would just carry over correctly in someone's
+head. Each active deadline card also picks up a small "· repeats
+weekly" (etc.) marker next to its countdown when it has a recurrence
+set.
+
+**One pre-existing quirk this inherits, not introduces:** `nextDueDate`
+uses `setUTCMonth()` the same way `cron.js`'s reminder version already
+does, which means a monthly deadline due Jan 31 advances to Mar 3, not
+Feb 28 - JS's `Date` rolls the overflow into the next month rather than
+clamping. Reminders have had this same behavior all along; didn't fix
+it here since that's a separate, pre-existing edge case shared by both
+features, not something new.
+
+Verified: `node --check` clean on the backend, `npm run build` clean
+on the frontend, and `nextDueDate()` checked standalone against
+daily/weekly/monthly and year-rollover cases. **Not verified this
+session:** no live Postgres here to actually run the migration or
+click through creating a recurring deadline, marking it done, and
+watching the next occurrence (plus its linked task, plus the Google
+Calendar push) actually appear - reasoned through from the code and
+the existing reminder implementation it mirrors, not watched happen.
+
+## Session 41 — no long-press text selection in the installed app
+
+Asked directly: most native/installed apps don't let you long-press
+and select their UI text (labels, buttons, stats, card titles) the way
+a browser tab lets you select any text on a page - textboxes are the
+one place that still should work normally. Confirmed scope with two
+questions before touching anything: yes to also killing iOS Safari's
+long-press magnifier/callout (not just blocking copy), and "textboxes
+only" literally - nothing else (typed notes included) stays selectable.
+
+### What changed
+
+`App.css`: `user-select: none` + `-webkit-touch-callout: none` on
+`body`, scoped inside `@media (display-mode: standalone)` so this only
+applies to the installed/home-screen app - anyone using the site in an
+ordinary browser tab keeps normal page-text selection. Re-enabled
+(`user-select: text` + `-webkit-touch-callout: default`) on `input`,
+`textarea`, and `[contenteditable="true"]` - the last one has nothing
+in this codebase using it today, added anyway since a field someone can
+actually type into should obviously stay selectable whether it's a
+plain input or not.
+
+`index.html`: added `<meta name="apple-mobile-web-app-capable"
+content="yes">`, which was missing entirely. This isn't optional
+polish - without it, adding the app to an iOS home screen just creates
+a bookmark that opens ordinary Safari (with its address bar and
+chrome), not a standalone window, and the `display-mode: standalone`
+media query the whole fix depends on isn't reliably set on iOS without
+it either. The manifest's `"display": "standalone"` already covered
+Android/Chrome; this was the missing other half.
+
+Verified: `npm run build` clean, and confirmed both the media query and
+the meta tag actually made it into the built output (`dist/index.html`,
+`dist/assets/*.css`). **Not verified this session:** no phone here to
+actually install the app to a home screen and long-press around it -
+the CSS/meta-tag mechanics are standard and correctly scoped by
+inspection, but "does it feel right on a real device" is a real check
+worth doing on your end.

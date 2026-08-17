@@ -239,6 +239,7 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
   const [dueDate, setDueDate] = useState(deadline.due_date?.slice(0, 10) || "");
   const [dueTime, setDueTime] = useState(deadline.due_time || "");
   const [estHours, setEstHours] = useState(Number(deadline.estimated_hours));
+  const [recurrence, setRecurrence] = useState(deadline.recurrence || "none");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -265,6 +266,7 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
         due_date: dueDate,
         due_time: dueTime || null,
         estimated_hours: Number(estHours),
+        recurrence,
       });
       onSaved(updated);
     } catch (err) {
@@ -316,6 +318,22 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
           </Dropdown>
         </label>
       </div>
+      <div className="fd-manual-form__row">
+        <label>
+          Repeat
+          <Dropdown className="fd-select" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+            <option value="none">Doesn't repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </Dropdown>
+          {recurrence !== "none" && (
+            <span className="fd-form-hint">
+              A new deadline is created for the next occurrence once this one's marked done - not before.
+            </span>
+          )}
+        </label>
+      </div>
       {error && <div className="fd-inline-error">{error}</div>}
       <div className="fd-manual-form__actions">
         <button type="button" className="fd-link-btn" onClick={onCancel} disabled={busy}>
@@ -337,6 +355,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
   const [dueTime, setDueTime] = useState("");
   const [estHours, setEstHours] = useState(10);
   const [addAsTask, setAddAsTask] = useState(false);
+  const [recurrence, setRecurrence] = useState("none");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
@@ -432,11 +451,13 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
         due_time: dueTime || null,
         estimated_hours: Number(estHours),
         add_as_task: addAsTask,
+        recurrence,
       });
       setTitle("");
       setDueDate("");
       setDueTime("");
       setAddAsTask(false);
+      setRecurrence("none");
       setFormOpen(false);
       onDataChanged();
     } catch (err) {
@@ -543,6 +564,22 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
                 Also add to my task list
               </label>
             </div>
+            <div className="fd-manual-form__row">
+              <label>
+                Repeat
+                <Dropdown className="fd-select" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+                  <option value="none">Doesn't repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </Dropdown>
+                {recurrence !== "none" && (
+                  <span className="fd-form-hint">
+                    A new deadline is created for the next occurrence once this one's marked done - not before.
+                  </span>
+                )}
+              </label>
+            </div>
             {(() => {
               const preview = previewDeadlineStatus({ dueDate, dueTime, estHours, avgHours });
               return preview ? (
@@ -633,6 +670,11 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
                     <span className="fd-check-card__meta">
                       ★ <Countdown dueAt={d.dueAt} nowMs={nowMs} />
                       {liveHours > 0 && <span className="fd-countdown__live-dot" title="Timer running on this tag" />}
+                      {d.recurrence && d.recurrence !== "none" && (
+                        <span title={`A new deadline is created for the next occurrence once this one's marked done`}>
+                          · repeats {d.recurrence}
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div className="fd-check-card__value">

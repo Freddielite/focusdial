@@ -4,6 +4,50 @@ import { pushItemToGoogle, deleteItemFromGoogle } from "../lib/google.js";
 
 export const deadlinesRouter = Router();
 
+// Same recurrence step reminders' cron-side nextOccurrence() (routes/cron.js)
+// uses, but operating on a plain DATE rather than a TIMESTAMPTZ - a
+// deadline's due_date has no time-of-day component of its own (due_time
+// is separate and just carried over unchanged to the next occurrence).
+function nextDueDate(dueDate, recurrence) {
+  const d = new Date(dueDate);
+  if (recurrence === "daily") d.setUTCDate(d.getUTCDate() + 1);
+  else if (recurrence === "weekly") d.setUTCDate(d.getUTCDate() + 7);
+  else if (recurrence === "monthly") d.setUTCMonth(d.getUTCMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// Marking a recurring deadline done spawns the next occurrence as a
+// fresh row (see db.js's schema comment on deadlines.recurrence for why
+// this doesn't just advance the same row the way a reminder does).
+// Carries forward title/tag/due_time/estimated_hours/recurrence as-is,
+// and recreates a linked task too if the just-completed deadline had
+// one (from "Add as task" at creation, or from a later edit) - the
+// point of a recurring deadline is that each occurrence behaves like a
+// fresh one, task included, not just the deadline card by itself.
+async function spawnNextOccurrence(userId, completed) {
+  const nextDue = nextDueDate(completed.due_date, completed.recurrence);
+  const { rows } = await pool.query(
+    `INSERT INTO deadlines (title, tag_id, due_date, due_time, estimated_hours, recurrence, user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [completed.title, completed.tag_id, nextDue, completed.due_time, completed.estimated_hours, completed.recurrence, userId]
+  );
+  const spawned = rows[0];
+  const { rows: linkedTasks } = await pool.query(`SELECT id FROM tasks WHERE deadline_id = $1 AND user_id = $2`, [
+    completed.id,
+    userId,
+  ]);
+  if (linkedTasks.length > 0) {
+    await pool.query(`INSERT INTO tasks (title, due_date, deadline_id, user_id) VALUES ($1, $2, $3, $4)`, [
+      completed.title,
+      nextDue,
+      spawned.id,
+      userId,
+    ]);
+  }
+  await pushItemToGoogle(userId, "deadline", spawned); // no-op if Google isn't connected
+  return spawned;
+}
+
 deadlinesRouter.get("/deadlines", async (req, res) => {
   const status = req.query.status; // optional filter, e.g. ?status=active
   try {
@@ -29,15 +73,15 @@ deadlinesRouter.get("/deadlines", async (req, res) => {
 });
 
 deadlinesRouter.post("/deadlines", async (req, res) => {
-  const { title, tag_id, due_date, due_time, estimated_hours, add_as_task } = req.body;
+  const { title, tag_id, due_date, due_time, estimated_hours, add_as_task, recurrence } = req.body;
   if (!title || !title.trim() || !due_date || !estimated_hours) {
     return res.status(400).json({ error: "title, due_date, and estimated_hours are required" });
   }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO deadlines (title, tag_id, due_date, due_time, estimated_hours, user_id)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [title.trim(), tag_id || null, due_date, due_time || null, estimated_hours, req.userId]
+      `INSERT INTO deadlines (title, tag_id, due_date, due_time, estimated_hours, recurrence, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [title.trim(), tag_id || null, due_date, due_time || null, estimated_hours, recurrence || "none", req.userId]
     );
     if (add_as_task) {
       await pool.query(
@@ -54,7 +98,7 @@ deadlinesRouter.post("/deadlines", async (req, res) => {
 });
 
 deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
-  const { title, tag_id, due_date, due_time, estimated_hours, status } = req.body;
+  const { title, tag_id, due_date, due_time, estimated_hours, status, recurrence } = req.body;
   const hasTagField = Object.prototype.hasOwnProperty.call(req.body, "tag_id");
   // due_time needs the same "was this field even sent" treatment as
   // tag_id (rather than plain COALESCE) so a request that wants to clear
@@ -70,6 +114,7 @@ deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
          due_time = CASE WHEN $7 THEN $8 ELSE due_time END,
          estimated_hours = COALESCE($9, estimated_hours),
          status = COALESCE($10, status),
+         recurrence = COALESCE($11, recurrence),
          updated_at = now()
        WHERE id = $1 AND user_id = $2 RETURNING *`,
       [
@@ -83,6 +128,7 @@ deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
         hasDueTimeField ? due_time : null,
         estimated_hours,
         status,
+        recurrence,
       ]
     );
     if (rows.length === 0) return res.status(404).json({ error: "deadline not found" });
@@ -102,6 +148,12 @@ deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
       await pushItemToGoogle(req.userId, "deadline", rows[0]);
     } else {
       await deleteItemFromGoogle(req.userId, "deadline", rows[0].id);
+    }
+    // Only on the transition into 'done' - not on every PATCH to an
+    // already-done recurring deadline (e.g. a later edit to its title),
+    // which would otherwise spawn a duplicate occurrence every time.
+    if (status === "done" && rows[0].recurrence !== "none") {
+      await spawnNextOccurrence(req.userId, rows[0]);
     }
     res.json(rows[0]);
   } catch (err) {
