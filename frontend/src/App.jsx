@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AnimatePresence, motion } from "framer-motion";
 import Splash from "./components/Splash.jsx";
 import TopLoadingBar from "./components/TopLoadingBar.jsx";
+import PullToRefresh from "./components/PullToRefresh.jsx";
 import TabNav from "./components/TabNav.jsx";
 import { useNotifications } from "./hooks/useNotifications.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
@@ -566,6 +567,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
           </AnimatePresence>
 
           <main className="fd-main">
+            <PullToRefresh onRefresh={loadAll}>
             {!loaded ? (
               <div className="fd-loading">Loading your focus journal…</div>
             ) : (
@@ -646,6 +648,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                 )}
               </AnimatePresence>
             )}
+            </PullToRefresh>
           </main>
         </motion.div>
       )}

@@ -652,6 +652,18 @@ button {
   box-shadow: 0 0 8px color-mix(in srgb, var(--brass) 70%, transparent);
 }
 
+.fd-ptr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--brass);
+}
+
+.fd-ptr__icon {
+  flex-shrink: 0;
+}
+
 .fd-main__top {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
