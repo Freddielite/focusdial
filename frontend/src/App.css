@@ -202,6 +202,15 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Chrome's native pull-to-refresh gesture is recognized against the root
+     element's overscroll-behavior, checked at the compositor level before
+     any JS runs - the same rule on <body> below suppresses bounce/scroll
+     chaining day-to-day (body is the app's actual scrolling element), but
+     doesn't stop native pull-to-refresh on a genuine cold start (a real
+     fresh document load, which is what reopening the app "after a while"
+     is if it had been evicted from memory) since that's checked here, not
+     on body. */
+  overscroll-behavior-y: contain;
 }
 
 body {
