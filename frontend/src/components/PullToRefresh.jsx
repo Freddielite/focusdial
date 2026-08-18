@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import FocusMark from "./FocusMark.jsx";
 
 const THRESHOLD = 52; // px of pull needed to trigger a refresh on release
 const MAX_PULL = 64; // px past which further dragging stops adding visual pull (diminishing resistance)
@@ -7,9 +8,11 @@ const MAX_PULL = 64; // px past which further dragging stops adding visual pull 
 // body already has overscroll-behavior-y: contain (see App.css), so the
 // browser's own native pull-to-refresh never fires - this is a from-scratch
 // gesture, not a restyle of one. Tracks a touch starting at scrollY 0,
-// converts vertical drag distance into a rubber-banded pull, shows a
-// spinning brass ring past the pull, and calls onRefresh() when released
-// past THRESHOLD.
+// converts vertical drag distance into a rubber-banded pull, shows the
+// brand reticle mark scaling in with the pull, then breathing in place
+// (no rotation - a converging reticle spinning doesn't read right) while
+// the refresh is in flight, and calls onRefresh() when released past
+// THRESHOLD.
 export default function PullToRefresh({ onRefresh, children }) {
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -107,26 +110,21 @@ export default function PullToRefresh({ onRefresh, children }) {
         animate={{ height: pull, opacity: pull > 4 ? 1 : 0 }}
         transition={snapTransition}
       >
-        <motion.svg
+        <motion.div
           className="fd-ptr__icon"
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          animate={refreshing ? { rotate: 360 } : { rotate: progress * 220 }}
+          animate={
+            refreshing
+              ? { scale: [1, 1.22, 1], opacity: [0.75, 1, 0.75] }
+              : { scale: 0.6 + progress * 0.4, opacity: 0.5 + progress * 0.5 }
+          }
           transition={
             refreshing
-              ? { repeat: Infinity, duration: 0.7, ease: "linear" }
+              ? { repeat: Infinity, duration: 1.1, ease: "easeInOut" }
               : { duration: 0 }
           }
         >
-          <path d="M3 12a9 9 0 1 1 3 6.7" />
-          <path d="M3 21v-6h6" />
-        </motion.svg>
+          <FocusMark size={22} strokeWidth={2} />
+        </motion.div>
       </motion.div>
       <motion.div animate={{ y: pull }} transition={snapTransition}>
         {children}
