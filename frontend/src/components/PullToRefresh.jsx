@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
-const THRESHOLD = 70; // px of pull needed to trigger a refresh on release
-const MAX_PULL = 110; // px past which further dragging stops adding visual pull (diminishing resistance)
+const THRESHOLD = 52; // px of pull needed to trigger a refresh on release
+const MAX_PULL = 64; // px past which further dragging stops adding visual pull (diminishing resistance)
 
 // body already has overscroll-behavior-y: contain (see App.css), so the
 // browser's own native pull-to-refresh never fires - this is a from-scratch
@@ -13,6 +13,7 @@ const MAX_PULL = 110; // px past which further dragging stops adding visual pull
 export default function PullToRefresh({ onRefresh, children }) {
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const startY = useRef(null);
   const pulling = useRef(false);
   const pullRef = useRef(0);
@@ -23,6 +24,7 @@ export default function PullToRefresh({ onRefresh, children }) {
       if (window.scrollY > 0 || refreshingRef.current) return;
       startY.current = e.touches[0].clientY;
       pulling.current = true;
+      setDragging(true);
     }
 
     function onTouchMove(e) {
@@ -50,6 +52,12 @@ export default function PullToRefresh({ onRefresh, children }) {
       if (!pulling.current) return;
       pulling.current = false;
       startY.current = null;
+      // Switch off drag mode now, before the pull value changes below -
+      // everything that happens to `pull` from here on (settling at
+      // THRESHOLD while refreshing, or springing back to 0) should ease
+      // instead of jumping, which is exactly what dragging=false enables
+      // on the motion elements further down.
+      setDragging(false);
       if (pullRef.current >= THRESHOLD && !refreshingRef.current) {
         refreshingRef.current = true;
         setRefreshing(true);
@@ -82,10 +90,23 @@ export default function PullToRefresh({ onRefresh, children }) {
   }, [onRefresh]);
 
   const progress = Math.min(pull / THRESHOLD, 1);
+  // While an actual finger drag is happening the pull height/offset must
+  // track the touch with zero lag (duration: 0) or it feels laggy/rubbery
+  // in the wrong way. The moment the finger lifts (dragging false), the
+  // same values get a real spring so the collapse back to 0 - or the
+  // settle down to THRESHOLD while refreshing - animates instead of
+  // snapping instantly.
+  const snapTransition = dragging
+    ? { duration: 0 }
+    : { type: "spring", stiffness: 380, damping: 32 };
 
   return (
     <>
-      <div className="fd-ptr" style={{ height: pull, opacity: pull > 4 ? 1 : 0 }}>
+      <motion.div
+        className="fd-ptr"
+        animate={{ height: pull, opacity: pull > 4 ? 1 : 0 }}
+        transition={snapTransition}
+      >
         <motion.svg
           className="fd-ptr__icon"
           width="22"
@@ -106,8 +127,10 @@ export default function PullToRefresh({ onRefresh, children }) {
           <path d="M3 12a9 9 0 1 1 3 6.7" />
           <path d="M3 21v-6h6" />
         </motion.svg>
-      </div>
-      <div style={{ transform: pull ? `translateY(${pull}px)` : undefined }}>{children}</div>
+      </motion.div>
+      <motion.div animate={{ y: pull }} transition={snapTransition}>
+        {children}
+      </motion.div>
     </>
   );
 }
