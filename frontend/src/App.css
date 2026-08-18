@@ -3887,13 +3887,27 @@ button {
 
 /* ---------- Account name inline edit ---------- */
 
+/* Overrides the base .fd-set-row's row layout (text + control side by
+   side) for just this state - the control here (input + two buttons) is
+   too wide to share a line with the email address without crushing it,
+   which is exactly what the old layout did. Stacking email above the
+   edit controls means neither has to fight the other for width. */
+.fd-account-name-edit-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
 .fd-account-name-edit {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
 }
 
 .fd-account-name-edit input {
+  flex: 1;
+  min-width: 0;
   padding: 7px 9px;
   background: var(--grad-input);
   border: 1px solid var(--line);
@@ -3901,5 +3915,11 @@ button {
   border-radius: 4px;
   font-family: var(--font-body);
   font-size: 13px;
-  width: 160px;
+}
+
+.fd-account-name-edit__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }

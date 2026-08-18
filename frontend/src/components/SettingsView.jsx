@@ -419,7 +419,11 @@ function AccountName({ user, onUserUpdated }) {
   }
 
   return (
-    <Row title={user?.email || "Signed in"} desc="Editing name">
+    <div className="fd-set-row fd-account-name-edit-row">
+      <div className="fd-set-row__text">
+        <div className="fd-set-row__title">{user?.email || "Signed in"}</div>
+        <div className="fd-set-row__desc">Editing name</div>
+      </div>
       <div className="fd-account-name-edit">
         <input
           type="text"
@@ -429,13 +433,15 @@ function AccountName({ user, onUserUpdated }) {
           autoFocus
           disabled={busy}
         />
-        <button className="fd-btn fd-btn--start fd-btn--sm" onClick={save} disabled={busy}>
-          {busy ? "Saving…" : "Save"}
-        </button>
-        <button className="fd-link-btn" onClick={() => setEditing(false)} disabled={busy}>Cancel</button>
+        <div className="fd-account-name-edit__actions">
+          <button className="fd-btn fd-btn--start fd-btn--sm" onClick={save} disabled={busy}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+          <button className="fd-link-btn" onClick={() => setEditing(false)} disabled={busy}>Cancel</button>
+        </div>
       </div>
       {error && <div className="fd-inline-error">{error}</div>}
-    </Row>
+    </div>
   );
 }
 
