@@ -539,8 +539,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
               >
-                Waking up the server. Free-tier hosting spins down when idle, first response can
-                take up to a minute.
+                Loading. Please wait, this can take a moment.
               </motion.div>
             )}
             {!waking && error && (
