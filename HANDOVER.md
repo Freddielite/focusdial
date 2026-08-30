@@ -2777,3 +2777,42 @@ actually install the app to a home screen and long-press around it -
 the CSS/meta-tag mechanics are standard and correctly scoped by
 inspection, but "does it feel right on a real device" is a real check
 worth doing on your end.
+
+## Session 42 — tag rename/recolor
+
+Asked for tag editing after a fresh feature-suggestion pass (session
+transcript, not a code check, first suggested this - re-verified
+against actual source before building, see below).
+
+### What was already there
+
+`PATCH /tags/:id` already accepted `name` and `color` and already had
+the COALESCE-for-partial-update + 23505-conflict-as-409 handling every
+other tag mutation uses - renaming was a backend no-op, confirmed by
+reading `routes/tags.js` before writing anything. The whole gap was
+frontend: no `updateTag` in `api.js`, and `TagManager.jsx`'s chip
+rendered the name as static text with only Archive/Delete.
+
+### What changed
+
+`api.js`: new `updateTag(id, name, color)`, same PATCH shape as the
+existing `setTagArchived`/`assignTagToBudget` calls.
+
+`TagManager.jsx`: one chip editable at a time (`editingId` state, not
+per-chip) - clicking "Edit" swaps that chip for an inline form (name
+input + the same five-swatch picker the "add tag" form uses) with
+Save/Cancel, Escape to cancel. Falls back to the tag's actual saved
+color rather than snapping to the first swatch, in case a tag's color
+was ever set outside the five presets. No-op guard: if neither name nor
+color actually changed, Save just closes the form instead of firing an
+empty PATCH. Reuses the same inline-error pattern the add-tag form
+already has for the 409 duplicate-name case.
+
+Deliberately scoped to the active tag list only - archived tags still
+only show Unarchive, no edit affordance. The backend would support it
+identically, just wasn't part of what was asked for.
+
+Verified: `npm run build` clean. **Not verified this session:** no
+browser here to actually click Edit, retype a name, hit a duplicate-name
+409, and watch the inline error render - reasoned through from the
+existing add-tag form's identical error-handling path, not watched.

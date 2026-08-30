@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createTag, deleteTag, listTags, setTagArchived } from "../api.js";
+import { createTag, deleteTag, listTags, setTagArchived, updateTag } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 
@@ -23,6 +23,55 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [archivedTags, setArchivedTags] = useState(null); // null = not fetched yet
   const [archivedBusyId, setArchivedBusyId] = useState(null);
+
+  // Inline rename/recolor - one chip editable at a time (opening a second
+  // one just moves editingId, same as how the archived section's own
+  // toggle works). Kept local to this component rather than per-chip
+  // state, since only one edit form should ever be open at once.
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState(SWATCHES[0]);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState(null);
+
+  function startEdit(tag) {
+    setEditingId(tag.id);
+    setEditName(tag.name);
+    // Existing custom colors (set before the swatch picker existed, or
+    // via a future custom-color path) won't match one of the five
+    // SWATCHES exactly - falling back to the tag's own color keeps the
+    // dot showing what's actually saved instead of silently snapping to
+    // the first swatch.
+    setEditColor(tag.color);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function handleRename(tag) {
+    const trimmed = editName.trim();
+    if (!trimmed || editBusy) return;
+    if (trimmed === tag.name && editColor === tag.color) {
+      // Nothing actually changed - just close the form instead of
+      // firing a no-op PATCH.
+      cancelEdit();
+      return;
+    }
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      await updateTag(tag.id, trimmed, editColor);
+      setEditingId(null);
+      await onTagsChanged();
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditBusy(false);
+    }
+  }
 
   async function toggleArchivedSection() {
     if (!archivedOpen && archivedTags === null) {
@@ -134,35 +183,103 @@ export default function TagManager({ tags, onTagsChanged, embedded = false }) {
     <div className={`fd-tag-manager ${embedded ? "fd-tag-manager--embedded" : ""}`}>
       <div className="fd-tag-manager__list">
         <AnimatePresence initial={false}>
-          {visibleTags.map((t) => (
-            <motion.span
-              key={t.id}
-              layout
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="fd-tag-chip"
-              style={{ borderColor: t.color }}
-            >
-              <span className="fd-tag-dot" style={{ background: t.color }} />
-              <span className="fd-tag-chip__name">{t.name}</span>
-              <button
-                className="fd-icon-btn"
-                onClick={() => handleArchive(t)}
-                aria-label={`Archive ${t.name}`}
-                title="Archive - hides it from new sessions, keeps its history"
+          {visibleTags.map((t) =>
+            editingId === t.id ? (
+              <motion.form
+                key={t.id}
+                layout
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fd-tag-chip fd-tag-chip--editing"
+                style={{ borderColor: editColor }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleRename(t);
+                }}
               >
-                Archive
-              </button>
-              <button
-                className="fd-icon-btn fd-icon-btn--delete"
-                onClick={() => handleDelete(t)}
-                aria-label={`Delete ${t.name}`}
+                <input
+                  type="text"
+                  className="fd-tag-chip__edit-input"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") cancelEdit();
+                  }}
+                  maxLength={40}
+                  autoFocus
+                  disabled={editBusy}
+                />
+                <div className="fd-swatches fd-swatches--inline">
+                  {SWATCHES.map((sw) => (
+                    <button
+                      key={sw}
+                      type="button"
+                      className={`fd-swatch ${editColor === sw ? "fd-swatch--selected" : ""}`}
+                      style={{ background: sw }}
+                      onClick={() => setEditColor(sw)}
+                      aria-label={`Select color ${sw}`}
+                      disabled={editBusy}
+                    />
+                  ))}
+                </div>
+                <button
+                  type="submit"
+                  className="fd-icon-btn"
+                  disabled={editBusy || !editName.trim()}
+                  aria-label={`Save ${t.name}`}
+                >
+                  {editBusy ? "…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  className="fd-icon-btn"
+                  onClick={cancelEdit}
+                  disabled={editBusy}
+                  aria-label="Cancel"
+                >
+                  Cancel
+                </button>
+                {editError && <div className="fd-inline-error fd-tag-chip__edit-error">{editError}</div>}
+              </motion.form>
+            ) : (
+              <motion.span
+                key={t.id}
+                layout
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="fd-tag-chip"
+                style={{ borderColor: t.color }}
               >
-                ✕
-              </button>
-            </motion.span>
-          ))}
+                <span className="fd-tag-dot" style={{ background: t.color }} />
+                <span className="fd-tag-chip__name">{t.name}</span>
+                <button
+                  className="fd-icon-btn"
+                  onClick={() => startEdit(t)}
+                  aria-label={`Rename ${t.name}`}
+                  title="Rename or recolor this tag"
+                >
+                  Edit
+                </button>
+                <button
+                  className="fd-icon-btn"
+                  onClick={() => handleArchive(t)}
+                  aria-label={`Archive ${t.name}`}
+                  title="Archive - hides it from new sessions, keeps its history"
+                >
+                  Archive
+                </button>
+                <button
+                  className="fd-icon-btn fd-icon-btn--delete"
+                  onClick={() => handleDelete(t)}
+                  aria-label={`Delete ${t.name}`}
+                >
+                  ✕
+                </button>
+              </motion.span>
+            )
+          )}
         </AnimatePresence>
       </div>
       <form className="fd-tag-manager__form" onSubmit={handleAdd}>

@@ -143,6 +143,11 @@ export const createTag = (name, color) =>
 export const deleteTag = (id) => apiFetch(`/tags/${id}`, { method: "DELETE" });
 export const setTagArchived = (id, archived) =>
   apiFetch(`/tags/${id}`, { method: "PATCH", body: JSON.stringify({ archived }) });
+// Rename/recolor. Same PATCH the archive toggle and budget assignment
+// already use - the backend's COALESCE handling means sending just
+// {name, color} here leaves archived/budget_id untouched.
+export const updateTag = (id, name, color) =>
+  apiFetch(`/tags/${id}`, { method: "PATCH", body: JSON.stringify({ name, color }) });
 
 export const getRunningSession = () => apiFetch("/sessions/running");
 export const startSession = (tag_id, note, task_id) =>
