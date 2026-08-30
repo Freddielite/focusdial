@@ -187,10 +187,35 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
   function refreshRunning() {
     return getRunningSession()
       .then((s) => {
+        // Whether this call is discovering a session this component
+        // didn't already know about - a fresh mount recovering state
+        // after being backgrounded/reloaded, or a remote switch to a
+        // different session entirely - as opposed to the routine 60s
+        // poll or a visibility-change re-check on a session it's had
+        // running the whole time. Only the former should restore
+        // note/quality below; on the latter, this device's own in-memory
+        // values (including anything typed in the last 800ms that
+        // hasn't been PATCHed yet - see the debounced-note effect) are
+        // newer than whatever the server has and shouldn't be clobbered
+        // by re-applying them on every routine poll.
+        const isNewSession = !running || running.id !== s?.id;
         reportRunning(s || null);
         if (s) {
           setSelectedTag(s.tag_id || "");
           setSelectedTask(s.task_id || "");
+          // Note and quality are captured while the session is running
+          // (see the debounced-note and quality-click effects below,
+          // which PATCH them to the server as they're set) specifically
+          // so they survive this refetch - without this, a remount
+          // triggered by the tab being backgrounded/reloaded (very
+          // common on mobile: the OS suspends or kills a background
+          // PWA's JS context) would reset both fields to their useState
+          // defaults even though the person had already filled them in,
+          // since neither one otherwise has anywhere to come back from.
+          if (isNewSession) {
+            setNote(s.note || "");
+            setQuality(s.quality || null);
+          }
           showRunningSessionNotification(s);
           // Whatever's actually running now (this poll is the source of
           // truth) supersedes any stale conflict banner from an earlier
@@ -278,6 +303,34 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
     tickRef.current = setInterval(update, 1000);
     return () => clearInterval(tickRef.current);
   }, [running]);
+
+  // Persists the in-progress note to the server so it survives a remount
+  // (see refreshRunning's restore above) instead of only being written
+  // once, at Stop. Debounced rather than firing on every keystroke -
+  // note is free text, so a PATCH per character would be wasteful and
+  // could easily out-of-order themselves on a slow connection. 800ms
+  // is long enough to not fire mid-word for normal typing speed, short
+  // enough that backgrounding the app moments after typing still has a
+  // saved copy to come back to. Skipped while nothing's really running
+  // yet (id == null, the optimistic placeholder from handleStart) since
+  // there's no session id to PATCH until the server confirms.
+  useEffect(() => {
+    if (!running || running.id == null) return undefined;
+    const timeout = setTimeout(() => {
+      updateSession(running.id, { note: note.trim() || null }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note, running?.id]);
+
+  // Same reasoning as the note effect above, but quality only changes on
+  // a button click (never continuous typing), so it's saved immediately
+  // rather than debounced.
+  useEffect(() => {
+    if (!running || running.id == null) return undefined;
+    updateSession(running.id, { quality }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quality, running?.id]);
 
   async function handleStart(tagIdOverride) {
     setBusy(true);
