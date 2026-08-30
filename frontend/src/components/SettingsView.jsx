@@ -6,6 +6,7 @@ import ThemeToggle from "./ThemeToggle.jsx";
 import Dropdown from "./Dropdown.jsx";
 import { resetData, sessionsExportUrl, getGoogleAuthStatus, googleAuthStartUrl, disconnectGoogleAccount, updateProfile } from "../api.js";
 import { isPushSupported, getPushStatus, enablePush, disablePush } from "../push.js";
+import { useDeviceName } from "../hooks/useDeviceName.js";
 import { useToast } from "./Toast.jsx";
 import { formatHour } from "../format.js";
 
@@ -86,6 +87,42 @@ function DailyGoalRow({ settings, onUpdateSetting }) {
           </>
         )}
       </div>
+    </Row>
+  );
+}
+
+// Purely local label (see hooks/useDeviceName.js) - this row doesn't
+// touch the backend at all, it just lets someone override the guessed
+// "Chrome on Mac"-style default with something more personal ("Work
+// laptop"), so the multi-device conflict banner reads as something
+// recognizable instead of a browser/OS guess. Same local-buffer-then-
+// commit-on-blur shape as DailyGoalRow above, for the same reason: this
+// is free text, not a value that should PATCH on every keystroke.
+function DeviceNameRow({ deviceName, onDeviceNameChange }) {
+  const [value, setValue] = useState(deviceName);
+
+  useEffect(() => {
+    setValue(deviceName);
+  }, [deviceName]);
+
+  function commit() {
+    if (value.trim() && value.trim() !== deviceName) onDeviceNameChange(value);
+    else setValue(deviceName);
+  }
+
+  return (
+    <Row title="This device" desc="Shown to you if two devices ever try to run a timer at once.">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        maxLength={40}
+        className="fd-device-name-input"
+      />
     </Row>
   );
 }
@@ -469,6 +506,14 @@ export default function SettingsView({
   const abs = Math.abs(offsetMin);
   const offsetLabel = `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
 
+  // Independent hook call rather than a prop from App - safe because
+  // TimerPanel (the other place this is read) fully unmounts/remounts on
+  // every tab switch, same as the comment there notes, so it always
+  // re-reads localStorage fresh next time Today is opened. No live
+  // cross-tab sync needed for a value that's only read once per session
+  // start.
+  const [deviceName, setDeviceName] = useDeviceName();
+
   const pushOn = settings?.push_enabled !== false;
 
   // Sections that can be deep-linked into via scrollTarget (currently
@@ -623,6 +668,7 @@ export default function SettingsView({
         <Row title="Time zone" desc="Detected automatically and used for evening streak checks.">
           <span className="fd-set-static">{tz} · {offsetLabel}</span>
         </Row>
+        <DeviceNameRow deviceName={deviceName} onDeviceNameChange={setDeviceName} />
       </section>
 
       <section className="fd-panel fd-set-card">

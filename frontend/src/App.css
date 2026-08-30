@@ -1098,6 +1098,18 @@ button {
   margin-bottom: 14px;
 }
 
+/* Compact inline variant - used where a Dropdown sits next to other
+   controls in a single row (e.g. TasksWidget's due-date/repeat row)
+   rather than stacked in a form, where the default's full-width,
+   margin-bottom shape would blow out the layout. */
+.fd-select--sm {
+  width: auto;
+  max-width: 150px;
+  padding: 5px 8px;
+  margin-bottom: 0;
+  font-size: 12px;
+}
+
 .fd-quick-start-input {
   width: 100%;
   max-width: 320px;
@@ -3492,6 +3504,17 @@ button {
 .fd-daily-goal-suffix {
   font-size: 12px;
   color: var(--parchment-dim);
+}
+
+.fd-device-name-input {
+  width: 150px;
+  padding: 6px 8px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  color: var(--parchment);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  text-align: right;
 }
 
 .fd-set-static {

@@ -4,6 +4,7 @@ import { createTask, updateTask, deleteTask } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import { DatePicker, CalendarGlyph } from "./DateTimeField.jsx";
+import Dropdown from "./Dropdown.jsx";
 
 // Same flag glyph used in DeadlinesView, so a task created from a
 // deadline (see "Also add to my task list") is instantly recognizable
@@ -39,6 +40,11 @@ export default function TasksWidget({ tasks, onDataChanged }) {
   // case of a task with no due date at all.
   const [dueDate, setDueDate] = useState("");
   const [showDueDate, setShowDueDate] = useState(false);
+  // Repeat only means anything once there's a due date to advance from
+  // (see routes/tasks.js's own validation) - reset alongside dueDate
+  // being cleared so a hidden, stale "weekly" choice can't silently
+  // ride along on a later task that never re-opened the due-date area.
+  const [recurrence, setRecurrence] = useState("none");
   const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const confirm = useConfirm();
@@ -51,10 +57,11 @@ export default function TasksWidget({ tasks, onDataChanged }) {
     if (!title.trim() || busy) return;
     setBusy(true);
     try {
-      await createTask(title.trim(), dueDate || null);
+      await createTask(title.trim(), dueDate || null, dueDate ? recurrence : "none");
       setTitle("");
       setDueDate("");
       setShowDueDate(false);
+      setRecurrence("none");
       onDataChanged();
     } finally {
       setBusy(false);
@@ -116,9 +123,24 @@ export default function TasksWidget({ tasks, onDataChanged }) {
         <div className="fd-quick-task-due">
           <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           {dueDate && (
-            <button type="button" className="fd-link-btn" onClick={() => setDueDate("")}>
-              Clear
-            </button>
+            <>
+              <Dropdown className="fd-select fd-select--sm" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+                <option value="none">Doesn't repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </Dropdown>
+              <button
+                type="button"
+                className="fd-link-btn"
+                onClick={() => {
+                  setDueDate("");
+                  setRecurrence("none");
+                }}
+              >
+                Clear
+              </button>
+            </>
           )}
         </div>
       )}
@@ -149,6 +171,11 @@ export default function TasksWidget({ tasks, onDataChanged }) {
                   <span className={`fd-task-row__due ${overdue ? "fd-task-row__due--overdue" : ""}`}>
                     {overdue ? "Overdue · " : ""}
                     {new Date(t.due_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    {t.recurrence && t.recurrence !== "none" && (
+                      <span title="A new task is created for the next occurrence once this one's marked done">
+                        {" "}· repeats {t.recurrence}
+                      </span>
+                    )}
                   </span>
                 )}
                 <button className="fd-icon-btn" onClick={() => handleDelete(t)} aria-label="Delete task">

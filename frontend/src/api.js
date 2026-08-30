@@ -150,8 +150,8 @@ export const updateTag = (id, name, color) =>
   apiFetch(`/tags/${id}`, { method: "PATCH", body: JSON.stringify({ name, color }) });
 
 export const getRunningSession = () => apiFetch("/sessions/running");
-export const startSession = (tag_id, note, task_id) =>
-  apiFetch("/sessions/start", { method: "POST", body: JSON.stringify({ tag_id, note, task_id }) });
+export const startSession = (tag_id, note, task_id, device_name) =>
+  apiFetch("/sessions/start", { method: "POST", body: JSON.stringify({ tag_id, note, task_id, device_name }) });
 export const stopSession = (id, note, quality) =>
   apiFetch(`/sessions/${id}/stop`, { method: "POST", body: JSON.stringify({ note, quality }) });
 
@@ -218,8 +218,8 @@ export const dismissReminder = (id) => apiFetch(`/reminders/${id}/dismiss`, { me
 export const deleteReminder = (id) => apiFetch(`/reminders/${id}`, { method: "DELETE" });
 
 export const listTasks = () => apiFetch("/tasks");
-export const createTask = (title, due_date) =>
-  apiFetch("/tasks", { method: "POST", body: JSON.stringify({ title, due_date }) });
+export const createTask = (title, due_date, recurrence) =>
+  apiFetch("/tasks", { method: "POST", body: JSON.stringify({ title, due_date, recurrence }) });
 export const updateTask = (id, payload) =>
   apiFetch(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const deleteTask = (id) => apiFetch(`/tasks/${id}`, { method: "DELETE" });

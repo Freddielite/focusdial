@@ -34,7 +34,7 @@ async function fetchRunningSessionRow(userId) {
 }
 
 sessionsRouter.post("/sessions/start", async (req, res) => {
-  const { tag_id, note, task_id } = req.body;
+  const { tag_id, note, task_id, device_name } = req.body;
   try {
     const { rows: existing } = await pool.query(
       `SELECT id FROM sessions WHERE user_id = $1 AND ended_at IS NULL LIMIT 1`,
@@ -57,14 +57,14 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
     // round trip rather than a bare insert followed by a second lookup.
     const { rows } = await pool.query(
       `WITH inserted AS (
-         INSERT INTO sessions (tag_id, started_at, note, source, task_id, user_id)
-         VALUES ($1, now(), $2, 'timer', $3, $4) RETURNING *
+         INSERT INTO sessions (tag_id, started_at, note, source, task_id, device_name, user_id)
+         VALUES ($1, now(), $2, 'timer', $3, $4, $5) RETURNING *
        )
        SELECT inserted.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
        FROM inserted
        LEFT JOIN tags t ON t.id = inserted.tag_id
        LEFT JOIN tasks tk ON tk.id = inserted.task_id`,
-      [tag_id || null, note || null, task_id || null, req.userId]
+      [tag_id || null, note || null, task_id || null, device_name || null, req.userId]
     );
     res.status(201).json(rows[0]);
   } catch (err) {

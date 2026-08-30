@@ -2816,3 +2816,91 @@ Verified: `npm run build` clean. **Not verified this session:** no
 browser here to actually click Edit, retype a name, hit a duplicate-name
 409, and watch the inline error render - reasoned through from the
 existing add-tag form's identical error-handling path, not watched.
+
+## Session 43 — device naming + recurring tasks (+ a real bug fix)
+
+Both items confirmed as genuine gaps before starting (no `device_id`/
+`device_name` anywhere, no `recurrence` on `tasks`) - see the prior
+session's exchange for that check. Two independent features plus one
+bug found while building the second.
+
+### Device naming
+
+Purely client-side label, not an account-level "device" entity - no
+new table, no auth changes. `frontend/src/hooks/useDeviceName.js`
+guesses a default ("Chrome on Mac", coarse UA sniffing, not precise)
+and persists an override to localStorage under `focusdial-device-name`.
+Sent as `device_name` on `POST /sessions/start`, stored on the new
+nullable `sessions.device_name` column, and returned automatically
+since `fetchRunningSessionRow` already does `SELECT s.*`. TimerPanel's
+conflict banner now reads `conflict.device_name` instead of a hardcoded
+"another device" string, falling back to that same string if it's null
+(covers sessions started before this shipped).
+
+Settings gets a new "This device" row (in the Appearance section, next
+to Theme/Time zone) to rename it - same local-buffer-then-commit-on-
+blur shape as `DailyGoalRow`. Deliberately two independent
+`useDeviceName()` hook calls (TimerPanel and SettingsView) rather than
+threading it through props - safe because TimerPanel already fully
+unmounts/remounts on every tab switch (noted in Session 1), so it
+always re-reads localStorage fresh; no cross-tab live sync needed for a
+value that's only read once per session start.
+
+**Not done:** doesn't rename anything on already-running sessions - a
+rename only affects sessions started after it, matching how a tag's
+color at session-start time is treated elsewhere in this app already
+(snapshot, not a live join).
+
+### Recurring tasks
+
+Same shape as deadlines' recurrence (Session 40): `tasks.recurrence`
+(`none`/`daily`/`weekly`/`monthly`), spawning a fresh row on completion
+rather than advancing the same row in place. Reused `nextDueDate` by
+exporting it from `deadlines.js` instead of duplicating the date-
+stepping logic - task due dates are also plain DATEs with the same
+"advance a calendar day" semantics, so this inherits the same Jan
+31 -> Mar 3 `setUTCMonth` rollover quirk deadlines/reminders already
+have, unfixed here for the same reason Session 40 left it alone
+(pre-existing, shared, not this session's scope).
+
+Recurrence requires a due date (`nextDueDate` needs something to
+advance from) - both `POST /tasks` and `PATCH /tasks/:id` reject a
+non-`none` recurrence with no `due_date`, and `TasksWidget.jsx` only
+shows the Repeat dropdown once the 📅 due-date field is open, clearing
+it back to `none` if the due date itself gets cleared. Tasks have no
+post-creation edit form at all (unlike Deadlines' inline edit) - so
+recurrence is set-at-creation-only for now, consistent with how title/
+due-date already work today (toggle done / delete are the only actions
+on an existing task).
+
+Deadline-linked tasks (`deadline_id` set) intentionally ignore their
+own `recurrence` column - a linked task's recurrence is driven by the
+deadline it belongs to, not by itself, so `spawnNextTaskOccurrence`
+only ever fires for `deadline_id IS NULL` tasks.
+
+### Bug found and fixed in the same file: deadline-linked task completion never spawned recurring deadlines
+
+`PATCH /tasks/:id`'s existing mirror-onto-deadline block (checking a
+linked task done) ran a raw SQL `UPDATE deadlines SET status = ...`
+directly, bypassing `routes/deadlines.js`'s own PATCH handler entirely
+- which is the only place `spawnNextOccurrence` was ever called from.
+Net effect: completing a recurring deadline via its linked task in the
+Tasks widget silently never spawned the next occurrence; only
+completing it from the Deadlines tab itself worked. Not something this
+session was asked to fix, but directly in the exact code path being
+touched for task recurrence, so fixed rather than left - exported
+`spawnNextOccurrence` from `deadlines.js`, and the mirror block now
+fetches the deadline's state *before* updating it (so it can tell
+"was this already done" apart from "just transitioned to done" - same
+transition-guard shape `deadlines.js`'s own handler already uses, to
+avoid double-spawning on a redundant second completion).
+
+Verified: `npm run build` clean, `node --check` clean on every backend
+file, and confirmed `tasks.js` actually resolves its import of
+`deadlines.js` at runtime (no circular-import issue - `deadlines.js`
+doesn't import `tasks.js`). **Not verified this session:** no live
+Postgres or browser here to click through renaming a device, hitting
+an actual 409 from a second device, creating+completing a recurring
+task, or completing a deadline-linked task and watching the deadline's
+next occurrence actually spawn - reasoned through from the code and
+the existing deadline-recurrence path it mirrors, not watched happen.

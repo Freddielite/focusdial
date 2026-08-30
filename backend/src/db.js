@@ -118,6 +118,16 @@ export async function initSchema() {
     -- be running at a time in practice.
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS runaway_nudged_at TIMESTAMPTZ;
 
+    -- Sourced from a client-generated, browser-local label (see
+    -- frontend's useDeviceName.js) sent on POST /sessions/start, purely
+    -- so the multi-device conflict banner (TimerPanel.jsx) can say
+    -- *which* device is already running instead of the generic "another
+    -- device" it said before this existed. Nothing enforces uniqueness
+    -- or ties it to an actual device identity - it's just whatever label
+    -- was showing in Settings on the device that started the session at
+    -- the time it started, same as a name tag, not an audited value.
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_name TEXT;
+
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
 
     CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at);
@@ -345,6 +355,22 @@ export async function initSchema() {
     -- completing either one completes the other.
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline_id UUID REFERENCES deadlines(id) ON DELETE CASCADE;
     CREATE INDEX IF NOT EXISTS idx_tasks_deadline_id ON tasks(deadline_id);
+
+    -- Same recurrence contract as deadlines.recurrence (see that
+    -- column's comment above): 'none'/'daily'/'weekly'/'monthly',
+    -- advancing by spawning a fresh row on completion rather than
+    -- moving due_date on the same row in place, since a task carries no
+    -- other state worth preserving between occurrences besides its own
+    -- existence - unlike deadlines there's no progress/manual_hours_logged
+    -- to protect, but a completed recurring task should still stay in
+    -- the "done" list exactly as any other completed task would, rather
+    -- than silently flipping back to open with a new date. Deadline-
+    -- linked tasks (deadline_id set) intentionally ignore this column -
+    -- their recurrence is driven by the deadline's own recurrence (see
+    -- routes/deadlines.js's spawnNextOccurrence), so a plain task never
+    -- has both a deadline_id and a meaningful recurrence at once.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence TEXT NOT NULL DEFAULT 'none'
+      CHECK (recurrence IN ('none', 'daily', 'weekly', 'monthly'));
 
     -- Lets a timer/manual session optionally point at a specific Task,
     -- not just a Tag -- a Tag says "what kind of work," a Task says

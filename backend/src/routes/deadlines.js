@@ -8,7 +8,10 @@ export const deadlinesRouter = Router();
 // uses, but operating on a plain DATE rather than a TIMESTAMPTZ - a
 // deadline's due_date has no time-of-day component of its own (due_time
 // is separate and just carried over unchanged to the next occurrence).
-function nextDueDate(dueDate, recurrence) {
+// Exported: routes/tasks.js reuses this unchanged for plain recurring
+// tasks (which also only ever carry a DATE, never a time), rather than
+// duplicating the same date-stepping logic in a second file.
+export function nextDueDate(dueDate, recurrence) {
   const d = new Date(dueDate);
   if (recurrence === "daily") d.setUTCDate(d.getUTCDate() + 1);
   else if (recurrence === "weekly") d.setUTCDate(d.getUTCDate() + 7);
@@ -24,7 +27,11 @@ function nextDueDate(dueDate, recurrence) {
 // one (from "Add as task" at creation, or from a later edit) - the
 // point of a recurring deadline is that each occurrence behaves like a
 // fresh one, task included, not just the deadline card by itself.
-async function spawnNextOccurrence(userId, completed) {
+// Exported: routes/tasks.js calls this directly when a deadline-linked
+// task is what actually completes the deadline (see that file's PATCH
+// handler for why the mirror path needs its own call into this, not
+// just this route's).
+export async function spawnNextOccurrence(userId, completed) {
   const nextDue = nextDueDate(completed.due_date, completed.recurrence);
   const { rows } = await pool.query(
     `INSERT INTO deadlines (title, tag_id, due_date, due_time, estimated_hours, recurrence, user_id)

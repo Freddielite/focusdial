@@ -3,6 +3,7 @@ import { getRunningSession, startSession, stopSession, updateSession, updateTask
 import { formatClock, formatDuration } from "../format.js";
 import { showRunningSessionNotification, clearRunningSessionNotification } from "../push.js";
 import { matchTagForText } from "../analytics.js";
+import { useDeviceName } from "../hooks/useDeviceName.js";
 import Dropdown from "./Dropdown.jsx";
 
 const QUALITY_OPTIONS = [
@@ -44,6 +45,7 @@ const NUDGE_DISMISS_KEY = "fd-timer-nudge-dismissed-hour";
 
 export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocabulary, onSessionCompleted, onDataChanged, onRunningChange }) {
   const [running, setRunning] = useState(null); // the running session row, or null
+  const [deviceName] = useDeviceName();
 
   // Reports the running session (or null) up to App.jsx so totals
   // elsewhere in the app - today's total, the current week's trend bar,
@@ -303,7 +305,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
       source: "timer",
     });
     try {
-      const s = await startSession(tagToUse, initialNote, selectedTask || null);
+      const s = await startSession(tagToUse, initialNote, selectedTask || null, deviceName);
       setSelectedTag(tagToUse || "");
       setUserPickedTag(true);
       // Whatever was typed into quick-start already saved as the
@@ -445,7 +447,8 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
       {conflict && !running && (
         <div className="fd-timer-conflict">
           <span className="fd-timer-conflict__text">
-            Already running on another device: <strong>{conflict.tag_name || "No tag"}</strong>, started{" "}
+            Already running on {conflict.device_name ? <strong>{conflict.device_name}</strong> : "another device"}:{" "}
+            <strong>{conflict.tag_name || "No tag"}</strong>, started{" "}
             {formatDuration((Date.now() - new Date(conflict.started_at).getTime()) / 1000)} ago.
           </span>
           <div className="fd-timer-conflict__actions">
