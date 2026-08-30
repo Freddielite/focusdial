@@ -26,7 +26,7 @@ export default function InsightsView({ summary, riskDigest, weeklyReview, deadli
         <RiskDigestCard digest={riskDigest} />
         <CalendarHeatmap daily={summary.daily} streakDays={summary.streakDays} history={history} />
         <TagBreakdown byTag={summary.byTag} mostSustainedTag={summary.mostSustainedTag} />
-        <WeekdayBreakdown weekday={summary.weekday} bestWeekday={summary.bestWeekday} />
+        <WeekdayBreakdown weekday={summary.weekday} bestWeekday={summary.bestWeekday} history={history} />
         <ComparativeInsightsCard insights={summary.comparativeInsights} />
         <FocusQualityCard quality={summary.quality} />
         <ConsistencyCard consistency={summary.consistency} />
@@ -36,6 +36,7 @@ export default function InsightsView({ summary, riskDigest, weeklyReview, deadli
         weeklyTotals={summary.weeklyTotals}
         monthlyTotals={summary.monthlyTotals}
         weekOverWeek={summary.weekOverWeek}
+        history={history}
       />
     </motion.div>
   );

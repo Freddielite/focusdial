@@ -1810,8 +1810,16 @@ button {
   width: 100%;
   max-width: 34px;
   background: var(--grad-brass);
+  border: none;
   border-radius: 3px 3px 0 0;
-  transition: height 0.3s ease, background 0.35s ease;
+  padding: 0;
+  cursor: pointer;
+  transition: height 0.3s ease, background 0.35s ease, opacity 0.15s ease;
+}
+
+.fd-trend-bar:hover,
+.fd-trend-bar:focus-visible {
+  opacity: 0.8;
 }
 
 .fd-trend-bar--current {
@@ -1878,8 +1886,16 @@ button {
   width: 100%;
   max-width: 34px;
   background: var(--grad-brass);
+  border: none;
   border-radius: 3px 3px 0 0;
-  transition: height 0.3s ease, background 0.35s ease;
+  padding: 0;
+  cursor: pointer;
+  transition: height 0.3s ease, background 0.35s ease, opacity 0.15s ease;
+}
+
+.fd-weekday-bar:hover,
+.fd-weekday-bar:focus-visible {
+  opacity: 0.8;
 }
 
 /* Same sage-green used for the best-hour wedge in HourDial - one
