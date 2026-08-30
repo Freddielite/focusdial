@@ -2904,3 +2904,78 @@ an actual 409 from a second device, creating+completing a recurring
 task, or completing a deadline-linked task and watching the deadline's
 next occurrence actually spawn - reasoned through from the code and
 the existing deadline-recurrence path it mirrors, not watched happen.
+
+## Session 44 — mid-session note/quality lost on backgrounding, clickable Insights bars, real bug fix in the Manage-budgets deep link
+
+### Bug: note and quality typed while a session is running didn't survive backgrounding
+
+Reported precisely: hit Focused, leave the app for a few minutes, come
+back, both the quality selection and the note are gone.
+
+**Root cause.** `note` and `quality` in `TimerPanel.jsx` were pure
+local React state, never sent to the server until `stopSession`. On
+mobile, backgrounding a PWA for more than a couple minutes commonly
+gets the tab suspended or its JS context killed by the OS, so coming
+back remounts the component from scratch - `useState` reinitializes to
+`""`/`null`. `refreshRunning()` already restores `selectedTag`/
+`selectedTask` from the server on mount (those are saved at session
+start), but had nothing to restore note/quality from, since the server
+never had them either.
+
+**Fix.** Two new effects PATCH the running session as `note` (debounced
+800ms) and `quality` (immediate) change, via the existing
+`updateSession`. `refreshRunning()` now restores both from the
+server - but only when it's discovering a session it didn't already
+have (a genuine remount/session-switch), not on the routine 60s poll or
+a visibility-change re-check of a session it's had running the whole
+time, so a periodic refresh can't clobber an in-progress keystroke with
+a stale server copy.
+
+### Feature: click a bar in Best Day / Trend for a detail breakdown
+
+Asked to make the Insights bar charts behave like `CalendarHeatmap`'s
+existing click-a-day panel. Both `WeekdayBreakdown.jsx` (Best Day) and
+`TrendChart.jsx` (weekly/monthly trend) now open the same
+`fd-modal-overlay`/`fd-day-detail-panel` pattern on a bar click: total
+time, session count, and a per-tag breakdown (styled like
+`TagBreakdown`'s own rows) for whatever the bar represents. Both bars
+were plain `<div>`s, switched to `<button>` with the default button
+chrome stripped in CSS so nothing about their look changed. `history`
+is threaded down to both from `InsightsView` (already available there,
+already used by `CalendarHeatmap`).
+
+### Real bug found and fixed: "Manage budgets" deep link scrolled to top, not the target section
+
+Reported precisely: tapping "Manage budgets" from the Budgets tab just
+opens Settings at the top, not scrolled to the Manage Budgets section.
+
+**Root cause.** This deep-link scroll was already built (Session ~pre-39,
+per the existing comments) and its own note said as much: "Not verified
+this session... reasoned through from the code, not watched happen."
+The reasoning had a real gap. The App-level scroll-reset
+`useLayoutEffect` was keyed on `[activeTab, settingsScrollTarget]` and
+skipped the reset only while `settingsScrollTarget` was still set. But
+`SettingsView`'s own effect starts the smooth `scrollIntoView` and then
+immediately calls `onScrollTargetConsumed()` to clear that flag -
+which, being in the layout effect's dependency array, re-ran it a
+moment later with the guard now false, firing an instant
+`window.scrollTo({ top: 0 })` directly on top of the still-animating
+smooth scroll and snapping straight back to the top before the section
+was ever visible. The original comment's assumption ("child effects
+run before parent's in the same commit") doesn't hold across effect
+types - React runs every layout effect in the tree before any passive
+effect, regardless of parent/child - so the two effects were racing in
+the opposite order than assumed.
+
+**Fix.** Layout effect's dependency array narrowed to `[activeTab]`
+alone (eslint-disable for the intentional omission). It still reads
+`settingsScrollTarget` via closure at the moment it fires, so a genuine
+tab switch behaves identically - but clearing `settingsScrollTarget`
+while staying on the same tab no longer re-triggers it at all.
+
+Verified: `esbuild` syntax-checked every touched file
+(`TimerPanel.jsx`, `WeekdayBreakdown.jsx`, `TrendChart.jsx`,
+`InsightsView.jsx`, `App.jsx`). **Not verified this session:** no
+browser here to click through any of the three repros (background the
+timer with a note typed, tap a Best Day/Trend bar, tap "Manage
+budgets") - reasoned through from the code, not watched happen.

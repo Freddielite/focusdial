@@ -91,12 +91,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // the new tab instead of its top.
   //
   // Skipped when landing on Settings with a pending scrollTarget (the
-  // Budgets tab's "Manage budgets" link): React fires a mounting
-  // child's effects before its parent's in the same commit, so
-  // SettingsView's own scrollIntoView effect would already have run by
-  // the time this one does, and resetting to 0 here would immediately
-  // undo that smooth scroll to the target section right after it
-  // happened.
+  // Budgets tab's "Manage budgets" link) - see below.
   //
   // useLayoutEffect, not useEffect: plain useEffect fires after the
   // browser has already painted, so for one frame the new tab's
@@ -107,10 +102,30 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // inconsistent depending on scroll position. useLayoutEffect runs
   // synchronously before paint, so the reset lands in the same frame
   // as the tab swap regardless of where you scrolled from.
+  //
+  // Deliberately keyed on activeTab alone, NOT settingsScrollTarget.
+  // React runs every layout effect in the tree, parent or child, before
+  // any passive effect runs - so on the commit where SettingsView
+  // mounts with a pending scrollTarget, this effect fires first (while
+  // it's still set) and correctly skips. But SettingsView's own
+  // scrollIntoView effect is a passive effect: it starts the smooth
+  // scroll and then immediately calls onScrollTargetConsumed to clear
+  // settingsScrollTarget, which used to be in this effect's dependency
+  // array. That clearing, on its own, re-ran this effect - now with the
+  // guard false - and fired an instant window.scrollTo(0) directly on
+  // top of the still-in-progress smooth scroll, snapping straight back
+  // to the top before the section it had just scrolled to was ever
+  // visible (the "Manage budgets" link looked like it did nothing but
+  // reopen Settings at the top). Depending on activeTab only means
+  // clearing settingsScrollTarget while staying on the same tab no
+  // longer re-triggers this effect at all - it now only ever fires on
+  // an actual tab change, still reading whatever settingsScrollTarget
+  // holds at that moment via closure.
   useLayoutEffect(() => {
     if (activeTab === "settings" && settingsScrollTarget) return;
     window.scrollTo({ top: 0, behavior: "auto" });
-  }, [activeTab, settingsScrollTarget]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
   const [theme, setTheme] = useTheme();
   const [nowTick, setNowTick] = useState(Date.now());
   const toast = useToast();
