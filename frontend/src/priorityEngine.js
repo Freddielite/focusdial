@@ -425,9 +425,6 @@ export function computeUnscheduledSuggestion({
     if (!bestNeglected || info.recentShare < bestNeglected.recentShare) bestNeglected = info;
   }
   if (bestNeglected && !isDismissed(bestNeglected.tagId)) {
-    const daysNeglected = Math.round(
-      CATEGORY_BALANCE_WINDOW_DAYS * (1 - bestNeglected.recentShare / Math.max(bestNeglected.historicalShare, 0.0001))
-    );
     return {
       key: bestNeglected.tagId,
       tagId: bestNeglected.tagId,

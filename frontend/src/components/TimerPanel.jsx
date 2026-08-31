@@ -319,6 +319,22 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
     return () => clearInterval(tickRef.current);
   }, [running]);
 
+  // Ticks the "started X ago" text in the multi-device conflict banner
+  // below while it's showing -- without this, that elapsed time was
+  // computed once from Date.now() at render and then frozen for as long
+  // as the banner stayed open, unlike every other live-elapsed display
+  // in this app. A separate 1s interval from the running-timer one
+  // above rather than reusing it, since this needs to tick specifically
+  // while `conflict` is set and `running` is not -- the two states are
+  // mutually exclusive (see the render guard below).
+  const [conflictNowMs, setConflictNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!conflict) return undefined;
+    setConflictNowMs(Date.now());
+    const id = setInterval(() => setConflictNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [conflict]);
+
   // Persists the in-progress note to the server so it survives a remount
   // (see refreshRunning's restore above) instead of only being written
   // once, at Stop. Debounced rather than firing on every keystroke -
@@ -517,7 +533,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
           <span className="fd-timer-conflict__text">
             Already running on {conflict.device_name ? <strong>{conflict.device_name}</strong> : "another device"}:{" "}
             <strong>{conflict.tag_name || "No tag"}</strong>, started{" "}
-            {formatDuration((Date.now() - new Date(conflict.started_at).getTime()) / 1000)} ago.
+            {formatDuration((conflictNowMs - new Date(conflict.started_at).getTime()) / 1000)} ago.
           </span>
           <div className="fd-timer-conflict__actions">
             <button type="button" className="fd-link-btn" onClick={handleAdoptConflict}>

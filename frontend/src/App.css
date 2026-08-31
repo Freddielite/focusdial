@@ -2793,17 +2793,15 @@ button {
 /* ---------- Priority engine: Do This Next + Suggestion cards ---------- */
 
 /* Solid, brass-accented left border - reads as "the app picked this for
-   you" the same weight as HeroCard/InsightCard above it, since it sits
-   in that same full-width position on the Today tab. */
-/* Chose to match HeroCard's language exactly rather than InsightCard's:
-   no accent border at all (plain .fd-panel, same as Hero), and the
-   brass color lives only in the small icon mark - not the label text -
-   same split Hero uses (.fd-hero__eyebrow is parchment-dim, only
-   .fd-hero__mark is brass). Previously this card had its own thing
-   going: a bold 3px brass left border plus a flat brass all-caps label,
-   which read like a generic alert callout next to Hero's softer glass/
-   icon-accent look right above it. */
+   you," the same visual language as .fd-insight-card's own left-border
+   accent, since this card fills the same kind of "here's something
+   worth acting on" slot on the Today tab. Back to this look (bold 3px
+   brass border + flat brass all-caps label) by request, after a brief
+   detour matching HeroCard's softer icon-accent style instead - that
+   read as too quiet for a card whose whole point is to stand out as an
+   actionable pick. */
 .fd-priority-card {
+  border-left: 3px solid var(--brass);
   /* No margin-bottom - .fd-view already spaces every direct child via
      its own flex `gap: 20px` (see HeroCard, which correctly has none).
      This card previously duplicated InsightCard's own redundant
@@ -2820,13 +2818,8 @@ button {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--parchment-dim);
-  margin-bottom: 6px;
-}
-
-.fd-priority-card__mark {
   color: var(--brass);
-  flex-shrink: 0;
+  margin-bottom: 6px;
 }
 
 .fd-priority-card__title {

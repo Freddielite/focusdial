@@ -1,4 +1,4 @@
-import { Children, isValidElement, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Children, isValidElement, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 let dropdownIdCounter = 0;

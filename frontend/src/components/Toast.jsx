@@ -52,8 +52,17 @@ export function ToastProvider({ children }) {
     }
   }, []);
 
-  const toast = useCallback(
-    ({ title, body, tone = "default", duration = DEFAULT_DURATION, actionLabel, onAction }) => {
+  // `toast` needs to stay callable as a plain function (every existing
+  // `const toast = useToast(); toast({...})` call site already assumes
+  // that) while also exposing `toast.dismiss(id)` for the handful of
+  // callers that want it. Built via useState's lazy initializer rather
+  // than useCallback + a later mutation - the initializer only ever runs
+  // once (on this component's first render) and its return value is
+  // fully assembled, dismiss included, before it's handed back, so
+  // nothing outside this hook ever reaches in and mutates a value the
+  // hook already returned.
+  const [toast] = useState(() => {
+    const fn = ({ title, body, tone = "default", duration = DEFAULT_DURATION, actionLabel, onAction }) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       setToasts((prev) => [...prev, { id, title, body, tone, actionLabel, onAction, duration }]);
       if (duration > 0) {
@@ -63,15 +72,10 @@ export function ToastProvider({ children }) {
         );
       }
       return id;
-    },
-    [dismiss]
-  );
-
-  // Attached to the returned function rather than changing useToast()'s
-  // return shape (which every existing `const toast = useToast();
-  // toast({...})` call site already assumes is a plain function) - this
-  // way both the old calling convention and `toast.dismiss(id)` work.
-  toast.dismiss = dismiss;
+    };
+    fn.dismiss = dismiss;
+    return fn;
+  });
 
   return (
     <ToastContext.Provider value={toast}>
