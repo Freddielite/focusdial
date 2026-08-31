@@ -3276,3 +3276,22 @@ change rendered - no headless Chromium reachable from this sandbox
 report screenshots showed the original problem. Reasoned through from
 the CSS/markup and the `.fd-check-card`/`.fd-hero__eyebrow` patterns
 being mirrored exactly, not watched.
+
+## Session 47 — Quick Tasks row: title/meta line spacing too tight
+
+Screenshot follow-up on Session 46's two-line rework: title and the
+tag/date meta line below it read too close together. `.fd-check-card__body`'s
+shared `gap: 3px` (used by Recent Sessions/Reminders/Budgets/Deadlines
+too) was fine for a plain single-line date meta row, but a task row's
+meta line carries a bordered tag pill plus text, which reads tighter
+at the same gap. Scoped override (`.fd-task-row .fd-check-card__body { gap: 6px; }`),
+same pattern `.fd-log-row .fd-check-card__icon`'s own size override
+already uses - doesn't touch the shared rule or spacing in any of the
+other views. `npm run build` clean (443 modules).
+
+## Session 48 — "Do This Next" title too small
+
+`.fd-priority-card__title` bumped 18px -> 21px, matching the scale
+the app's other prominent headings already use (`.fd-header__brand`,
+`.fd-crash__title`, both 21-22px) rather than picking an arbitrary
+new number. `npm run build` clean (443 modules).

@@ -2644,6 +2644,16 @@ button {
   flex-shrink: 0;
 }
 
+/* Scoped rather than changing the shared .fd-check-card__body gap:3px
+   directly, same reasoning as .fd-log-row's own icon-size override
+   above - a task row's meta line (tag pill + due date) reads noticeably
+   tighter against the title than Recent Sessions' plain date-only meta
+   line does, so it needs a bit more room here without nudging spacing
+   in every other view that reuses .fd-check-card. */
+.fd-task-row .fd-check-card__body {
+  gap: 6px;
+}
+
 .fd-task-checkbox {
   width: 16px;
   height: 16px;
@@ -2821,7 +2831,7 @@ button {
 
 .fd-priority-card__title {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 600;
   margin-bottom: 4px;
 }
