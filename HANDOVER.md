@@ -3295,3 +3295,13 @@ other views. `npm run build` clean (443 modules).
 the app's other prominent headings already use (`.fd-header__brand`,
 `.fd-crash__title`, both 21-22px) rather than picking an arbitrary
 new number. `npm run build` clean (443 modules).
+
+## Session 49 — corrected Session 48: wrong element was resized
+
+Session 48 misread "increase 'Do this next'" as the task title
+("Reboot expenses app") rather than the "DO THIS NEXT" eyebrow label
+above it. Reverted `.fd-priority-card__title` back to 18px, bumped
+`.fd-priority-card__eyebrow` instead (11.5px -> 13.5px, kept the
+existing uppercase/letter-spaced style rather than restyling it -
+scope was explicitly "just the eyebrow, nothing else"). `npm run build`
+clean (443 modules).
