@@ -26,11 +26,14 @@ import {
   listDeadlines,
   listReminders,
   listTasks,
+  listCompletedTasks,
   getSettings,
   updateSettings,
   setSlowRequestHandler,
 } from "./api.js";
 import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
+import { computePriorityRanking, computeUnscheduledSuggestion } from "./priorityEngine.js";
+import { useSuggestionDismissals } from "./hooks/useSuggestionDismissals.js";
 
 const DEFAULT_SETTINGS = {
   push_enabled: true,
@@ -39,6 +42,13 @@ const DEFAULT_SETTINGS = {
   automation_streak: true,
   automation_runaway_timer: true,
   automation_weekly_digest: true,
+  // Not previously in this fallback object even though the column has
+  // existed for a while (used elsewhere via `settings.automation_google_sync`) -
+  // left alone rather than "fixed" here, since that's a pre-existing gap
+  // unrelated to this session's task and only matters if getSettings()
+  // itself fails (the .catch below), which already falls back to
+  // this whole object rather than a live server value in that case.
+  automation_category_nudge: true,
   notify_session_completed: true,
   notify_deadline_completed: true,
   notify_budget_reached: true,
@@ -153,6 +163,11 @@ export default function App({ user, onLogout, onUserUpdated }) {
   const [deadlines, setDeadlines] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [tasks, setTasks] = useState([]);
+  // Completed tasks with both a tag and an estimate, for the priority
+  // engine's estimate-learning feature (Feature 2) - see GET
+  // /tasks/completed for why this is fetched separately from the open
+  // `tasks` list above rather than one combined endpoint.
+  const [completedTasks, setCompletedTasks] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   // Bumped whenever a session is started/stopped or manually added
   // elsewhere on the Today tab (Timer, Manual entry) -- SessionLog fetches
@@ -175,7 +190,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
 
   async function loadAll() {
     try {
-      const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, settingsData] =
+      const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, completedTaskData, settingsData] =
         await Promise.all([
           listTags(),
           listTags(true),
@@ -184,6 +199,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
           listDeadlines(),
           listReminders(),
           listTasks(),
+          listCompletedTasks(),
           getSettings().catch(() => DEFAULT_SETTINGS),
         ]);
       setTags(tagData);
@@ -193,6 +209,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
       setDeadlines(deadlineData);
       setReminders(reminderData);
       setTasks(taskData);
+      setCompletedTasks(completedTaskData);
       if (settingsData) setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
       setError(null);
       setLoaded(true);
@@ -348,6 +365,32 @@ export default function App({ user, onLogout, onUserUpdated }) {
       }),
     [summary, budgetsWithProgress, deadlinesWithProgress, userFirstName]
   );
+  // Priority engine (Features 1-6, priorityEngine.js). `allTags` rather
+  // than the active-only `tags` - a session logged under a tag that's
+  // since been archived should still count toward that tag's historical
+  // share in computeCategoryBalance and its typical-length in
+  // computeTagTypicalSeconds, the same reason SessionLog below already
+  // needs allTags rather than tags for displaying past sessions
+  // correctly. Recomputed on nowTick like goalProjection above, so the
+  // ranking's urgency/staleness/energy-fit factors (all time-dependent)
+  // don't quietly go stale while the tab just sits open.
+  const priorityRanking = useMemo(
+    () => computePriorityRanking(tasks, history, completedTasks, allTags, new Date(nowTick)),
+    [tasks, history, completedTasks, allTags, nowTick]
+  );
+  const [suggestionDismissedAt, dismissSuggestion] = useSuggestionDismissals();
+  const suggestion = useMemo(
+    () =>
+      computeUnscheduledSuggestion({
+        categoryBalance: priorityRanking.categoryBalance,
+        typeHourStrength: priorityRanking.typeHourStrength,
+        tagTypicalSeconds: priorityRanking.tagTypicalSeconds,
+        topRankedScore: priorityRanking.ranked[0]?.score ?? null,
+        dismissedAt: suggestionDismissedAt,
+        now: new Date(nowTick),
+      }),
+    [priorityRanking, suggestionDismissedAt, nowTick]
+  );
   const riskDigest = useMemo(
     () => computeRiskDigest({ budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
     [budgetsWithProgress, deadlinesWithProgress]
@@ -410,6 +453,14 @@ export default function App({ user, onLogout, onUserUpdated }) {
   const budgetMetRef = useRef(new Set());
   const toastedReminderRef = useRef(new Set());
   const prevStreakRef = useRef(false);
+  // Feature 4's distinct "you've neglected X" notice - separate from the
+  // categoryBalance boost that already feeds into the priority score
+  // itself (categoryBalanceScore in priorityEngine.js). Same
+  // seed-on-load / notify-on-transition shape as paceStatusRef and
+  // budgetMetRef just above, so a category that's already been
+  // neglected since before this feature existed doesn't fire a notice
+  // the moment someone opens the app.
+  const neglectedTagsRef = useRef(new Set());
   const initRef = useRef(false);
 
   // Seed the "previous state" refs on the first populated load so we
@@ -420,6 +471,9 @@ export default function App({ user, onLogout, onUserUpdated }) {
     for (const b of budgetsWithProgress) if (b.pct >= 1) budgetMetRef.current.add(b.id);
     for (const r of reminders) {
       if (new Date(r.remind_at) <= new Date()) toastedReminderRef.current.add(r.id);
+    }
+    for (const info of priorityRanking.categoryBalance.values()) {
+      if (info.neglected) neglectedTagsRef.current.add(info.tagId);
     }
     prevStreakRef.current = streakAtRisk;
     initRef.current = true;
@@ -466,6 +520,32 @@ export default function App({ user, onLogout, onUserUpdated }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [budgetsWithProgress]);
+
+  // Category balance (Feature 4): a category newly crossing into
+  // "neglected" gets its own distinct notice, separate from the
+  // priority-score boost the same data already feeds elsewhere. No
+  // maybePushEvent call here, unlike the deadline/budget notices above -
+  // this one has no closed-app cron counterpart (see
+  // automation_category_nudge's own comment in db.js), it's purely a
+  // foreground check like automation_streak's.
+  useEffect(() => {
+    if (!initRef.current) return;
+    for (const info of priorityRanking.categoryBalance.values()) {
+      const wasNeglected = neglectedTagsRef.current.has(info.tagId);
+      if (info.neglected && !wasNeglected) {
+        neglectedTagsRef.current.add(info.tagId);
+        if (settings.automation_category_nudge) {
+          notify({ title: "Category neglected", body: `You've neglected ${info.tagName} lately.`, tone: "warn" });
+        }
+      } else if (!info.neglected && wasNeglected) {
+        // Recovered since - allow the notice to fire again if it slips
+        // back into neglect later, same "allow it to fire again later"
+        // reasoning as the budget effect just above.
+        neglectedTagsRef.current.delete(info.tagId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priorityRanking.categoryBalance]);
 
   // Reminders coming due while the app is open.
   useEffect(() => {
@@ -601,9 +681,14 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     graceEnabled={settings.streak_recovery_grace_enabled}
                     tagVocabulary={tagVocabulary}
                     userName={userFirstName}
+                    priorityRanking={priorityRanking}
+                    suggestion={suggestion}
+                    hasRunningSession={!!runningSession}
                     onRunningChange={setRunningSession}
                     onSessionCompleted={handleSessionCompleted}
                     onSessionCreated={handleSessionCreated}
+                    onSessionStarted={handleSessionCreated}
+                    onDismissSuggestion={dismissSuggestion}
                     onSessionDeleted={handleSessionDeleted}
                     onDataChanged={loadAll}
                   />

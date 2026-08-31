@@ -66,6 +66,20 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
        LEFT JOIN tasks tk ON tk.id = inserted.task_id`,
       [tag_id || null, note || null, task_id || null, device_name || null, req.userId]
     );
+    // Starting a session against a task counts as "touching" it for the
+    // priority engine's staleness clock (Feature 3) - same reasoning as
+    // the PATCH /tasks/:id handler always bumping last_touched_at on any
+    // edit. Fire-and-forget in spirit but still awaited so a failure here
+    // surfaces in the catch below rather than silently vanishing; it just
+    // isn't allowed to affect the session response either way, since a
+    // session starting successfully shouldn't ever hinge on this
+    // secondary bookkeeping update.
+    if (task_id) {
+      await pool.query(`UPDATE tasks SET last_touched_at = now() WHERE id = $1 AND user_id = $2`, [
+        task_id,
+        req.userId,
+      ]);
+    }
     res.status(201).json(rows[0]);
   } catch (err) {
     // The SELECT-then-INSERT above has a race window: two requests from
@@ -146,6 +160,15 @@ sessionsRouter.post("/sessions", async (req, res) => {
        LEFT JOIN tasks tk ON tk.id = inserted.task_id`,
       [tag_id || null, started_at, ended_at, note || null, quality || null, task_id || null, req.userId]
     );
+    // Same staleness-clock touch as /sessions/start above - a manually
+    // backfilled session against a task is still real evidence the task
+    // was worked on, not just a live timer starting.
+    if (task_id) {
+      await pool.query(`UPDATE tasks SET last_touched_at = now() WHERE id = $1 AND user_id = $2`, [
+        task_id,
+        req.userId,
+      ]);
+    }
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error(err);

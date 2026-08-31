@@ -218,11 +218,21 @@ export const dismissReminder = (id) => apiFetch(`/reminders/${id}/dismiss`, { me
 export const deleteReminder = (id) => apiFetch(`/reminders/${id}`, { method: "DELETE" });
 
 export const listTasks = () => apiFetch("/tasks");
-export const createTask = (title, due_date, recurrence) =>
-  apiFetch("/tasks", { method: "POST", body: JSON.stringify({ title, due_date, recurrence }) });
+// Completed tasks with both a tag and an estimate, for the priority
+// engine's estimate-learning feature (computeTagEstimateStats in
+// priorityEngine.js) - see GET /tasks/completed for why this is a
+// separate, filtered endpoint rather than a query param on listTasks.
+export const listCompletedTasks = () => apiFetch("/tasks/completed");
+export const createTask = (title, due_date, recurrence, tag_id, estimate_minutes) =>
+  apiFetch("/tasks", { method: "POST", body: JSON.stringify({ title, due_date, recurrence, tag_id, estimate_minutes }) });
 export const updateTask = (id, payload) =>
   apiFetch(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const deleteTask = (id) => apiFetch(`/tasks/${id}`, { method: "DELETE" });
+// Feature 3's bump/defer action - resets a task's staleness clock
+// without completing it or touching any other field. See the route's
+// own comment for why this is a dedicated endpoint instead of an empty
+// PATCH.
+export const bumpTask = (id) => apiFetch(`/tasks/${id}/bump`, { method: "POST" });
 
 export const getSettings = () => apiFetch("/settings");
 export const updateSettings = (payload) =>

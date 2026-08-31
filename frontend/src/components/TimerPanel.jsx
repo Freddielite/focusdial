@@ -291,6 +291,21 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Same idea as the service-worker message above, but for a session
+  // started from elsewhere in the same tab rather than stopped from a
+  // different one - the priority engine's "Do This Next" and Suggestion
+  // cards (PriorityCard.jsx, SuggestionCard.jsx) call startSession()
+  // directly rather than going through this component, so without this
+  // listener this panel wouldn't know a session had started until its
+  // next scheduled refreshRunning() (every 60s, or on the next
+  // visibility change) - the timer would look like it hadn't reacted to
+  // the tap at all for up to a minute.
+  useEffect(() => {
+    window.addEventListener("fd-session-started-elsewhere", refreshRunning);
+    return () => window.removeEventListener("fd-session-started-elsewhere", refreshRunning);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!running) {
       clearInterval(tickRef.current);

@@ -2979,3 +2979,180 @@ Verified: `esbuild` syntax-checked every touched file
 browser here to click through any of the three repros (background the
 timer with a note typed, tap a Best Day/Trend bar, tap "Manage
 budgets") - reasoned through from the code, not watched happen.
+
+## Session 45 — priority engine + smart recommendations
+
+Built from a written spec (six features: a scored "Do This Next" card,
+per-tag estimate learning, staleness detection, category-balance
+nudging, energy/time-of-day matching, and an unscheduled-suggestion
+card). Everything is deterministic, local logic over data the app
+already collects - no AI/LLM calls, no new external dependencies.
+
+### Schema gaps found and filled
+
+Plain tasks previously carried no category or effort data at all -
+only Deadlines had `tag_id`/`estimated_hours`. Three scoping questions
+were asked and answered before building:
+
+1. **Tag + estimate on Quick Tasks.** Added as two more optional,
+   collapsed-by-default icon toggles next to the existing due-date
+   icon, rather than always-visible fields or skipping Quick Tasks
+   entirely - keeps the fast one-line add fast, data is there when
+   wanted.
+2. **Deep-work vs quick-admin classification.** Inferred automatically
+   from a tag's own median session length (`classifyTagType` in
+   priorityEngine.js), not a manual per-tag flag - self-adjusting, zero
+   new settings UI.
+3. **"Time currently available" for effort-fit.** Compared against the
+   tag's own typical (median) session length rather than a one-size
+   global average or an interactive "how much time do you have" picker
+   - per-tag rather than global specifically because a 45-minute
+   Research task and a 10-minute Admin task are both normal for what
+   they are, and a single blanket average would unfairly penalize
+   both.
+
+### What was built
+
+- **`tasks` table**: added `tag_id`, `estimate_minutes`,
+  `last_touched_at` (all additive/nullable). `settings` got
+  `automation_category_nudge`.
+- **`routes/tasks.js`**: joins tag name/color into every response now,
+  accepts tag/estimate on create and edit, always bumps
+  `last_touched_at` on edit. New `GET /tasks/completed` (done tasks
+  with both a tag and an estimate, for estimate-learning) and
+  `POST /tasks/:id/bump` (Feature 3's defer action, a dedicated
+  endpoint rather than overloading an empty PATCH).
+- **`routes/sessions.js`**: starting a session against a task (timer
+  or manual entry) now also touches that task's `last_touched_at`.
+- **`priorityWeights.js`**: every tunable number in one place, per the
+  spec's own request - weights, thresholds, windows, all commented
+  with the default chosen and why. Nothing here was measured against
+  real usage; all first guesses, meant to be easy to revisit:
+  - Weights: urgency 0.35, staleness 0.2, categoryBalance 0.2,
+    effortFit 0.15, energyFit 0.1.
+  - `STALENESS_THRESHOLD_DAYS` 3, `STALENESS_MAX_DAYS` 14.
+  - `CATEGORY_BALANCE_WINDOW_DAYS` 14, matched to the existing
+    consistency-score window per the spec's own suggestion.
+  - `CATEGORY_BALANCE_NEGLECT_RATIO` 0.3 (recent share dropped to 30%
+    or less of historical share counts as neglected).
+  - `DEEP_WORK_MIN_MEDIAN_MINUTES` 25 (a tag's median session length
+    at or above this classifies it deep-work, below is quick-admin).
+  - `SUGGESTION_COOLDOWN_HOURS` 24, `SUGGESTION_MIN_COMPETING_SCORE`
+    0.35 (below this, the ranked list isn't confident enough to be the
+    headline, so the Suggestion card gets to lead instead).
+  - Every "not enough data yet" case (a tag with too little history)
+    falls back to a shared neutral 0.5, not a penalty - missing data
+    shouldn't outrank or underrank a task, it should just defer to
+    whatever the other four factors say.
+- **`priorityEngine.js`**: the scoring engine itself.
+  `computePriorityRanking` scores every open task on all five factors,
+  combines them by the weights above, and builds a short reason string
+  from whichever factors actually cleared a "notably high" bar (never
+  padded out to pretend every factor mattered). `computeTagEstimateStats`
+  and `estimateHintMinutes` handle Feature 2 - deliberately not stored
+  anywhere, recomputed fresh from `GET /tasks/completed` and the
+  session history the app already has in hand every time, same
+  "recompute, don't maintain incremental state" convention every other
+  analytics.js figure already follows. `computeCategoryBalance` handles
+  Feature 4. `computeTypeHourStrength` + `classifyTagType` handle
+  Feature 5. `computeUnscheduledSuggestion` handles Feature 6, checking
+  a neglected-category-plus-matching-hour case first, falling back to
+  a generic "this is your best deep-work window" nudge, gated by
+  `SUGGESTION_MIN_COMPETING_SCORE` so it never competes with a
+  confident "Do This Next" card.
+- **`PriorityCard.jsx`** / **`SuggestionCard.jsx`**: sit above the
+  two-column block on the Today tab, full-width like HeroCard/
+  InsightCard above them, per the spec's "prominent... above the
+  existing task list." Visually distinct on purpose - PriorityCard is
+  a solid brass-bordered card like the rest of the app's confident
+  cards, SuggestionCard is dashed-outline/transparent so it reads as a
+  suggestion, not a task, exactly per the spec's own instruction.
+  Both call `startSession()` directly (the same function TimerPanel
+  itself calls) rather than duplicating any session-start logic.
+- **`TimerPanel.jsx`**: added one small `window` event listener
+  (`fd-session-started-elsewhere`) so it notices a session started
+  from one of the two new cards immediately, instead of waiting up to
+  a minute for its own next scheduled poll.
+- **`TasksWidget.jsx`**: two new optional icon toggles (tag, estimate)
+  next to the existing due-date one, an estimate-learning hint shown
+  while typing an estimate, a staleness dot on stale task rows (same
+  `STALENESS_THRESHOLD_DAYS` the scoring engine uses, so the visual
+  indicator and the score always agree), and a bump/defer button.
+- **`SettingsView.jsx`**: added "Category neglect nudge" to the
+  Automations list, backing the new `automation_category_nudge` toggle.
+  It has no closed-app cron counterpart the way `automation_reminders`
+  etc. do (it's a foreground-only check, same as `automation_streak`) -
+  grouped with them anyway since from the user's point of view it's the
+  same "the app proactively tells me something" category.
+- **`App.jsx`**: fetches `completedTasks`, computes `priorityRanking`
+  and `suggestion` via `useMemo` (recomputed on `nowTick` so
+  time-dependent factors don't go stale while the tab sits open), and
+  added the category-neglect notification effect - same
+  seed-on-load/notify-on-transition shape as the existing pace/budget
+  refs, so it doesn't fire a backlog of notices for categories that
+  were already neglected before this feature existed.
+- **`useSuggestionDismissals.js`**: purely local (localStorage), same
+  reasoning as `useDeviceName` - a dismissal cooldown doesn't need a
+  round trip to the backend. A second device simply hasn't seen the
+  dismissal and may show the same suggestion again; acceptable for a
+  cooldown on a nudge, not account data.
+
+### Verified this session (unusually thorough, given the size of this change)
+
+Every previous session's "not verified" note was a real browser click
+that couldn't happen here. This one went further than usual because
+the surface area was large enough to be worth it:
+
+- `esbuild` syntax-checked every touched/new file individually.
+- A full **production `vite build`** (after `npm install`) succeeded
+  across all 442 modules - the strongest available check that every
+  import, export, and prop wire-up across the whole frontend actually
+  resolves, not just that each file parses on its own.
+- Installed a real local Postgres 16, ran the actual `initSchema()`
+  migration against it, and inspected the resulting `tasks`/`settings`
+  tables directly (`\d tasks`) to confirm every new column, index, and
+  check constraint landed exactly as written.
+- Started the real Express server against that database and drove a
+  full curl-based flow through the live API: register, create a tag,
+  create a task with `tag_id` + `estimate_minutes`, confirm the joined
+  tag comes back on `GET /tasks`, bump it, start a session against it
+  (confirmed `last_touched_at` advanced), stop the session, mark the
+  task done, confirmed it appears correctly on `GET /tasks/completed`,
+  confirmed a negative estimate is rejected with 400, confirmed the
+  new settings field round-trips through `PUT /settings`, and confirmed
+  clearing a task's tag (`tag_id: null`) is honored rather than ignored.
+- Ran `priorityEngine.js`'s scoring functions directly against 40 days
+  of synthetic session history (a consistently-timed deep-work tag, a
+  tag that goes quiet in the recent window, tasks with and without
+  estimates/due dates/tags) and inspected the actual output: correct
+  deep-work/quick-admin classification, a sensible ranked order with
+  reason strings that named the right factors, correct neglected-tag
+  detection, and confirmed the Suggestion card's cooldown correctly
+  suppresses a dismissed suggestion and lets it reappear once the
+  cooldown window passes at the same hour of day.
+
+**Not verified:** no actual browser click-through of the new UI (the
+icon toggles on Quick Tasks, the two new cards' visual layout, the
+staleness dot) - the backend and scoring logic were exercised for
+real, but the frontend's visual result was reasoned through from the
+code and the successful build, not watched rendering on a screen.
+
+### Follow-up ideas that came up but weren't built
+
+- The effort-fit factor compares an estimate against a tag's *typical*
+  session length, not actual free time right now - it can't know about
+  a hard stop in 15 minutes for a meeting. Considered and rejected: a
+  live "how much time do you have" picker on the card (adds a tap every
+  time) and tying it to Google Calendar free/busy (the existing sync
+  only mirrors deadline-linked events, not a general calendar feed -
+  real free/busy would be a separate feature in its own right).
+- `computeTagEstimateStats` averages a tag's ratios with a plain mean
+  over up to 200 recent completed tasks (server-capped). If someone's
+  estimating habits are highly volatile per-tag, a median or a
+  more-recent-weighted average might track better - not addressed
+  since there is no real accuracy data yet to judge that against.
+- No UI surfaces `tagEstimateStats`/`categoryBalance` anywhere except
+  through the two new cards and the Quick Tasks hint - e.g. Insights
+  doesn't yet show "your estimate accuracy by category" as its own
+  view, which could be a natural Feature-2 follow-up once there's
+  enough completed-task history to make it worth looking at.

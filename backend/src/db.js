@@ -272,6 +272,15 @@ export async function initSchema() {
     -- independently without a full disconnect. See checkGoogleCalendarSync
     -- in routes/cron.js.
     ALTER TABLE settings ADD COLUMN IF NOT EXISTS automation_google_sync BOOLEAN NOT NULL DEFAULT true;
+    -- Priority engine's category-neglect notice (Feature 4 of
+    -- priorityEngine.js): entirely client-computed from session/tag
+    -- history already in hand, same as automation_streak's foreground
+    -- check in App.jsx - no new cron job behind this one, unlike the
+    -- other automation_* flags above which do have a closed-app push
+    -- counterpart. Grouped with them anyway since it's the same "the app
+    -- proactively tells me something" category from the user's point of
+    -- view, and Settings already lists automation_streak the same way.
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS automation_category_nudge BOOLEAN NOT NULL DEFAULT true;
     -- Dedupe key for the weekly digest, same idea as last_streak_nudge_date
     -- above but keyed by the Monday of the week it was sent for, so it
     -- fires at most once per calendar week rather than on every Sunday
@@ -379,6 +388,36 @@ export async function initSchema() {
     -- against it, just drop the now-meaningless link.
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS task_id UUID REFERENCES tasks(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_sessions_task_id ON sessions(task_id);
+
+    -- Priority engine (see frontend/src/priorityEngine.js): a plain task
+    -- previously carried no category or effort data at all, unlike
+    -- Deadlines which already have both (see deadlines.tag_id and
+    -- deadlines.estimated_hours above). ON DELETE SET NULL, same
+    -- reasoning as sessions.tag_id - deleting a tag shouldn't delete the
+    -- task, just drop its category.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tag_id UUID REFERENCES tags(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_tasks_tag_id ON tasks(tag_id);
+
+    -- User-entered effort estimate in minutes, optional. Compared against
+    -- actual logged time (sessions.task_id) once a task's done, to build
+    -- the per-tag estimate-accuracy ratio computed client-side in
+    -- computeTagEstimateStats (frontend/src/priorityEngine.js) - a stored
+    -- ratio column was considered and rejected in favor of recomputing it
+    -- fresh from GET /tasks/completed + the session history the app
+    -- already fetches, the same "recompute, don't maintain incremental
+    -- state" convention every other analytics.js figure already follows.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimate_minutes INTEGER CHECK (estimate_minutes IS NULL OR estimate_minutes > 0);
+
+    -- Staleness clock (Feature 3): when a task was created, started,
+    -- edited, or explicitly bumped/deferred. Defaults to now() at
+    -- creation and is bumped to now() on every successful PATCH
+    -- (routes/tasks.js), on the explicit POST /tasks/:id/bump action, and
+    -- when a session starts against the task (routes/sessions.js) - any
+    -- of those count as "touched" per the feature spec. A recurring
+    -- task's next occurrence is a fresh row (see spawnNextTaskOccurrence
+    -- below) so its clock naturally restarts at now() rather than needing
+    -- special-casing here.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_touched_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
     -- A reminder can be converted into either a Deadline or a Task (or
     -- neither, if dismissed) -- both FKs are nullable and at most one is

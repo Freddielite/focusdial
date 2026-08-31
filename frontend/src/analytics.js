@@ -25,7 +25,7 @@ function deadlinePaceFragment(d) {
   return `${formatHoursShort(d.hoursPerDayNeeded)}/day`;
 }
 
-function durationSeconds(session) {
+export function durationSeconds(session) {
   return (new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000;
 }
 

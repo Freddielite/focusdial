@@ -133,6 +133,7 @@ const AUTOMATION_ROWS = [
   { key: "automation_streak", title: "Streak at risk", desc: "Nudge me in the evening if I haven't logged a session yet." },
   { key: "automation_runaway_timer", title: "Runaway timer", desc: "Warn me if a running session goes past 4 hours, probably forgot to stop it." },
   { key: "automation_weekly_digest", title: "Weekly digest", desc: "Total hours logged and your best day, in one push. Timing is configurable below." },
+  { key: "automation_category_nudge", title: "Category neglect nudge", desc: "Let me know when a category's gone quiet compared to its usual share of my time." },
 ];
 
 const EVENT_ROWS = [

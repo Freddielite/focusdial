@@ -2691,6 +2691,162 @@ button {
   color: var(--accent-deadline);
 }
 
+/* Feature 3's staleness indicator - a plain dot rather than text, so it
+   doesn't compete with the title for attention in a scan of the list;
+   the exact day count is still available on hover via its title
+   attribute. Amber rather than rust/red: staleness is a mild "you might
+   want to look at this," not the same "overdue" urgency the rust tone
+   above is reserved for. */
+.fd-task-row__stale-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-session);
+}
+
+/* Priority-engine tag pill on a task row - outlined rather than filled,
+   consistent with how a running session's tag reads in TimerPanel
+   (Change tag) rather than the filled fd-tag-chip used in Manage Tags,
+   since this is a compact inline label, not an editable chip. */
+.fd-task-row__tag {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border: 1px solid;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.fd-quick-task-estimate-input {
+  width: 90px;
+  padding: 8px 10px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  color: var(--parchment);
+  border-radius: 4px;
+  font-family: var(--font-body);
+}
+
+.fd-quick-task-estimate-hint {
+  font-size: 11.5px;
+  color: var(--parchment-dim);
+  font-style: italic;
+}
+
+/* ---------- Priority engine: Do This Next + Suggestion cards ---------- */
+
+/* Solid, brass-accented left border - reads as "the app picked this for
+   you" the same weight as HeroCard/InsightCard above it, since it sits
+   in that same full-width position on the Today tab. */
+.fd-priority-card {
+  border-left: 3px solid var(--brass);
+  margin-bottom: 18px;
+}
+
+.fd-priority-card__eyebrow {
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass);
+  margin-bottom: 6px;
+}
+
+.fd-priority-card__title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.fd-priority-card__reason {
+  font-size: 13px;
+  color: var(--parchment-dim);
+  margin-bottom: 14px;
+}
+
+.fd-priority-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.fd-priority-card__start {
+  background: var(--grad-brass);
+  color: #1a1410;
+  border: none;
+  border-radius: 999px;
+  padding: 9px 22px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13.5px;
+  transition: background 0.2s ease, opacity 0.15s ease;
+}
+
+.fd-priority-card__start:hover:not(:disabled) {
+  background: var(--grad-brass-hover);
+}
+
+.fd-priority-card__start:disabled {
+  opacity: 0.5;
+}
+
+/* Suggestion card reads deliberately as a suggestion, not a task - per
+   the feature spec, "clearly read as a suggestion... visually distinct
+   from the Do This Next card." Dashed outline rather than a solid
+   accent border, and no brass fill on its own action button, so the two
+   cards are never mistaken for each other at a glance even though they
+   share the same fd-panel shape and can appear right next to each
+   other. */
+.fd-suggestion-card {
+  border: 1px dashed var(--glass-border);
+  background: transparent;
+  box-shadow: none;
+  margin-bottom: 18px;
+}
+
+.fd-suggestion-card__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment-dim);
+  margin-bottom: 6px;
+}
+
+.fd-suggestion-card__reason {
+  font-size: 13.5px;
+  margin-bottom: 14px;
+}
+
+.fd-suggestion-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.fd-suggestion-card__start {
+  background: transparent;
+  color: var(--brass);
+  border: 1px solid var(--brass);
+  border-radius: 999px;
+  padding: 8px 20px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  transition: background 0.2s ease, opacity 0.15s ease;
+}
+
+.fd-suggestion-card__start:hover:not(:disabled) {
+  background: rgba(217, 146, 44, 0.12);
+}
+
+.fd-suggestion-card__start:disabled {
+  opacity: 0.5;
+}
+
 /* ---------- View wrapper + shared bits ---------- */
 
 .fd-view {
