@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { startSession } from "../api.js";
 import { useDeviceName } from "../hooks/useDeviceName.js";
+import FocusMark from "./FocusMark.jsx";
 
 // Feature 1's "Do This Next" card. Takes the already-computed `ranked`
 // list from computePriorityRanking (see priorityEngine.js) rather than
@@ -44,7 +45,10 @@ export default function PriorityCard({ ranked, hasRunningSession, onSessionStart
 
   return (
     <div className="fd-panel fd-priority-card">
-      <div className="fd-priority-card__eyebrow">Do this next</div>
+      <div className="fd-priority-card__eyebrow">
+        <FocusMark size={13} strokeWidth={2.4} className="fd-priority-card__mark" />
+        Do this next
+      </div>
       <div className="fd-priority-card__title">{current.task.title}</div>
       <div className="fd-priority-card__reason">{current.reason}</div>
       {error && <div className="fd-inline-error">{error}</div>}

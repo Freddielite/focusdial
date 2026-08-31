@@ -3208,3 +3208,71 @@ currently being edited also clears `editingId`, so an optimistically-
 hidden row can't leave a stale edit form expanded underneath it.
 
 Rebuilt (`vite build`, 443 modules) clean after the change.
+
+## Session 46 — Quick Tasks row layout + "Do This Next" card restyle
+
+Both reported with screenshots, both confirmed against the actual
+rendered code (not just the description) before touching anything -
+two clarifying questions asked and answered before starting:
+two-line task rows (matching Recent Sessions), and restyle the
+priority card to match HeroCard exactly (no accent stripe at all).
+
+### Quick Tasks row: single crammed line -> two-line check-card layout
+
+Root cause: `.fd-task-row` put checkbox, title, tag pill, due date,
+repeat text, and two-to-three action icons all on one unwrapped flex
+line. On a real phone the title (bare `flex: 1`, no `min-width`) lost
+the fight for space and wrapped to two lines anyway while everything
+else piled up on the right - exactly what the screenshot showed on
+"Reboot expenses app."
+
+Reworked onto the same `.fd-check-card` shape Recent Sessions/
+Reminders/Budgets/Deadlines already use, rather than a new one-off
+pattern: checkbox stays the fixed leading element, title moves into
+its own `.fd-check-card__body` column with the tag pill/due date/
+repeat text dropping to a second `.fd-check-card__meta` line below it,
+action icons (bump/edit/delete) trail on the right with
+`flex-shrink: 0`. The deadline flag badge and staleness dot now sit
+inline with the title text inside a small `fd-task-row__title-line`
+wrapper rather than as separate top-level row children, so the title
+itself still truncates with an ellipsis (moved onto a dedicated
+`fd-task-row__title-text` span, since `.fd-check-card__title`'s
+default nowrap/ellipsis assumed a bare text span, not one holding icon
+children too).
+
+A task with neither a tag nor a due date stays a genuine single line -
+the meta row is conditionally rendered (`(t.tag_name || t.due_date) &&`),
+not forced to reserve empty space.
+
+### "Do This Next" card: dropped the accent border, matched Hero's icon+label split
+
+Was `border-left: 3px solid var(--brass)` on top of a flat brass
+all-caps "DO THIS NEXT" label - a bold stripe + shouty flat-colored
+label combination that doesn't match how color is used anywhere else
+in the app (Hero's soft glass/glow + pill badges, Insight's much
+thinner single-accent version). The "Start" button itself was already
+fine - that brass gradient pill is the app's own primary-action style,
+used a dozen places already.
+
+Picked "match Hero exactly" over the milder "soften current style"
+option: removed the border entirely (back to plain `.fd-panel`), and
+rebuilt the eyebrow to literally mirror `.fd-hero__eyebrow` - text goes
+back to neutral `--parchment-dim` (not brass), and the only remaining
+brass touch is a small `FocusMark` icon before the label, same
+size/stroke Hero itself uses (`size={13} strokeWidth={2.4}`) via the
+existing shared component rather than a new one-off icon. Left
+`SuggestionCard`'s dashed-outline style untouched - that's an
+intentional, spec'd distinction ("reads as a suggestion, not a task"),
+not the same "doesn't match the app" issue, and wasn't part of what
+was flagged.
+
+Verified: `npm run build` (443 modules) and `node --check` on the
+touched backend file (untouched this session, just re-checked as a
+matter of course) both clean; grepped for the removed
+`fd-task-row__title` class to confirm nothing stale references it.
+**Not verified this session:** no browser here to actually see either
+change rendered - no headless Chromium reachable from this sandbox
+(network is npm-registry-only) to screenshot the result the way the
+report screenshots showed the original problem. Reasoned through from
+the CSS/markup and the `.fd-check-card`/`.fd-hero__eyebrow` patterns
+being mirrored exactly, not watched.

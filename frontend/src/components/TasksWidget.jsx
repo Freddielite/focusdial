@@ -280,39 +280,48 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
                 className="fd-task-row-wrap"
               >
                 <div
-                  className={`fd-task-row${t.deadline_id ? " fd-task-row--deadline" : ""}${
+                  className={`fd-task-row fd-check-card${t.deadline_id ? " fd-task-row--deadline" : ""}${
                     overdue ? " fd-task-row--overdue" : ""
                   }`}
+                  style={{ "--check-accent": t.tag_color || "var(--accent-session)" }}
                 >
                   <button className="fd-task-checkbox" onClick={() => handleToggle(t)} aria-label="Mark done" />
-                  {t.deadline_id && (
-                    <span className="fd-task-row__badge" title="From a deadline">
-                      <FlagIcon />
-                    </span>
-                  )}
-                  {stale && (
-                    <span
-                      className="fd-task-row__stale-dot"
-                      title={`Untouched for ${Math.floor(daysStale(t, now))} days`}
-                    />
-                  )}
-                  <span className="fd-task-row__title">{t.title}</span>
-                  {t.tag_name && (
-                    <span className="fd-task-row__tag" style={{ borderColor: t.tag_color, color: t.tag_color }}>
-                      {t.tag_name}
-                    </span>
-                  )}
-                  {t.due_date && (
-                    <span className={`fd-task-row__due ${overdue ? "fd-task-row__due--overdue" : ""}`}>
-                      {overdue ? "Overdue · " : ""}
-                      {new Date(t.due_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                      {t.recurrence && t.recurrence !== "none" && (
-                        <span title="A new task is created for the next occurrence once this one's marked done">
-                          {" "}· repeats {t.recurrence}
+                  <div className="fd-check-card__body">
+                    <span className="fd-check-card__title fd-task-row__title-line">
+                      {t.deadline_id && (
+                        <span className="fd-task-row__badge" title="From a deadline">
+                          <FlagIcon />
                         </span>
                       )}
+                      {stale && (
+                        <span
+                          className="fd-task-row__stale-dot"
+                          title={`Untouched for ${Math.floor(daysStale(t, now))} days`}
+                        />
+                      )}
+                      <span className="fd-task-row__title-text">{t.title}</span>
                     </span>
-                  )}
+                    {(t.tag_name || t.due_date) && (
+                      <span className="fd-check-card__meta">
+                        {t.tag_name && (
+                          <span className="fd-task-row__tag" style={{ borderColor: t.tag_color, color: t.tag_color }}>
+                            {t.tag_name}
+                          </span>
+                        )}
+                        {t.due_date && (
+                          <span className={`fd-task-row__due ${overdue ? "fd-task-row__due--overdue" : ""}`}>
+                            {overdue ? "Overdue · " : ""}
+                            {new Date(t.due_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                            {t.recurrence && t.recurrence !== "none" && (
+                              <span title="A new task is created for the next occurrence once this one's marked done">
+                                {" "}· repeats {t.recurrence}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
                   {stale && (
                     <button
                       className="fd-icon-btn"

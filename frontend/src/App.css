@@ -2640,6 +2640,10 @@ button {
   padding: 8px 0;
 }
 
+.fd-task-row .fd-icon-btn {
+  flex-shrink: 0;
+}
+
 .fd-task-checkbox {
   width: 16px;
   height: 16px;
@@ -2655,9 +2659,32 @@ button {
   background: rgba(111, 162, 135, 0.25);
 }
 
-.fd-task-row__title {
-  flex: 1;
-  font-size: 13.5px;
+/* Was a single flat line (checkbox, title, tag, due date, edit, delete
+   all fighting for the same row) - crammed the title down to almost no
+   width on a real phone and forced it to wrap while everything else
+   piled up on the right. Reworked onto the same icon | title+meta body
+   | trailing-actions shape Recent Sessions/Reminders/Budgets/Deadlines
+   already use (.fd-check-card, see its definition above) instead of
+   inventing a second row pattern - title gets its own full line via
+   .fd-check-card__body's flex-1 column, tag/due date/repeat move to a
+   second, smaller meta line below it. */
+.fd-task-row .fd-check-card__title.fd-task-row__title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* .fd-check-card__title's default nowrap/ellipsis is for a plain text
+     span - here the span holds icon children too, so truncation moves
+     down to .fd-task-row__title-text below instead. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.fd-task-row__title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .fd-task-row__due {
@@ -2758,8 +2785,15 @@ button {
 /* Solid, brass-accented left border - reads as "the app picked this for
    you" the same weight as HeroCard/InsightCard above it, since it sits
    in that same full-width position on the Today tab. */
+/* Chose to match HeroCard's language exactly rather than InsightCard's:
+   no accent border at all (plain .fd-panel, same as Hero), and the
+   brass color lives only in the small icon mark - not the label text -
+   same split Hero uses (.fd-hero__eyebrow is parchment-dim, only
+   .fd-hero__mark is brass). Previously this card had its own thing
+   going: a bold 3px brass left border plus a flat brass all-caps label,
+   which read like a generic alert callout next to Hero's softer glass/
+   icon-accent look right above it. */
 .fd-priority-card {
-  border-left: 3px solid var(--brass);
   /* No margin-bottom - .fd-view already spaces every direct child via
      its own flex `gap: 20px` (see HeroCard, which correctly has none).
      This card previously duplicated InsightCard's own redundant
@@ -2768,13 +2802,21 @@ button {
 }
 
 .fd-priority-card__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-display);
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--brass);
+  color: var(--parchment-dim);
   margin-bottom: 6px;
+}
+
+.fd-priority-card__mark {
+  color: var(--brass);
+  flex-shrink: 0;
 }
 
 .fd-priority-card__title {
