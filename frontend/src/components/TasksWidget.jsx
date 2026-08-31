@@ -5,6 +5,7 @@ import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import { DatePicker, CalendarGlyph } from "./DateTimeField.jsx";
 import Dropdown from "./Dropdown.jsx";
+import TaskEditForm from "./TaskEditForm.jsx";
 import { estimateHintMinutes } from "../priorityEngine.js";
 import { STALENESS_THRESHOLD_DAYS } from "../priorityWeights.js";
 
@@ -90,6 +91,10 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
   const [recurrence, setRecurrence] = useState("none");
   const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  // Which task row (by id) has its edit form expanded, or null - same
+  // single-row-at-a-time toggle shape as SessionLog's editingId, so
+  // only one task can be mid-edit at once.
+  const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
   const now = new Date();
@@ -136,6 +141,7 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
     const ok = await confirm({ title: `Delete "${task.title}"?` });
     if (!ok) return;
 
+    setEditingId((id) => (id === task.id ? null : id));
     setPendingIds((prev) => new Set(prev).add(task.id));
     requestDelete({
       id: task.id,
@@ -271,52 +277,77 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0, x: 20 }}
-                className={`fd-task-row${t.deadline_id ? " fd-task-row--deadline" : ""}${
-                  overdue ? " fd-task-row--overdue" : ""
-                }`}
+                className="fd-task-row-wrap"
               >
-                <button className="fd-task-checkbox" onClick={() => handleToggle(t)} aria-label="Mark done" />
-                {t.deadline_id && (
-                  <span className="fd-task-row__badge" title="From a deadline">
-                    <FlagIcon />
-                  </span>
-                )}
-                {stale && (
-                  <span
-                    className="fd-task-row__stale-dot"
-                    title={`Untouched for ${Math.floor(daysStale(t, now))} days`}
-                  />
-                )}
-                <span className="fd-task-row__title">{t.title}</span>
-                {t.tag_name && (
-                  <span className="fd-task-row__tag" style={{ borderColor: t.tag_color, color: t.tag_color }}>
-                    {t.tag_name}
-                  </span>
-                )}
-                {t.due_date && (
-                  <span className={`fd-task-row__due ${overdue ? "fd-task-row__due--overdue" : ""}`}>
-                    {overdue ? "Overdue · " : ""}
-                    {new Date(t.due_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                    {t.recurrence && t.recurrence !== "none" && (
-                      <span title="A new task is created for the next occurrence once this one's marked done">
-                        {" "}· repeats {t.recurrence}
-                      </span>
-                    )}
-                  </span>
-                )}
-                {stale && (
+                <div
+                  className={`fd-task-row${t.deadline_id ? " fd-task-row--deadline" : ""}${
+                    overdue ? " fd-task-row--overdue" : ""
+                  }`}
+                >
+                  <button className="fd-task-checkbox" onClick={() => handleToggle(t)} aria-label="Mark done" />
+                  {t.deadline_id && (
+                    <span className="fd-task-row__badge" title="From a deadline">
+                      <FlagIcon />
+                    </span>
+                  )}
+                  {stale && (
+                    <span
+                      className="fd-task-row__stale-dot"
+                      title={`Untouched for ${Math.floor(daysStale(t, now))} days`}
+                    />
+                  )}
+                  <span className="fd-task-row__title">{t.title}</span>
+                  {t.tag_name && (
+                    <span className="fd-task-row__tag" style={{ borderColor: t.tag_color, color: t.tag_color }}>
+                      {t.tag_name}
+                    </span>
+                  )}
+                  {t.due_date && (
+                    <span className={`fd-task-row__due ${overdue ? "fd-task-row__due--overdue" : ""}`}>
+                      {overdue ? "Overdue · " : ""}
+                      {new Date(t.due_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      {t.recurrence && t.recurrence !== "none" && (
+                        <span title="A new task is created for the next occurrence once this one's marked done">
+                          {" "}· repeats {t.recurrence}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {stale && (
+                    <button
+                      className="fd-icon-btn"
+                      onClick={() => handleBump(t)}
+                      aria-label="Not time-sensitive yet, reset staleness"
+                      title="Not time-sensitive yet - reset staleness"
+                    >
+                      ↻
+                    </button>
+                  )}
                   <button
                     className="fd-icon-btn"
-                    onClick={() => handleBump(t)}
-                    aria-label="Not time-sensitive yet, reset staleness"
-                    title="Not time-sensitive yet - reset staleness"
+                    onClick={() => setEditingId((id) => (id === t.id ? null : t.id))}
+                    aria-label="Edit task"
+                    title="Edit task"
                   >
-                    ↻
+                    ✎
                   </button>
-                )}
-                <button className="fd-icon-btn" onClick={() => handleDelete(t)} aria-label="Delete task">
-                  ✕
-                </button>
+                  <button className="fd-icon-btn" onClick={() => handleDelete(t)} aria-label="Delete task">
+                    ✕
+                  </button>
+                </div>
+                <AnimatePresence initial={false}>
+                  {editingId === t.id && (
+                    <TaskEditForm
+                      task={t}
+                      tags={tags}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={() => {
+                        setEditingId(null);
+                        onDataChanged();
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
               </motion.div>
             );
           })}

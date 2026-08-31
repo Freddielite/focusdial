@@ -2619,12 +2619,25 @@ button {
   flex-direction: column;
 }
 
+/* Border lives on the wrap (not the row itself) so it sits below the
+   inline edit form too, same reasoning as .fd-log-row-wrap. */
+.fd-task-row-wrap {
+  border-bottom: 1px solid var(--line);
+}
+
+.fd-task-row-wrap:last-child {
+  border-bottom: none;
+}
+
+.fd-task-row-wrap .fd-inline-edit-form {
+  margin: 0 0 12px;
+}
+
 .fd-task-row {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 0;
-  border-bottom: 1px solid var(--line);
 }
 
 .fd-task-checkbox {

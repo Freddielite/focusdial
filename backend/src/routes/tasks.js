@@ -120,20 +120,27 @@ tasksRouter.patch("/tasks/:id", async (req, res) => {
   if (estimate_minutes != null && (typeof estimate_minutes !== "number" || estimate_minutes <= 0)) {
     return res.status(400).json({ error: "estimate_minutes must be a positive number" });
   }
-  // tag_id/estimate_minutes need the same "was this key sent at all"
-  // distinction sessions.js's PATCH already uses for task_id - COALESCE
-  // against undefined would silently ignore a deliberate "clear the tag"
-  // (tag_id: null) the same way it'd ignore a field that was never sent,
-  // so both go through explicit CASE WHEN <field present> instead.
+  // tag_id/estimate_minutes/due_date/recurrence all need the same "was
+  // this key sent at all" distinction sessions.js's PATCH already uses
+  // for task_id - COALESCE against undefined would silently ignore a
+  // deliberate "clear this field" (e.g. due_date: null, to remove a due
+  // date from the edit form) the same way it'd ignore a field that was
+  // never sent, so all four go through explicit CASE WHEN <field
+  // present> instead. due_date and recurrence are grouped together here
+  // (same hasDueDateField flag) since clearing a due date from the edit
+  // form should also clear any recurrence riding on it - a recurrence
+  // can't mean anything without a due date to advance from (see the
+  // validation above and in POST /tasks).
   const hasTagField = Object.prototype.hasOwnProperty.call(req.body, "tag_id");
   const hasEstimateField = Object.prototype.hasOwnProperty.call(req.body, "estimate_minutes");
+  const hasDueDateField = Object.prototype.hasOwnProperty.call(req.body, "due_date");
   try {
     const { rows } = await pool.query(
       `UPDATE tasks SET
          title = COALESCE($3, title),
-         due_date = COALESCE($4, due_date),
+         due_date = CASE WHEN $11 THEN $4 ELSE due_date END,
          status = COALESCE($5, status),
-         recurrence = COALESCE($6, recurrence),
+         recurrence = CASE WHEN $11 THEN COALESCE($6, 'none') ELSE COALESCE($6, recurrence) END,
          tag_id = CASE WHEN $7 THEN $8 ELSE tag_id END,
          estimate_minutes = CASE WHEN $9 THEN $10 ELSE estimate_minutes END,
          last_touched_at = now(),
@@ -150,6 +157,7 @@ tasksRouter.patch("/tasks/:id", async (req, res) => {
         tag_id || null,
         hasEstimateField,
         estimate_minutes || null,
+        hasDueDateField,
       ]
     );
     if (rows.length === 0) return res.status(404).json({ error: "task not found" });

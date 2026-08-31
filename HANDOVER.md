@@ -3180,3 +3180,31 @@ of their own either, relying on their own parent's gap the same way).
 all three now rely solely on `.fd-view`'s gap, consistent with
 everything else in the file. Rebuilt (`vite build`, 442 modules) clean
 after the change.
+
+### Task editing (this session)
+
+Added the ability to edit an existing task in place: title, category,
+estimate, due date, and recurrence - not just mark-done/bump/delete,
+which was all `TasksWidget` supported before.
+
+**Backend fix required first.** `PATCH /tasks/:id` already used
+explicit `CASE WHEN <field present>` handling for `tag_id` and
+`estimate_minutes` so a deliberate clear (`null`) wasn't swallowed by
+`COALESCE`. `due_date` and `recurrence` still used plain `COALESCE`,
+so sending `due_date: null` to remove a due date silently did nothing
+- fine until there was an edit form that needed to do exactly that.
+Fixed the same way: `hasDueDateField` gates a `CASE WHEN`, and
+clearing the due date also resets `recurrence` to `'none'` in the same
+branch (unless an explicit recurrence is sent alongside it), since a
+recurrence can't mean anything without a due date to advance from.
+
+**Frontend.** New `TaskEditForm.jsx`, same "expands inline within the
+row" shape as `SessionEditModal`/`SessionLog` rather than a modal -
+`TasksWidget` now wraps each row in `.fd-task-row-wrap` (border moved
+from the row to the wrap, same reasoning as `.fd-log-row-wrap`) with a
+pencil `fd-icon-btn` next to delete, toggling a single `editingId` so
+only one task can be mid-edit at a time. Deleting a task that's
+currently being edited also clears `editingId`, so an optimistically-
+hidden row can't leave a stale edit form expanded underneath it.
+
+Rebuilt (`vite build`, 443 modules) clean after the change.
