@@ -536,7 +536,13 @@ button {
   align-items: flex-start;
   gap: 12px;
   border-left: 3px solid var(--brass);
-  margin-bottom: 18px;
+  /* No margin-bottom here - .fd-view (this card's parent) already
+     spaces every direct child with its own flex `gap: 20px`, same as
+     HeroCard right above it. This card used to double up with its own
+     extra 18px on top of that gap, which read as oversized space
+     above/below it compared to siblings that don't add their own
+     margin - the exact bug PriorityCard/SuggestionCard below copied
+     when this card's rule was used as their starting point. */
 }
 
 .fd-insight-card--danger { border-left-color: var(--rust); }
@@ -2741,7 +2747,11 @@ button {
    in that same full-width position on the Today tab. */
 .fd-priority-card {
   border-left: 3px solid var(--brass);
-  margin-bottom: 18px;
+  /* No margin-bottom - .fd-view already spaces every direct child via
+     its own flex `gap: 20px` (see HeroCard, which correctly has none).
+     This card previously duplicated InsightCard's own redundant
+     margin-bottom, stacking on top of that gap and making this card's
+     top/bottom spacing roughly double every sibling's. */
 }
 
 .fd-priority-card__eyebrow {
@@ -2804,7 +2814,8 @@ button {
   border: 1px dashed var(--glass-border);
   background: transparent;
   box-shadow: none;
-  margin-bottom: 18px;
+  /* Same fix as PriorityCard just above - no margin-bottom, .fd-view's
+     own flex gap already spaces this from its neighbors. */
 }
 
 .fd-suggestion-card__eyebrow {

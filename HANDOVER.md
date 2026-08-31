@@ -3156,3 +3156,27 @@ code and the successful build, not watched rendering on a screen.
   doesn't yet show "your estimate accuracy by category" as its own
   view, which could be a natural Feature-2 follow-up once there's
   enough completed-task history to make it worth looking at.
+
+### Follow-up fix, same session: double-spaced cards
+
+Reported precisely: extra top/bottom space on the "Do This Next" card
+compared to every other card on the Today tab.
+
+**Root cause.** `.fd-view` (the column holding HeroCard, InsightCard,
+and now the two new cards) already spaces every direct child with its
+own flex `gap: 20px`. `HeroCard` correctly has no margin of its own and
+relies purely on that gap. `InsightCard`, though, already had its own
+extra `margin-bottom: 18px` stacked on top of that gap - a pre-existing
+quirk, not from this session - and `PriorityCard`/`SuggestionCard` used
+`InsightCard`'s rule as their starting point when built earlier this
+session, copying the same redundant margin along with it. Net effect:
+roughly double the spacing below all three of those cards versus
+HeroCard and everything in the two-column block below (TimerPanel,
+ManualEntryForm, TasksWidget, StatsStrip all correctly have no margin
+of their own either, relying on their own parent's gap the same way).
+
+**Fix.** Removed the redundant `margin-bottom: 18px` from
+`.fd-insight-card`, `.fd-priority-card`, and `.fd-suggestion-card` -
+all three now rely solely on `.fd-view`'s gap, consistent with
+everything else in the file. Rebuilt (`vite build`, 442 modules) clean
+after the change.
