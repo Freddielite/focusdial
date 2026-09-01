@@ -702,6 +702,8 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     deadlineTrackRecord={deadlineTrackRecord}
                     history={history}
                     userName={userFirstName}
+                    tagEstimateStats={priorityRanking.tagEstimateStats}
+                    allTags={allTags}
                   />
                 )}
                 {activeTab === "budgets" && (

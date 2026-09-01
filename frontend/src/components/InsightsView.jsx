@@ -10,8 +10,18 @@ import ConsistencyCard from "./ConsistencyCard.jsx";
 import RiskDigestCard from "./RiskDigestCard.jsx";
 import WeeklyReviewCard from "./WeeklyReviewCard.jsx";
 import DeadlineTrackRecordCard from "./DeadlineTrackRecordCard.jsx";
+import EstimateAccuracyCard from "./EstimateAccuracyCard.jsx";
 
-export default function InsightsView({ summary, riskDigest, weeklyReview, deadlineTrackRecord, history, userName }) {
+export default function InsightsView({
+  summary,
+  riskDigest,
+  weeklyReview,
+  deadlineTrackRecord,
+  history,
+  userName,
+  tagEstimateStats,
+  allTags,
+}) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -31,6 +41,7 @@ export default function InsightsView({ summary, riskDigest, weeklyReview, deadli
         <FocusQualityCard quality={summary.quality} />
         <ConsistencyCard consistency={summary.consistency} />
         <DeadlineTrackRecordCard trackRecord={deadlineTrackRecord} />
+        <EstimateAccuracyCard stats={tagEstimateStats} tags={allTags} />
       </div>
       <TrendChart
         weeklyTotals={summary.weeklyTotals}

@@ -120,7 +120,7 @@ export function computeTagEstimateStats(completedTasks, sessions) {
 const ESTIMATE_HINT_MIN_DEVIATION = 0.15;
 // Needs at least two past data points before suggesting anything - one
 // completed task under a tag is an anecdote, not a pattern.
-const ESTIMATE_HINT_MIN_SAMPLES = 2;
+export const ESTIMATE_HINT_MIN_SAMPLES = 2;
 
 /**
  * Feature 2's hint text builder: "based on your history, this usually

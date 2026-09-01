@@ -3296,12 +3296,107 @@ the app's other prominent headings already use (`.fd-header__brand`,
 `.fd-crash__title`, both 21-22px) rather than picking an arbitrary
 new number. `npm run build` clean (443 modules).
 
-## Session 49 — corrected Session 48: wrong element was resized
+## Session 50 — reverted Session 46's "Do This Next" restyle; 4 small fixes from a logic review
 
-Session 48 misread "increase 'Do this next'" as the task title
-("Reboot expenses app") rather than the "DO THIS NEXT" eyebrow label
-above it. Reverted `.fd-priority-card__title` back to 18px, bumped
-`.fd-priority-card__eyebrow` instead (11.5px -> 13.5px, kept the
-existing uppercase/letter-spaced style rather than restyling it -
-scope was explicitly "just the eyebrow, nothing else"). `npm run build`
-clean (443 modules).
+Session 46 moved this card from a bold brass-left-border + flat brass
+label to match HeroCard's softer icon-accent style instead. Asked to
+go back to the original look (screenshot showed the pre-Session-46
+version), so: `.fd-priority-card` gets its `border-left: 3px solid
+var(--brass)` back, `.fd-priority-card__eyebrow` is brass again
+(not `--parchment-dim`), and the `FocusMark` icon in front of the
+label is gone (`PriorityCard.jsx`'s import and usage both removed).
+Session 46's other two changes (dropping the redundant `margin-bottom`,
+`SuggestionCard`'s dashed style) weren't touched — this only reverts
+the border/eyebrow part.
+
+Also fixed 4 things flagged in the same review pass:
+- `priorityEngine.js` — `computeUnscheduledSuggestion` computed a
+  `daysNeglected` value that was never used anywhere (not returned,
+  not in the reason string). Removed; `CATEGORY_BALANCE_WINDOW_DAYS`
+  is still used elsewhere in the file so nothing else to clean up
+  there.
+- `Dropdown.jsx` / `RemindersView.jsx` — both imported `useEffect`
+  without ever calling it. Dropped from the import list.
+- `TimerPanel.jsx` — the multi-device conflict banner's "started X
+  ago" text was computed once from `Date.now()` at render and then
+  frozen for as long as the banner stayed open, unlike every other
+  live-elapsed display in the app. Added a small `conflictNowMs` state
+  + 1s interval, scoped to while `conflict` is set (separate from the
+  running-timer's own tick interval, since the two states are mutually
+  exclusive).
+- `Toast.jsx` — `toast.dismiss = dismiss` was mutating the
+  `useCallback`-memoized `toast` function on every render. Works fine
+  today (React doesn't forbid it), but it's the kind of thing that
+  breaks under stricter memoization assumptions (confirmed by running
+  the experimental `eslint-plugin-react-hooks` v5 rules against this
+  repo as part of the review — not part of this project's own tooling,
+  just used as a probe). Rebuilt `toast` via `useState`'s lazy
+  initializer instead: the function is fully assembled, `.dismiss`
+  included, inside the initializer itself, so nothing mutates it after
+  the fact. Calling convention (`const toast = useToast();
+  toast({...})`) is unchanged.
+
+Verified: `npm run build` (443 modules) and `node --check` on every
+backend file both clean. Installed `eslint` + `eslint-plugin-react` +
+`eslint-plugin-react-hooks` v5 (dev-only, not committed to
+`package.json`) specifically to re-check the touched files after each
+edit — `Toast.jsx`, `Dropdown.jsx`, `RemindersView.jsx`,
+`priorityEngine.js` all clean under it. The rest of the app also
+trips plenty of that same experimental ruleset's rules (setState in
+effects, refs during render) — pre-existing, unrelated to this
+session's changes, and not something this project's own toolchain
+enforces, so left alone rather than chasing them all down.
+**Not verified this session:** no browser here to see the restyled
+card actually rendered, same limitation as Session 46.
+
+## Session 51 — Estimate Accuracy card (Insights)
+
+`computeTagEstimateStats` (priorityEngine.js, Feature 2) already
+tracked each tag's estimate-vs-actual ratio, but the only consumer was
+the Quick Tasks estimate hint (`estimateHintMinutes`) - the underlying
+per-tag stats had no view of their own. New `EstimateAccuracyCard.jsx`
+in Insights surfaces the same `tagEstimateStats` map directly: one row
+per tag with >= `ESTIMATE_HINT_MIN_SAMPLES` completed, estimated tasks
+(now exported from `priorityEngine.js` rather than kept module-private,
+so this card and the estimate hint stay on the same "enough data to
+trust" bar instead of drifting apart), sorted by largest deviation
+from 1x first - same ordering `ComparativeInsightsCard` already uses
+for its own candidates.
+
+Ratio -> tone follows patterns already established elsewhere in the
+app rather than inventing new rules: within 15% of 1x reads as "usually
+about right" (green) - same relative-gap bar `computeContextSwitchCost`
+and the estimate hint itself already use for "is this difference worth
+mentioning." Over 1x is brass, escalating to rust past 1.5x (matching
+the tight/behind severity split `computeDeadlineProgress` already
+draws). Under 1x (finishes faster than estimated) stays neutral/dim
+rather than "good" or a warning - same "less isn't styled as a
+warning" call `ComparativeInsightsCard` already makes for a quieter
+weekday; finishing early isn't a problem the way running over is, but
+it's not inherently praiseworthy either.
+
+Passed `allTags` (active + archived) into the card, not just active
+`tags` - a completed, estimated task under a since-archived tag is
+still real accuracy history and should keep showing its real name/
+color rather than falling back to "Untagged." `InsightsView.jsx` and
+`App.jsx` both updated to thread `tagEstimateStats`/`allTags` through;
+`priorityRanking.tagEstimateStats` is always a `Map` (never null) and
+`completedTasks` initializes to `[]`, so the card's empty state
+renders correctly before data loads too, not just once history
+exists.
+
+New CSS block (`.fd-estimate-card*`) added just after
+`.fd-comparative-card`'s own block, reusing `.fd-tag-list`/`.fd-tag-dot`/
+`.fd-tag-row__name` for the row layout and mirroring `.fd-hero__pill`'s
+shape for the ratio badge rather than inventing a new pill style.
+
+Verified: `npm run build` (444 modules) clean, `node --check` on every
+backend file clean (backend untouched this session), and the same
+`eslint-plugin-react-hooks` v5 probe from Session 50 run again against
+`EstimateAccuracyCard.jsx` and every file touched this session - all
+clean (`App.jsx` still trips its two pre-existing, unrelated findings
+from Session 50, nothing new). **Not verified this session:** no
+browser here to see the new card actually rendered - reasoned through
+from the data flow and the existing patterns being mirrored, not
+watched.
+

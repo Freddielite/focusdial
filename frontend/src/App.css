@@ -631,6 +631,59 @@ button {
 .fd-comparative-card__item--more .fd-comparative-card__icon { color: var(--focus-green); }
 .fd-comparative-card__item--less .fd-comparative-card__icon { color: var(--parchment-dim); }
 
+.fd-estimate-card {
+  /* No margin-bottom here -- lives inside .fd-main__insights' grid,
+     same as the other panels there (see .fd-comparative-card above). */
+}
+
+.fd-estimate-card__row + .fd-estimate-card__row {
+  margin-top: 12px;
+}
+
+.fd-estimate-card__pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  /* Same pill shape as .fd-hero__pill, reused here rather than shared
+     directly since this one sits inline in a row with a tag dot and
+     name (.fd-tag-row__head) rather than in the Hero card's own
+     flex-wrap group. */
+}
+
+.fd-estimate-card__pill--good {
+  color: var(--focus-green);
+  background: color-mix(in srgb, var(--focus-green) 16%, transparent);
+  border-color: color-mix(in srgb, var(--focus-green) 35%, transparent);
+}
+
+.fd-estimate-card__pill--brass {
+  color: var(--brass-strong);
+  background: color-mix(in srgb, var(--brass) 16%, transparent);
+  border-color: color-mix(in srgb, var(--brass) 35%, transparent);
+}
+
+.fd-estimate-card__pill--warn {
+  color: var(--rust);
+  background: color-mix(in srgb, var(--rust) 16%, transparent);
+  border-color: color-mix(in srgb, var(--rust) 38%, transparent);
+}
+
+.fd-estimate-card__pill--dim {
+  color: var(--parchment-dim);
+  background: color-mix(in srgb, var(--parchment-dim) 14%, transparent);
+  border-color: var(--glass-border);
+}
+
+.fd-estimate-card__meta {
+  font-size: 12px;
+  color: var(--parchment-dim);
+  line-height: 1.4;
+}
+
 /* ---------- Main layout ---------- */
 
 .fd-main {
