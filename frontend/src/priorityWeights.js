@@ -122,3 +122,16 @@ export const SUGGESTION_COOLDOWN_HOURS = 24;
 // anything useful enough to lead with, so an unscheduled suggestion (if
 // one applies) gets to be the headline instead.
 export const SUGGESTION_MIN_COMPETING_SCORE = 0.35;
+
+// Below this many past sessions started in the same hour, the "you
+// usually work on X around this time" fallback (see
+// computeUnscheduledSuggestion's second branch) stays quiet rather than
+// becoming an actionable suggestion - one session that happened to land
+// in this hour once isn't a real pattern worth interrupting someone
+// for. Same "at least 3" bar used elsewhere in this file
+// (ENERGY_FIT_MIN_HOUR_SAMPLES) and in analytics.js
+// (mostSustainedTag, bestFocusHour) for the same reason. Originally
+// lived in TimerPanel.jsx as its own separate nudge's threshold before
+// that nudge was folded into this suggestion (see HANDOVER) - moved
+// here now that it's this file's logic using it, not TimerPanel's.
+export const SUGGESTION_MIN_USUAL_TAG_SESSIONS = 3;

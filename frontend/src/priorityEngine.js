@@ -35,6 +35,7 @@ import {
   ENERGY_FIT_MIN_HOUR_SAMPLES,
   SUGGESTION_COOLDOWN_HOURS,
   SUGGESTION_MIN_COMPETING_SCORE,
+  SUGGESTION_MIN_USUAL_TAG_SESSIONS,
 } from "./priorityWeights.js";
 
 function clamp01(n) {
@@ -389,17 +390,32 @@ export function computePriorityRanking(tasks, sessions, completedTasks, tags, no
  * two cards are meant to complement each other, not compete for
  * attention at the same time.
  *
+ * Also absorbs what used to be TimerPanel's own separate "you usually
+ * work on X around this time" nudge (see HANDOVER for the merge) as its
+ * fallback branch, so there's exactly one "good hour to start
+ * something" suggestion in the whole app instead of two independently
+ * built ones that could both fire at once saying nearly the same thing.
+ * Always names a specific tag when it fires - no generic "this is
+ * usually a good deep-work window" message with nothing to act on; if
+ * neither branch below has something specific to say, this returns null
+ * and no suggestion shows at all, rather than falling back to something
+ * vaguer.
+ *
  * `dismissedAt` is a plain object of { [suggestionKey]: isoTimestamp },
  * expected to be persisted client-side (see useSuggestionDismissals) -
  * a suggestion whose key was dismissed within SUGGESTION_COOLDOWN_HOURS
  * is skipped, without that ever counting against future different
  * suggestions (a different key entirely) or permanently suppressing the
- * same one once the cooldown passes, per the feature spec.
+ * same one once the cooldown passes, per the feature spec. The two
+ * branches below use differently-prefixed keys ("neglected-"/"usual-")
+ * even when they'd otherwise land on the same tag, so dismissing one
+ * kind of suggestion about a tag doesn't silently suppress the other.
  */
 export function computeUnscheduledSuggestion({
   categoryBalance,
   typeHourStrength,
   tagTypicalSeconds,
+  hourlyTagSuggestions,
   topRankedScore,
   dismissedAt = {},
   now = new Date(),
@@ -424,9 +440,9 @@ export function computeUnscheduledSuggestion({
     if (!type || !typeHourStrength[type].has(hour)) continue;
     if (!bestNeglected || info.recentShare < bestNeglected.recentShare) bestNeglected = info;
   }
-  if (bestNeglected && !isDismissed(bestNeglected.tagId)) {
+  if (bestNeglected && !isDismissed(`neglected-${bestNeglected.tagId}`)) {
     return {
-      key: bestNeglected.tagId,
+      key: `neglected-${bestNeglected.tagId}`,
       tagId: bestNeglected.tagId,
       tagName: bestNeglected.tagName,
       tagColor: bestNeglected.tagColor,
@@ -434,16 +450,22 @@ export function computeUnscheduledSuggestion({
     };
   }
 
-  // Fall back to a generic "this is your best deep-work window and
-  // nothing's competing for it" nudge when no specific neglected
-  // category applies right now.
-  if (typeHourStrength["deep-work"].has(hour) && !isDismissed("generic-deep-work")) {
+  // Fall back to "you usually work on X around this time" - whichever
+  // tag has the most historical seconds actually started in this hour
+  // (computeHourlyTagSuggestions, analytics.js), same signal and same
+  // minimum-sessions confidence bar TimerPanel's own nudge used to
+  // apply on its own before the merge. Still tag-specific, just a
+  // different kind of specific than the neglected-category branch
+  // above: "what you usually do now" rather than "what you've been
+  // missing that fits now."
+  const usualTag = hourlyTagSuggestions?.[hour];
+  if (usualTag && usualTag.count >= SUGGESTION_MIN_USUAL_TAG_SESSIONS && !isDismissed(`usual-${usualTag.tagId}`)) {
     return {
-      key: "generic-deep-work",
-      tagId: null,
-      tagName: null,
-      tagColor: "var(--accent-session)",
-      reason: "This is usually your best deep-work window. Want to start an ad-hoc session?",
+      key: `usual-${usualTag.tagId}`,
+      tagId: usualTag.tagId,
+      tagName: usualTag.name,
+      tagColor: usualTag.color,
+      reason: `You usually work on ${usualTag.name} around this time.`,
     };
   }
 

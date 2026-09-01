@@ -2607,34 +2607,6 @@ button {
   gap: 16px;
 }
 
-.fd-timer-nudge {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 12px;
-  background: rgba(224, 169, 61, 0.1);
-  border: 1px solid rgba(224, 169, 61, 0.3);
-  border-radius: 6px;
-}
-
-.fd-timer-nudge__text {
-  font-size: 13px;
-  color: var(--parchment);
-  line-height: 1.4;
-}
-
-.fd-timer-nudge__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.fd-timer-nudge .fd-btn--sm {
-  padding: 8px 14px;
-  font-size: 12px;
-}
-
 /* ---------- Push control ---------- */
 
 .fd-push-control {

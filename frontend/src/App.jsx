@@ -31,7 +31,7 @@ import {
   updateSettings,
   setSlowRequestHandler,
 } from "./api.js";
-import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeMonthlyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
 import { computePriorityRanking, computeUnscheduledSuggestion } from "./priorityEngine.js";
 import { useSuggestionDismissals } from "./hooks/useSuggestionDismissals.js";
 
@@ -385,11 +385,12 @@ export default function App({ user, onLogout, onUserUpdated }) {
         categoryBalance: priorityRanking.categoryBalance,
         typeHourStrength: priorityRanking.typeHourStrength,
         tagTypicalSeconds: priorityRanking.tagTypicalSeconds,
+        hourlyTagSuggestions: summary.hourlyTagSuggestions,
         topRankedScore: priorityRanking.ranked[0]?.score ?? null,
         dismissedAt: suggestionDismissedAt,
         now: new Date(nowTick),
       }),
-    [priorityRanking, suggestionDismissedAt, nowTick]
+    [priorityRanking, summary.hourlyTagSuggestions, suggestionDismissedAt, nowTick]
   );
   const riskDigest = useMemo(
     () => computeRiskDigest({ budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
@@ -397,10 +398,6 @@ export default function App({ user, onLogout, onUserUpdated }) {
   );
   const weeklyReview = useMemo(
     () => computeWeeklyReview({ sessions: liveSessions, deadlinesProgress: deadlinesWithProgress, reminders }),
-    [liveSessions, deadlinesWithProgress, reminders]
-  );
-  const monthlyReview = useMemo(
-    () => computeMonthlyReview({ sessions: liveSessions, deadlinesProgress: deadlinesWithProgress, reminders }),
     [liveSessions, deadlinesWithProgress, reminders]
   );
   const deadlineTrackRecord = useMemo(
@@ -703,7 +700,6 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     summary={summary}
                     riskDigest={riskDigest}
                     weeklyReview={weeklyReview}
-                    monthlyReview={monthlyReview}
                     deadlineTrackRecord={deadlineTrackRecord}
                     history={history}
                     userName={userFirstName}

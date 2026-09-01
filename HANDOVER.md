@@ -3483,3 +3483,96 @@ unrelated findings noted in Sessions 50/51 (nothing new introduced).
 actually rendered - the date-logic bug above was caught by a targeted
 test script, not by eyeballing the UI, so real fidelity to the
 screenshot/expected layout is still unconfirmed until someone opens it.
+## Session 53 — merged the two overlapping "good time to work" nudges into one
+
+User noticed the SUGGESTION banner ("This is usually your best deep-
+work window...") and TimerPanel's own "You usually work on Dev Stuff
+around this time" could both show at once, saying almost the same
+thing. They were genuinely two independent features built at different
+times: `computeUnscheduledSuggestion` (Feature 6, priorityEngine.js)
+knew nothing about TimerPanel's separate `computeHourlyTagSuggestions`-
+driven nudge, which had its own localStorage dismiss key and its own
+confidence bar (`MIN_NUDGE_SESSIONS`). The in-code comment in
+TodayView.jsx only ever documented PriorityCard/SuggestionCard as
+mutually exclusive - never mentioned TimerPanel's third one.
+
+Asked to merge, with no generic messaging anywhere. Two changes:
+
+1. **Folded TimerPanel's nudge into `computeUnscheduledSuggestion` as
+   its fallback branch.** When there's no neglected category to lead
+   with, it now falls back to "you usually work on X around this time"
+   using the same `hourlyTagSuggestions`/count-based confidence bar
+   TimerPanel's nudge used to apply on its own (moved to
+   priorityWeights.js as `SUGGESTION_MIN_USUAL_TAG_SESSIONS`, same "at
+   least 3" reasoning as `ENERGY_FIT_MIN_HOUR_SAMPLES`). If *neither*
+   branch has something specific to say, it returns `null` - dropped
+   the old generic "This is usually your best deep-work window, want to
+   start an ad-hoc session?" fallback entirely rather than keep it as a
+   third tier, per the "no generic messaging" ask. Every suggestion
+   this function can produce now names a real tag.
+
+   Dismiss keys for the two branches are now prefixed
+   (`neglected-<tagId>` / `usual-<tagId>`) rather than bare `tagId`, so
+   dismissing "you haven't done much Writing lately" about a tag
+   doesn't also suppress a future "you usually work on Writing now"
+   about that same tag, or vice versa. **One-time side effect:** anyone
+   with an already-dismissed suggestion in localStorage from before
+   this session will see it once more after upgrading, since the old
+   un-prefixed key no longer matches - a one-time reset, not an
+   ongoing issue, and not worth a migration for a single-user local
+   dismiss cache.
+
+2. **Removed the now-redundant nudge card from TimerPanel.jsx
+   entirely** - the whole `showNudge`/`dismissNudge`/`MIN_NUDGE_SESSIONS`
+   /`NUDGE_DISMISS_KEY`/`currentHourBucketKey` apparatus and its JSX
+   block, plus the now-dead `.fd-timer-nudge*` CSS. Kept the *quiet*
+   half of what TimerPanel was doing - pre-selecting the tag dropdown
+   based on `hourlyTagSuggestions`, and the small non-actionable
+   caption ("Suggested based on what you usually work on now") under
+   it - since that was never the duplicated part; it has no Start
+   button and never had its own dismiss state, so it wasn't competing
+   with SuggestionCard the way the assertive nudge was.
+
+Verified with a standalone test script (same approach Session 52 used
+after last time's date bug) rather than by inspection alone, given the
+lesson from that session: neglected-category match takes priority over
+the usual-tag fallback when both apply; usual-tag fallback fires and is
+specific when only it applies; below-confidence usual-tag data produces
+`null` rather than falling back to something vaguer; no data at all
+produces `null`; a dismissed usual-tag suggestion stays suppressed
+rather than falling through to some other message; and a confident
+competing task score suppresses the whole thing regardless of either
+signal. All six matched expectations.
+
+`npm run build` clean (446 modules), `node --check` on every backend
+file clean (backend untouched), and the `eslint-plugin-react-hooks` v5
+probe from prior sessions re-run against every touched file - only the
+same pre-existing, unrelated findings already noted in Sessions 50-52
+(the effect-based `setSelectedTag` this session's edit left in place
+was already flagged before this session; nothing new). **Not verified
+this session:** no browser here to confirm the SUGGESTION banner
+actually reads well with the new "You usually work on X around this
+time" tag-specific message in place of the old generic one, or that
+the Timer panel's quiet pre-select still looks right with the nudge
+card gone above it.
+## Session 54 — removed Monthly Review
+
+Session 52's Monthly Review card was asked to be removed (Personal
+Records/Milestones, from the same session, stays). Removed
+`MonthlyReviewCard.jsx` entirely, `computeMonthlyReview` and its
+private `firstOfMonth` helper from analytics.js (both were only ever
+called from the one place each), and the `monthlyReview` plumbing in
+App.jsx/InsightsView.jsx. `computeWeeklyReview` and `WeeklyReviewCard.jsx`
+are untouched - Monthly Review was always a fully separate function/
+component from its weekly counterpart (see Session 52's own reasoning
+for why they were never merged), so removing it doesn't touch the
+weekly one's logic, and the CSS classes `MonthlyReviewCard.jsx` reused
+(`.fd-weekly-review*`, `.fd-upcoming-row*`) are still in use by
+`WeeklyReviewCard.jsx` - nothing orphaned to clean up there either.
+
+`npm run build` clean (445 modules, down from 446), `node --check` on
+every backend file clean (backend untouched), and the `eslint-plugin-
+react-hooks` v5 probe from prior sessions re-run - `InsightsView.jsx`
+clean, `App.jsx`/`analytics.js` only show the same pre-existing,
+unrelated findings from Sessions 50-53 (nothing new, nothing left
+behind by the removal).
