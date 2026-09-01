@@ -9,13 +9,16 @@ import FocusQualityCard from "./FocusQualityCard.jsx";
 import ConsistencyCard from "./ConsistencyCard.jsx";
 import RiskDigestCard from "./RiskDigestCard.jsx";
 import WeeklyReviewCard from "./WeeklyReviewCard.jsx";
+import MonthlyReviewCard from "./MonthlyReviewCard.jsx";
 import DeadlineTrackRecordCard from "./DeadlineTrackRecordCard.jsx";
 import EstimateAccuracyCard from "./EstimateAccuracyCard.jsx";
+import MilestonesCard from "./MilestonesCard.jsx";
 
 export default function InsightsView({
   summary,
   riskDigest,
   weeklyReview,
+  monthlyReview,
   deadlineTrackRecord,
   history,
   userName,
@@ -31,6 +34,7 @@ export default function InsightsView({
       className="fd-view"
     >
       <WeeklyReviewCard review={weeklyReview} userName={userName} />
+      <MonthlyReviewCard review={monthlyReview} />
       <div className="fd-main__insights">
         <HourDial hourly={summary.hourly} bestHour={summary.bestHour} />
         <RiskDigestCard digest={riskDigest} />
@@ -42,6 +46,7 @@ export default function InsightsView({
         <ConsistencyCard consistency={summary.consistency} />
         <DeadlineTrackRecordCard trackRecord={deadlineTrackRecord} />
         <EstimateAccuracyCard stats={tagEstimateStats} tags={allTags} />
+        <MilestonesCard milestones={summary.milestones} />
       </div>
       <TrendChart
         weeklyTotals={summary.weeklyTotals}

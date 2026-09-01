@@ -684,6 +684,46 @@ button {
   line-height: 1.4;
 }
 
+.fd-milestones-card {
+  /* No margin-bottom here -- lives inside .fd-main__insights' grid,
+     same as the other panels there (see .fd-comparative-card above). */
+}
+
+.fd-milestones-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fd-milestones-card__row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.fd-milestones-card__title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--parchment-dim);
+}
+
+.fd-milestones-card__value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--brass-strong);
+}
+
+.fd-milestones-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--parchment-dim);
+  line-height: 1.4;
+}
+
 /* ---------- Main layout ---------- */
 
 .fd-main {

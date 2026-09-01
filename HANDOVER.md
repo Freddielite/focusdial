@@ -3400,3 +3400,86 @@ browser here to see the new card actually rendered - reasoned through
 from the data flow and the existing patterns being mirrored, not
 watched.
 
+## Session 52 — Personal Records + Monthly Review (Insights), and a real bug caught along the way
+
+Two new Insights cards, both requested together:
+
+**`MilestonesCard.jsx`** ("Personal Records") - longest single session,
+best single day, and longest streak ever, via new `computeMilestones`
+in analytics.js. Bundled into `computeSummary`'s own return
+(`summary.milestones`) rather than wired as a separate top-level call
+in App.jsx, since it only needs `sessions` +
+`restDayOfWeek`/`graceEnabled` - all three already in scope inside
+computeSummary - unlike computeWeeklyReview/computeRiskDigest, which
+need deadlines/reminders computeSummary doesn't have.
+
+The streak record deliberately reuses computeSummary's own
+rest-day/grace rules (same params, same walk logic) rather than a
+plainer "longest run of consecutive days" - if "record: 20 days" used a
+looser definition than the "current: 25-day streak" badge above it,
+seeing current > record would read as a bug, not a milestone. Walks the
+whole history forward (oldest to newest) rather than reusing
+computeSummary's backward walk, since that one only ever needs to find
+one break; this needs to track a running max across possibly many.
+
+**`MonthlyReviewCard.jsx`** - same shape as the existing
+`WeeklyReviewCard.jsx`/`computeWeeklyReview`, rolled up to a calendar
+month via new `computeMonthlyReview`. Kept fully separate from the week
+version rather than generalizing one function to take a period type -
+months don't have a fixed length the way weeks do, so "same elapsed
+days last month" needed its own date math (`new Date(y, m-1, 1)` for
+`lastMonthStart`, relying on JS normalizing a negative month index -
+January correctly rolls back to December of the prior year with no
+special case needed). "Coming up" window widened to 30 days (from the
+week card's 7) - a monthly-cadence review scanning only a week ahead
+would miss most of what it's meant to preview. Both new cards sit above
+the small-card grid in Insights, right under WeeklyReviewCard - full-
+width space to match, not squeezed into `.fd-main__insights`.
+
+**The bug, caught before this ever reached the user:** `localDayKey`
+(analytics.js) formats a date as `"2026-7-30"` - no zero-padding,
+0-indexed month. Every *existing* use of it in this file only ever
+compares it to itself (Map keys, `===` checks) or leaves it hardcoded
+next to a real Date computed separately - never parses it back into a
+Date. Both new cards' first drafts did exactly that (`new
+Date(`${dateKey}T00:00:00`)`, in `computeMilestones`'s streak walk,
+`computeMonthlyReview`'s bestDay, and both cards' own display
+formatting) - and the Date string constructor reads month numbers as
+1-indexed, so `"2026-7-30"` came back as **July** 30th, not August.
+Caught by writing a standalone test script
+(`node` directly against analytics.js, since this repo has no test
+suite and there's no browser available in this environment) rather
+than by inspection - the first test run showed `longestStreak` coming
+back `null` in every single case, which is what sent me looking.
+
+Fixed by not parsing localDayKey's string form at all: `computeMilestones`
+now carries the real `Date` alongside each day's total in the
+`dayTotals` map (`Map<key, {seconds, date}>`) instead of reconstructing
+one from the key later, and both cards' display-formatting helpers take
+that real Date directly rather than a dateKey string. `computeMonthlyReview`
+had the real Date in scope the whole time (`day`, built directly from
+month arithmetic) and was only wrapping it in `localDayKey()` to pass
+along - now passes `day` itself.
+
+Re-verified after the fix with an expanded version of the same test
+script: longest-session/best-day/current-streak on a clean 3-day run,
+a historical run beating a shorter current one, empty history, "today
+not logged yet doesn't break the streak," rest-day + grace interplay
+together, and - the case that would have silently stayed broken
+without it - a streak crossing a month boundary (Jul 30/31 -> Aug 1).
+All match hand-computed expectations. `computeMonthlyReview` checked
+separately against the real current date (it always uses `new Date()`
+internally, same as computeWeeklyReview, so the test computes its
+sample dates relative to that rather than a fixed fake "now").
+
+`npm run build` clean (446 modules), `node --check` on every backend
+file clean (backend untouched this session), and the `eslint-plugin-
+react-hooks` v5 probe from Sessions 50/51 run again - all four
+new/touched files (`MilestonesCard.jsx`, `MonthlyReviewCard.jsx`,
+`InsightsView.jsx`, `EstimateAccuracyCard.jsx`) clean on their own;
+`App.jsx`/`analytics.js` still only trip the same pre-existing,
+unrelated findings noted in Sessions 50/51 (nothing new introduced).
+**Not verified this session:** no browser here to see either card
+actually rendered - the date-logic bug above was caught by a targeted
+test script, not by eyeballing the UI, so real fidelity to the
+screenshot/expected layout is still unconfirmed until someone opens it.

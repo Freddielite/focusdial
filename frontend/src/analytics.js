@@ -841,6 +841,128 @@ function qualityByDuration(sessions) {
   return { buckets: eligible, best, worst };
 }
 
+// Personal records: longest single session, best single day, and the
+// longest streak ever run - "was this a good stretch, historically" is
+// a different question than anything else in computeSummary answers,
+// which is all either "right now" (today/week/current streak) or
+// "typically" (averages, patterns). None of those tell you whether
+// today's 3-hour session was actually your longest ever, or whether the
+// streak you're on now has already beaten your old record.
+//
+// Takes the same `restDayOfWeek`/`graceEnabled` as computeSummary's own
+// current-streak walk (rather than a plain "any run of consecutive
+// days") specifically so the two numbers stay comparable - if "record:
+// 20 days" used a plainer definition than the "current: 25-day streak"
+// badge above it, seeing current > record would look like a bug, not a
+// milestone.
+export function computeMilestones(sessions, restDayOfWeek = null, graceEnabled = false, now = new Date()) {
+  if (sessions.length === 0) {
+    return { longestSession: null, bestDay: null, longestStreak: null };
+  }
+
+  let longestSession = null;
+  for (const s of sessions) {
+    const seconds = durationSeconds(s);
+    if (!longestSession || seconds > longestSession.seconds) {
+      longestSession = {
+        seconds,
+        date: new Date(s.started_at),
+        tagName: s.tag_name || null,
+        tagColor: s.tag_color || null,
+      };
+    }
+  }
+
+  // Same local-day splitting as everywhere else in this file
+  // (splitSessionByLocalDay) so a session crossing midnight is
+  // attributed to both days it actually touched, not counted whole
+  // toward whichever one it started in.
+  //
+  // Each entry pairs its localDayKey (for the O(1) lookups the streak
+  // walk below needs) with the actual start-of-day Date it came from -
+  // localDayKey's own string format (unpadded, 0-indexed month, e.g.
+  // "2026-7-30" for Aug 30th) is only ever meant to be compared against
+  // itself elsewhere in this file, never parsed back into a Date; doing
+  // that via the Date string constructor silently misreads it (that
+  // constructor expects 1-indexed, padded fields, so "2026-7-30" comes
+  // back as July 30th, not August). Carrying the real Date alongside
+  // sidesteps that trap entirely instead of writing a parser for a
+  // format that was never meant to round-trip.
+  const dayTotals = new Map(); // key -> { seconds, date }
+  let earliestDay = null;
+  for (const s of sessions) {
+    for (const seg of splitSessionByLocalDay(s)) {
+      const key = localDayKey(seg.date);
+      const dayStart = startOfLocalDay(seg.date);
+      const existing = dayTotals.get(key);
+      if (existing) {
+        existing.seconds += seg.seconds;
+      } else {
+        dayTotals.set(key, { seconds: seg.seconds, date: dayStart });
+      }
+      if (!earliestDay || dayStart < earliestDay) earliestDay = dayStart;
+    }
+  }
+  let bestDay = null;
+  for (const [, info] of dayTotals) {
+    if (!bestDay || info.seconds > bestDay.seconds) {
+      bestDay = { date: info.date, seconds: info.seconds };
+    }
+  }
+
+  // Longest streak ever: walks the *entire* history forward (oldest to
+  // newest, unlike computeSummary's own backward walk from today, which
+  // only ever needs to find one break rather than track a running max
+  // across many) applying the exact same day-counts / rest-day-skips /
+  // one-grace-per-Monday-week rules. Same "today doesn't break an
+  // in-progress streak just for not having a session logged yet"
+  // carve-out computeSummary's walk uses, applied here by simply not
+  // walking into today at all when it's still empty - the current run
+  // ending "yesterday" is exactly what computeSummary's own streakDays
+  // would report for today in that case.
+  const todayKey = localDayKey(now);
+  const walkEnd = dayTotals.has(todayKey)
+    ? startOfLocalDay(now)
+    : new Date(startOfLocalDay(now).getTime() - 24 * 60 * 60 * 1000);
+  const walkStart = earliestDay;
+
+  const graceUsedWeeks = new Set();
+  let runLength = 0;
+  let longestStreak = 0;
+  let longestStreakEndDate = null;
+  for (let cursor = walkStart; cursor <= walkEnd; cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)) {
+    const key = localDayKey(cursor);
+    if (dayTotals.has(key)) {
+      runLength += 1;
+    } else if (restDayOfWeek !== null && cursor.getDay() === restDayOfWeek) {
+      // Rest day, skipped without breaking or counting - run continues.
+    } else if (graceEnabled && !graceUsedWeeks.has(localDayKey(mondayOf(cursor)))) {
+      graceUsedWeeks.add(localDayKey(mondayOf(cursor)));
+      // Protected miss - run continues without counting the day itself.
+    } else {
+      runLength = 0;
+    }
+    // >= rather than > so that a tie updates the recorded end date to
+    // this later occurrence - if the current run ties the old record,
+    // that should read as "you're tying your record" (isCurrent: true
+    // below), not silently lose to whichever earlier run hit that same
+    // length first.
+    if (runLength >= longestStreak) {
+      longestStreak = runLength;
+      longestStreakEndDate = cursor;
+    }
+  }
+
+  return {
+    longestSession,
+    bestDay,
+    longestStreak:
+      longestStreak > 0
+        ? { days: longestStreak, endDate: longestStreakEndDate, isCurrent: longestStreakEndDate.getTime() === walkEnd.getTime() }
+        : null,
+  };
+}
+
 export function computeSummary(sessions, restDayOfWeek = null, graceEnabled = false) {
   const now = new Date();
   const todayKey = localDayKey(now);
@@ -1096,6 +1218,7 @@ export function computeSummary(sessions, restDayOfWeek = null, graceEnabled = fa
     startTimeAnomaly: computeStartTimeAnomaly(sessions, now),
     contextSwitchCost: computeContextSwitchCost(sessions, now),
     comparativeInsights: computeComparativeInsights(sessions, now),
+    milestones: computeMilestones(sessions, restDayOfWeek, graceEnabled, now),
   };
 }
 
@@ -1383,6 +1506,126 @@ export function computeWeeklyReview({ sessions, deadlinesProgress = [], reminder
     qualityRatePct: weekQuality.ratePct,
     qualityRatedCount: weekQuality.rated,
     qualityTotalCount: thisWeekSessions.length,
+    upcomingDeadlines,
+    upcomingReminders,
+  };
+}
+
+function firstOfMonth(date) {
+  const d = startOfLocalDay(date);
+  d.setDate(1);
+  return d;
+}
+
+// Same shape as computeWeeklyReview just above (own self-contained walk,
+// own quality tally, deliberately not folded into computeSummary for
+// the same reasons documented there), rolled up to a calendar month
+// instead of a Monday-start week. Kept as its own function rather than
+// generalizing computeWeeklyReview to take a period type - months don't
+// have a fixed length the way weeks do, so "same elapsed days last
+// month" needs its own date math (JS's Date normalizes a negative month
+// index correctly, e.g. month -1 rolls back into December of the prior
+// year, which is what makes `lastMonthStart` below work without a
+// special case for January) rather than being a variant of the week
+// version's fixed 7-day-window arithmetic.
+export function computeMonthlyReview({ sessions, deadlinesProgress = [], reminders = [] }) {
+  const now = new Date();
+  const thisMonthStart = firstOfMonth(now);
+  const daysElapsed = Math.floor((startOfLocalDay(now) - thisMonthStart) / 86400000) + 1;
+  const lastMonthStart = new Date(thisMonthStart.getFullYear(), thisMonthStart.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(lastMonthStart.getTime() + daysElapsed * 24 * 60 * 60 * 1000);
+
+  const thisMonthSessions = sessions.filter((s) => new Date(s.ended_at) > thisMonthStart);
+  const lastMonthSessions = sessions.filter((s) => {
+    const started = new Date(s.started_at);
+    const ended = new Date(s.ended_at);
+    return ended > lastMonthStart && started < lastMonthEnd;
+  });
+
+  // Same overlap-and-split approach as computeWeeklyReview's own
+  // secondsByDayInRange - redefined locally rather than hoisted out and
+  // shared, since it closes over nothing period-specific and a shared
+  // module-level version would read as if the two functions were more
+  // coupled than they actually are.
+  function secondsByDayInRange(sessionsList, rangeStart, rangeEnd) {
+    let total = 0;
+    const perDay = new Map();
+    for (const s of sessionsList) {
+      for (const seg of splitSessionByLocalDay(s)) {
+        if (seg.date >= rangeStart && seg.date < rangeEnd) {
+          total += seg.seconds;
+          const key = localDayKey(seg.date);
+          perDay.set(key, (perDay.get(key) || 0) + seg.seconds);
+        }
+      }
+    }
+    return { total, perDay };
+  }
+
+  const thisMonthFull = new Date(thisMonthStart.getFullYear(), thisMonthStart.getMonth() + 1, 1);
+  const { total: totalSeconds, perDay: dayTotals } = secondsByDayInRange(
+    thisMonthSessions,
+    thisMonthStart,
+    thisMonthFull
+  );
+  const { total: lastMonthSeconds } = secondsByDayInRange(lastMonthSessions, lastMonthStart, lastMonthEnd);
+  const deltaPct = lastMonthSeconds > 0 ? (totalSeconds - lastMonthSeconds) / lastMonthSeconds : null;
+
+  // Weekday name (WEEKDAY_LONG) doesn't uniquely identify a day within a
+  // month the way it does within a week, so the best-day label here
+  // needs the actual date instead - stored as a real Date (`date`), not
+  // localDayKey's own string form, which the card component would have
+  // to parse back to format; that string is unpadded/0-indexed-month
+  // and isn't meant to round-trip through the Date constructor (see
+  // computeMilestones' bestDay for the same reasoning, and the bug that
+  // came from not following it the first time here).
+  let bestDay = null;
+  for (let i = 0; i < daysElapsed; i++) {
+    const day = new Date(thisMonthStart.getTime() + i * 24 * 60 * 60 * 1000);
+    const seconds = dayTotals.get(localDayKey(day)) || 0;
+    if (!bestDay || seconds > bestDay.seconds) {
+      bestDay = { date: day, seconds };
+    }
+  }
+  if (bestDay && bestDay.seconds === 0) bestDay = null; // no sessions at all yet this month
+
+  const tagTotals = new Map();
+  for (const s of thisMonthSessions) {
+    if (!s.tag_id) continue;
+    const existing = tagTotals.get(s.tag_id) || { name: s.tag_name, color: s.tag_color, seconds: 0 };
+    existing.seconds += durationSeconds(s);
+    tagTotals.set(s.tag_id, existing);
+  }
+  const topTag = [...tagTotals.values()].sort((a, b) => b.seconds - a.seconds)[0] || null;
+
+  const monthQuality = qualityRate(thisMonthSessions);
+
+  // 30 days out rather than reusing the week card's 7-day "coming up"
+  // window - a monthly-cadence review scanning only a week ahead would
+  // miss most of what it's meant to preview.
+  const monthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const upcomingDeadlines = deadlinesProgress
+    .filter((d) => d.status !== "done" && d.status !== "archived" && d.dueAt >= now && d.dueAt <= monthFromNow)
+    .sort((a, b) => a.dueAt - b.dueAt)
+    .slice(0, 5);
+  const upcomingReminders = reminders
+    .filter((r) => {
+      const remindAt = new Date(r.remind_at);
+      return remindAt >= now && remindAt <= monthFromNow;
+    })
+    .sort((a, b) => new Date(a.remind_at) - new Date(b.remind_at))
+    .slice(0, 5);
+
+  return {
+    monthLabel: thisMonthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+    totalSeconds,
+    lastMonthSeconds,
+    deltaPct,
+    bestDay,
+    topTag,
+    qualityRatePct: monthQuality.ratePct,
+    qualityRatedCount: monthQuality.rated,
+    qualityTotalCount: thisMonthSessions.length,
     upcomingDeadlines,
     upcomingReminders,
   };

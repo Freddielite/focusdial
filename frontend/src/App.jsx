@@ -31,7 +31,7 @@ import {
   updateSettings,
   setSlowRequestHandler,
 } from "./api.js";
-import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeMonthlyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
 import { computePriorityRanking, computeUnscheduledSuggestion } from "./priorityEngine.js";
 import { useSuggestionDismissals } from "./hooks/useSuggestionDismissals.js";
 
@@ -399,6 +399,10 @@ export default function App({ user, onLogout, onUserUpdated }) {
     () => computeWeeklyReview({ sessions: liveSessions, deadlinesProgress: deadlinesWithProgress, reminders }),
     [liveSessions, deadlinesWithProgress, reminders]
   );
+  const monthlyReview = useMemo(
+    () => computeMonthlyReview({ sessions: liveSessions, deadlinesProgress: deadlinesWithProgress, reminders }),
+    [liveSessions, deadlinesWithProgress, reminders]
+  );
   const deadlineTrackRecord = useMemo(
     () => computeDeadlineTrackRecord(deadlinesWithProgress),
     [deadlinesWithProgress]
@@ -699,6 +703,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     summary={summary}
                     riskDigest={riskDigest}
                     weeklyReview={weeklyReview}
+                    monthlyReview={monthlyReview}
                     deadlineTrackRecord={deadlineTrackRecord}
                     history={history}
                     userName={userFirstName}
