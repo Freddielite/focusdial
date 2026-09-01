@@ -282,6 +282,50 @@ sessionsRouter.get("/sessions/export", async (req, res) => {
   }
 });
 
+// Shared WHERE-clause builder for GET /sessions and its two period-stats
+// side queries below -- all three need to agree on exactly which rows
+// count as "in view" (same filters, same joins), so the alternative
+// (three hand-copied WHERE clauses) is what actually risks the stats
+// silently drifting from the list they're supposed to summarize.
+function buildSessionFilters(req) {
+  const { tag_id, quality, from, to } = req.query;
+  const search = (req.query.q || "").trim();
+
+  const params = [req.userId];
+  const conditions = ["s.user_id = $1", "s.ended_at IS NOT NULL"];
+
+  if (tag_id) {
+    params.push(tag_id);
+    conditions.push(`s.tag_id = $${params.length}`);
+  }
+  if (quality) {
+    params.push(quality);
+    conditions.push(`s.quality = $${params.length}`);
+  }
+  if (from) {
+    params.push(from);
+    conditions.push(`s.started_at >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    conditions.push(`s.started_at <= $${params.length}`);
+  }
+  // Matches the note text, the linked tag's name, or the linked task's
+  // title -- same three fields the earlier "should search also match
+  // tag names and linked task titles" decision landed on. All three need
+  // the joins below, which is why this lives in the shared builder
+  // rather than being bolted onto just the rows query.
+  if (search) {
+    params.push(`%${search}%`);
+    const i = params.length;
+    conditions.push(`(s.note ILIKE $${i} OR t.name ILIKE $${i} OR tk.title ILIKE $${i})`);
+  }
+
+  return { where: conditions.join(" AND "), params, hasDateFilter: Boolean(from || to) };
+}
+
+const SESSIONS_JOIN = `FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id`;
+
 sessionsRouter.get("/sessions", async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 200);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
@@ -291,8 +335,15 @@ sessionsRouter.get("/sessions", async (req, res) => {
   // total. Callers pass count=0 for that case and reuse the total they
   // already have; count=1 (the default) is for the initial load and
   // after anything that could actually change the row count (create,
-  // delete).
+  // delete, or a filter change).
   const includeTotal = req.query.count !== "0";
+
+  if (req.query.quality && !QUALITY_VALUES.includes(req.query.quality)) {
+    return res.status(400).json({ error: "quality must be focused, neutral, or distracted" });
+  }
+
+  const { where, params, hasDateFilter } = buildSessionFilters(req);
+
   try {
     // Ordered by ended_at, not started_at -- "Recent Sessions" means
     // "what did I most recently finish," and those disagree for any
@@ -307,18 +358,72 @@ sessionsRouter.get("/sessions", async (req, res) => {
     // session to the top the way it would on an in-progress row.
     const rowsPromise = pool.query(
       `SELECT s.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
-       FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
-       WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
-       ORDER BY s.ended_at DESC LIMIT $2 OFFSET $3`,
-      [req.userId, limit, offset]
+       ${SESSIONS_JOIN}
+       WHERE ${where}
+       ORDER BY s.ended_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
     );
     const countPromise = includeTotal
-      ? pool.query(`SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND ended_at IS NOT NULL`, [req.userId])
+      ? pool.query(`SELECT COUNT(*) ${SESSIONS_JOIN} WHERE ${where}`, params)
       : Promise.resolve(null);
-    const [{ rows }, countResult] = await Promise.all([rowsPromise, countPromise]);
+    // Period-insights summary: only worth computing once a date range is
+    // active. Without one, "the insights for what's currently in view"
+    // is just the all-time Insights tab, which already exists elsewhere
+    // -- so this stays null instead of duplicating that. Scoped to
+    // whatever else is filtered too (search/tag/quality), and to every
+    // matching row rather than just the current page, since a "total for
+    // this period" that changed depending which page you were on would
+    // be more confusing than not showing one.
+    const statsPromise = hasDateFilter
+      ? pool.query(
+          `SELECT
+             COALESCE(SUM(EXTRACT(EPOCH FROM (s.ended_at - s.started_at))), 0) AS total_seconds,
+             COUNT(*) AS session_count,
+             COUNT(*) FILTER (WHERE s.quality = 'focused') AS focused_count,
+             COUNT(*) FILTER (WHERE s.quality IS NOT NULL) AS rated_count
+           ${SESSIONS_JOIN}
+           WHERE ${where}`,
+          params
+        )
+      : Promise.resolve(null);
+    const topTagPromise = hasDateFilter
+      ? pool.query(
+          `SELECT t.id, t.name, t.color, SUM(EXTRACT(EPOCH FROM (s.ended_at - s.started_at))) AS total_seconds
+           ${SESSIONS_JOIN}
+           WHERE ${where} AND s.tag_id IS NOT NULL
+           GROUP BY t.id, t.name, t.color
+           ORDER BY total_seconds DESC LIMIT 1`,
+          params
+        )
+      : Promise.resolve(null);
+
+    const [{ rows }, countResult, statsResult, topTagResult] = await Promise.all([
+      rowsPromise,
+      countPromise,
+      statsPromise,
+      topTagPromise,
+    ]);
+
     // total: null tells the frontend "unchanged, keep what you already
     // have" rather than something it needs to react to.
-    res.json({ sessions: rows, total: countResult ? Number(countResult.rows[0].count) : null });
+    let periodStats = null;
+    if (statsResult) {
+      const s = statsResult.rows[0];
+      const rated = Number(s.rated_count);
+      const focused = Number(s.focused_count);
+      const top = topTagResult.rows[0];
+      periodStats = {
+        totalSeconds: Number(s.total_seconds),
+        sessionCount: Number(s.session_count),
+        topTag: top ? { name: top.name, color: top.color, totalSeconds: Number(top.total_seconds) } : null,
+        // ratePct null (not 0) when nothing in the period is rated, same
+        // "no data yet" vs "0% focused" distinction the frontend's own
+        // qualityRate() already draws for the all-time Insights tab.
+        quality: { focused, rated, ratePct: rated > 0 ? (focused / rated) * 100 : null },
+      };
+    }
+
+    res.json({ sessions: rows, total: countResult ? Number(countResult.rows[0].count) : null, periodStats });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "failed to list sessions" });

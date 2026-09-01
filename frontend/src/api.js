@@ -161,12 +161,23 @@ export const updateSession = (id, payload) =>
   apiFetch(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const deleteSession = (id) => apiFetch(`/sessions/${id}`, { method: "DELETE" });
 
-// Returns { sessions, total }. total is null when includeTotal is false
-// -- callers that already know the total (paging without a mutation)
-// pass that to skip the count query server-side; total is only worth
-// recomputing on first load or after a create/delete.
-export const listRecentSessions = (limit = 10, offset = 0, includeTotal = true) =>
-  apiFetch(`/sessions?limit=${limit}&offset=${offset}&count=${includeTotal ? 1 : 0}`);
+// Returns { sessions, total, periodStats }. total is null when
+// includeTotal is false -- callers that already know the total (paging
+// without a mutation) pass that to skip the count query server-side;
+// total is only worth recomputing on first load or after a
+// create/delete. periodStats is null unless filters.from/filters.to is
+// set (see routes/sessions.js) -- it's the Session Log's own scoped
+// "totals for this range" summary, separate from the all-time Insights
+// tab.
+export const listRecentSessions = (limit = 10, offset = 0, includeTotal = true, filters = {}) => {
+  const params = new URLSearchParams({ limit, offset, count: includeTotal ? 1 : 0 });
+  if (filters.q) params.set("q", filters.q);
+  if (filters.tagId) params.set("tag_id", filters.tagId);
+  if (filters.quality) params.set("quality", filters.quality);
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  return apiFetch(`/sessions?${params.toString()}`);
+};
 export const getSessionHistory = () => apiFetch("/sessions/history");
 
 // Not an apiFetch call - this is a direct download link handed to an <a>

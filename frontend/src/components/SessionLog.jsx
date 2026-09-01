@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { formatDuration } from "../format.js";
 import { deleteSession, listRecentSessions } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import SessionEditModal from "./SessionEditModal.jsx";
+import Dropdown from "./Dropdown.jsx";
+import { DatePicker } from "./DateTimeField.jsx";
 
 // Same clock glyph as the Today tab icon - each row tints it with the
 // session's tag color when one is set, falling back to the session
@@ -22,6 +24,20 @@ function ClockIcon() {
 export const QUALITY_LABEL = { focused: "Focused", neutral: "Neutral", distracted: "Distracted" };
 const PAGE_SIZE = 10;
 
+// DatePicker works in local "YYYY-MM-DD" strings; the backend wants a
+// real instant to compare started_at against. Building that instant in
+// the browser (rather than sending the bare date and having the server
+// guess a day boundary) is what keeps "Aug 12 to Aug 14" matching the
+// sessions this person actually saw happen on those local calendar
+// days, same reasoning as ManualEntryForm's own local-time-in/ISO-out
+// conversion.
+function rangeStartISO(dateStr) {
+  return new Date(`${dateStr}T00:00:00`).toISOString();
+}
+function rangeEndISO(dateStr) {
+  return new Date(`${dateStr}T23:59:59.999`).toISOString();
+}
+
 export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDeleted, onSessionUpdated }) {
   const [sessions, setSessions] = useState([]);
   const [total, setTotal] = useState(0);
@@ -36,17 +52,57 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
   const confirm = useConfirm();
   const requestDelete = useUndoableDelete();
 
+  // Search/filter bar state. searchInput is what the text field shows;
+  // search is the debounced value actually sent to the server, so
+  // typing doesn't fire a request per keystroke.
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [tagId, setTagId] = useState("");
+  const [quality, setQuality] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [periodStats, setPeriodStats] = useState(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setSearch(searchInput.trim()), 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchInput]);
+
+  const hasFilters = Boolean(search || tagId || quality || dateFrom || dateTo);
+  const rangeInvalid = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+
+  function currentFilters() {
+    return {
+      q: search || undefined,
+      tagId: tagId || undefined,
+      quality: quality || undefined,
+      from: dateFrom ? rangeStartISO(dateFrom) : undefined,
+      to: dateTo ? rangeEndISO(dateTo) : undefined,
+    };
+  }
+
   async function load(pageNum, { withTotal = true } = {}) {
+    if (rangeInvalid) {
+      setError("'From' date must be before 'To' date.");
+      setSessions([]);
+      setPeriodStats(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const { sessions: rows, total: count } = await listRecentSessions(
+      const { sessions: rows, total: count, periodStats: stats } = await listRecentSessions(
         PAGE_SIZE,
         (pageNum - 1) * PAGE_SIZE,
-        withTotal
+        withTotal,
+        currentFilters()
       );
       setSessions(rows);
       if (count !== null) setTotal(count);
+      setPeriodStats(stats ?? null);
       setPage(pageNum);
       setPendingIds(new Set());
       setEditingId(null);
@@ -70,6 +126,22 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionsVersion]);
 
+  // Any filter change also jumps back to page 1 (whatever page 3 meant
+  // under the old filter set has no fixed meaning under the new one) and
+  // needs a fresh total, since narrowing/widening the filters changes
+  // how many rows match. Skipped on mount -- the sessionsVersion effect
+  // above already covers the initial load, so this would otherwise fire
+  // a redundant second request for the very first render.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, tagId, quality, dateFrom, dateTo]);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Plain paging: the row count on this page can change, the total
@@ -77,6 +149,15 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
   // it on every click.
   function goToPage(pageNum) {
     load(pageNum, { withTotal: false });
+  }
+
+  function clearFilters() {
+    setSearchInput("");
+    setSearch("");
+    setTagId("");
+    setQuality("");
+    setDateFrom("");
+    setDateTo("");
   }
 
   async function handleDelete(session) {
@@ -126,9 +207,84 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
   return (
     <div className="fd-panel fd-log-panel">
       <div className="fd-panel__label">Recent Sessions</div>
+
+      <div className="fd-log-filters">
+        <input
+          type="text"
+          className="fd-log-filters__search"
+          placeholder="Search note, tag, or task…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          aria-label="Search sessions"
+        />
+        <Dropdown className="fd-select fd-select--sm" value={tagId} onChange={(e) => setTagId(e.target.value)}>
+          <option value="">All tags</option>
+          {tags.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </Dropdown>
+        <Dropdown className="fd-select fd-select--sm" value={quality} onChange={(e) => setQuality(e.target.value)}>
+          <option value="">All qualities</option>
+          {Object.entries(QUALITY_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Dropdown>
+        <div className="fd-log-filters__date-range">
+          <DatePicker value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder="From" className="fd-log-filters__date" />
+          <span className="fd-log-filters__date-sep">to</span>
+          <DatePicker value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder="To" className="fd-log-filters__date" />
+        </div>
+        {hasFilters && (
+          <button type="button" className="fd-link-btn fd-log-filters__clear" onClick={clearFilters}>
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {periodStats && !rangeInvalid && (
+        <div className="fd-log-period-stats">
+          <div className="fd-log-period-stats__item">
+            <span className="fd-log-period-stats__value">{formatDuration(periodStats.totalSeconds)}</span>
+            <span className="fd-log-period-stats__label">
+              {periodStats.sessionCount} session{periodStats.sessionCount === 1 ? "" : "s"} in range
+            </span>
+          </div>
+          <div className="fd-log-period-stats__item">
+            {periodStats.topTag ? (
+              <>
+                <span className="fd-log-period-stats__value">
+                  <span className="fd-quality-dot" style={{ background: periodStats.topTag.color || "var(--accent-session)" }} />
+                  {periodStats.topTag.name}
+                </span>
+                <span className="fd-log-period-stats__label">top tag ({formatDuration(periodStats.topTag.totalSeconds)})</span>
+              </>
+            ) : (
+              <>
+                <span className="fd-log-period-stats__value">—</span>
+                <span className="fd-log-period-stats__label">top tag</span>
+              </>
+            )}
+          </div>
+          <div className="fd-log-period-stats__item">
+            <span className="fd-log-period-stats__value">
+              {periodStats.quality.ratePct === null ? "—" : `${Math.round(periodStats.quality.ratePct)}%`}
+            </span>
+            <span className="fd-log-period-stats__label">
+              focused{periodStats.quality.rated > 0 ? ` (${periodStats.quality.rated} rated)` : ", no ratings yet"}
+            </span>
+          </div>
+        </div>
+      )}
+
       {error && <div className="fd-inline-error">{error}</div>}
-      {!loading && visibleSessions.length === 0 && (
-        <div className="fd-empty">No sessions yet. Start the timer above.</div>
+      {!loading && !error && visibleSessions.length === 0 && (
+        <div className="fd-empty">
+          {hasFilters ? "No sessions match your filters." : "No sessions yet. Start the timer above."}
+        </div>
       )}
       <div className={`fd-log-list ${loading ? "fd-log-list--loading" : ""}`}>
         {visibleSessions.map((s) => {

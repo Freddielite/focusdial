@@ -2261,6 +2261,130 @@ button {
   }
 }
 
+/* ---------- Session log: search/filter bar + period stats ---------- */
+
+.fd-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.fd-log-filters__search {
+  flex: 1 1 180px;
+  min-width: 140px;
+  padding: 8px 10px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  color: var(--parchment);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.fd-log-filters__search::placeholder {
+  color: var(--parchment-dim);
+}
+
+.fd-log-filters .fd-select--sm {
+  flex: 0 1 auto;
+}
+
+.fd-log-filters__date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+}
+
+.fd-log-filters__date {
+  padding: 5px 8px;
+  font-size: 12px;
+  max-width: 132px;
+}
+
+.fd-log-filters__date-sep {
+  font-size: 12px;
+  color: var(--parchment-dim);
+}
+
+.fd-log-filters__clear {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .fd-log-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fd-log-filters__search {
+    flex-basis: auto;
+  }
+
+  .fd-log-filters .fd-select--sm,
+  .fd-log-filters__date-range {
+    max-width: none;
+    width: 100%;
+  }
+
+  .fd-log-filters .fd-select--sm {
+    max-width: none;
+  }
+
+  .fd-log-filters__date-range {
+    justify-content: space-between;
+  }
+
+  .fd-log-filters__date {
+    max-width: none;
+    flex: 1;
+  }
+
+  .fd-log-filters__clear {
+    align-self: flex-start;
+  }
+}
+
+/* The Session Log's own scoped "insights for this range" summary --
+   shown only once a date range is active (see periodStats in
+   routes/sessions.js), deliberately smaller/flatter than the all-time
+   StatsStrip tiles so it reads as a footnote on the filtered list
+   rather than a second Insights tab. */
+.fd-log-period-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.fd-log-period-stats__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 100px;
+}
+
+.fd-log-period-stats__value {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--brass);
+  white-space: nowrap;
+}
+
+.fd-log-period-stats__label {
+  font-size: 11px;
+  color: var(--parchment-dim);
+  white-space: nowrap;
+}
+
 .fd-log-row-wrap {
   border-bottom: 1px solid var(--line);
 }
