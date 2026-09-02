@@ -1,3 +1,5 @@
+import { enqueue, collapsePendingCreate } from "./outbox.js";
+
 // Relative path by default (works via Vite's dev proxy to localhost:4000,
 // and works if ever served from the same origin as the backend). Set
 // VITE_API_URL only when the frontend is hosted separately from the
@@ -123,6 +125,71 @@ async function apiFetch(path, options = {}) {
   }
 }
 
+// Wraps apiFetch for a specific list of mutating endpoints (see each
+// export below) so that a genuine connectivity failure -- offline, not
+// a real rejection from the backend -- queues the request in the
+// outbox instead of throwing. Deliberately narrower than "retry on any
+// TypeError": only fetch's own network-level TypeError qualifies (see
+// isRetryable's comment on why that's the one case where the request
+// provably never reached the server), so a slow/erroring backend still
+// surfaces normally rather than silently vanishing into the queue.
+//
+// meta.op is 'create' | 'update' | 'delete' | 'action'. meta.resourceId
+// is the id being updated/deleted/acted on (null for create). When
+// that id is itself a not-yet-synced tempId ("local-..."), an
+// update/delete folds into the still-pending create instead of queuing
+// a second entry that would 404 once replayed -- see
+// collapsePendingCreate's own comment. An 'action' targeting a tempId
+// is NOT collapsed the same way -- bump/dismiss/convert/log-progress
+// have real server-side effects a plain patch-merge can't represent
+// (collapsing dismiss into the create's payload would silently drop
+// the dismiss instead of applying it), so these are queued normally
+// with the tempId still embedded in path/body, and useSyncManager
+// resolves it to the real id once the create ahead of it in the queue
+// has synced.
+//
+// meta.optimisticExtra merges into the patch used for the immediate
+// return value and the list overlay ONLY -- never into what's actually
+// sent to the server. It exists for fields the backend defaults on
+// insert (e.g. a new task's status) that the create payload never
+// includes, so the optimistic row matches what the server will
+// eventually produce instead of missing a field every other view
+// filters on.
+async function queueableFetch(path, options, meta) {
+  try {
+    return await apiFetch(path, options);
+  } catch (err) {
+    if (!(err instanceof TypeError)) throw err;
+    const patch = options.body
+      ? { ...JSON.parse(options.body), ...(meta.optimisticExtra || {}) }
+      : meta.optimisticExtra || null;
+    if (meta.op !== "action" && meta.resourceId != null && String(meta.resourceId).startsWith("local-")) {
+      const handled = await collapsePendingCreate(
+        meta.kind,
+        meta.resourceId,
+        meta.op === "delete" ? "delete" : "update",
+        patch
+      );
+      if (handled) return meta.op === "delete" ? null : { ...patch, id: meta.resourceId, __pending: true };
+      // Fell through: not actually a pending create (stale id, or some
+      // other edge case) -- queue it normally below rather than lose
+      // the change outright.
+    }
+    const tempId = meta.op === "create" ? `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
+    await enqueue({
+      kind: meta.kind,
+      op: meta.op,
+      httpMethod: (options.method || "POST").toUpperCase(),
+      path,
+      body: options.body || null,
+      resourceId: meta.resourceId ?? null,
+      tempId,
+      patch,
+    });
+    return tempId ? { ...patch, id: tempId, __pending: true } : { __queued: true };
+  }
+}
+
 export const getAuthConfig = () => apiFetch("/auth/config");
 export const getMe = () => apiFetch("/auth/me");
 export const register = (email, password, displayName) =>
@@ -139,15 +206,24 @@ export const googleLoginStartUrl = () => `${BASE_URL}/auth/google/login/start`;
 export const listTags = (includeArchived = false) =>
   apiFetch(includeArchived ? "/tags?include_archived=1" : "/tags");
 export const createTag = (name, color) =>
-  apiFetch("/tags", { method: "POST", body: JSON.stringify({ name, color }) });
-export const deleteTag = (id) => apiFetch(`/tags/${id}`, { method: "DELETE" });
+  queueableFetch("/tags", { method: "POST", body: JSON.stringify({ name, color }) }, { kind: "tag", op: "create" });
+export const deleteTag = (id) =>
+  queueableFetch(`/tags/${id}`, { method: "DELETE" }, { kind: "tag", op: "delete", resourceId: id });
 export const setTagArchived = (id, archived) =>
-  apiFetch(`/tags/${id}`, { method: "PATCH", body: JSON.stringify({ archived }) });
+  queueableFetch(
+    `/tags/${id}`,
+    { method: "PATCH", body: JSON.stringify({ archived }) },
+    { kind: "tag", op: "update", resourceId: id }
+  );
 // Rename/recolor. Same PATCH the archive toggle and budget assignment
 // already use - the backend's COALESCE handling means sending just
 // {name, color} here leaves archived/budget_id untouched.
 export const updateTag = (id, name, color) =>
-  apiFetch(`/tags/${id}`, { method: "PATCH", body: JSON.stringify({ name, color }) });
+  queueableFetch(
+    `/tags/${id}`,
+    { method: "PATCH", body: JSON.stringify({ name, color }) },
+    { kind: "tag", op: "update", resourceId: id }
+  );
 
 export const getRunningSession = () => apiFetch("/sessions/running");
 export const startSession = (tag_id, note, task_id, device_name) =>
@@ -156,10 +232,19 @@ export const stopSession = (id, note, quality) =>
   apiFetch(`/sessions/${id}/stop`, { method: "POST", body: JSON.stringify({ note, quality }) });
 
 export const createManualSession = (payload) =>
-  apiFetch("/sessions", { method: "POST", body: JSON.stringify(payload) });
+  queueableFetch("/sessions", { method: "POST", body: JSON.stringify(payload) }, { kind: "session", op: "create" });
+// Also used by TimerPanel for note/quality/retag edits on a *running*
+// session - not queueable-visible via the overlay in that case (a
+// running session isn't in `history` yet, see App.jsx), but still
+// safely queued and replayed once synced like any other edit.
 export const updateSession = (id, payload) =>
-  apiFetch(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-export const deleteSession = (id) => apiFetch(`/sessions/${id}`, { method: "DELETE" });
+  queueableFetch(
+    `/sessions/${id}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    { kind: "session", op: "update", resourceId: id }
+  );
+export const deleteSession = (id) =>
+  queueableFetch(`/sessions/${id}`, { method: "DELETE" }, { kind: "session", op: "delete", resourceId: id });
 
 // Returns { sessions, total, periodStats }. total is null when
 // includeTotal is false -- callers that already know the total (paging
@@ -194,21 +279,48 @@ export const disconnectGoogleAccount = () => apiFetch("/auth/google/disconnect",
 
 export const listBudgets = () => apiFetch("/budgets");
 export const createBudget = (name, weekly_target_hours, color) =>
-  apiFetch("/budgets", { method: "POST", body: JSON.stringify({ name, weekly_target_hours, color }) });
+  queueableFetch(
+    "/budgets",
+    { method: "POST", body: JSON.stringify({ name, weekly_target_hours, color }) },
+    { kind: "budget", op: "create" }
+  );
 export const updateBudget = (id, payload) =>
-  apiFetch(`/budgets/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-export const deleteBudget = (id) => apiFetch(`/budgets/${id}`, { method: "DELETE" });
+  queueableFetch(
+    `/budgets/${id}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    { kind: "budget", op: "update", resourceId: id }
+  );
+export const deleteBudget = (id) =>
+  queueableFetch(`/budgets/${id}`, { method: "DELETE" }, { kind: "budget", op: "delete", resourceId: id });
 export const assignTagToBudget = (tagId, budget_id) =>
-  apiFetch(`/tags/${tagId}`, { method: "PATCH", body: JSON.stringify({ budget_id }) });
+  queueableFetch(
+    `/tags/${tagId}`,
+    { method: "PATCH", body: JSON.stringify({ budget_id }) },
+    { kind: "tag", op: "update", resourceId: tagId }
+  );
 
 export const listDeadlines = () => apiFetch("/deadlines");
 export const createDeadline = (payload) =>
-  apiFetch("/deadlines", { method: "POST", body: JSON.stringify(payload) });
+  queueableFetch("/deadlines", { method: "POST", body: JSON.stringify(payload) }, { kind: "deadline", op: "create" });
 export const updateDeadline = (id, payload) =>
-  apiFetch(`/deadlines/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  queueableFetch(
+    `/deadlines/${id}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    { kind: "deadline", op: "update", resourceId: id }
+  );
+// 'action', not 'update' - a progress log doesn't overwrite fields on
+// the deadline row the same way a plain PATCH does (see the route's own
+// accumulation logic), so it isn't something the optimistic overlay
+// can represent by merging a patch object. Still queued and replayed
+// like everything else, just not visible until it syncs.
 export const logDeadlineProgress = (id, hours) =>
-  apiFetch(`/deadlines/${id}/log`, { method: "POST", body: JSON.stringify({ hours }) });
-export const deleteDeadline = (id) => apiFetch(`/deadlines/${id}`, { method: "DELETE" });
+  queueableFetch(
+    `/deadlines/${id}/log`,
+    { method: "POST", body: JSON.stringify({ hours }) },
+    { kind: "deadline", op: "action", resourceId: id }
+  );
+export const deleteDeadline = (id) =>
+  queueableFetch(`/deadlines/${id}`, { method: "DELETE" }, { kind: "deadline", op: "delete", resourceId: id });
 
 export const getPushPublicKey = () => apiFetch("/push/public-key");
 export const subscribeToPush = (subscription) =>
@@ -218,15 +330,31 @@ export const unsubscribeFromPush = (endpoint) =>
 
 export const listReminders = () => apiFetch("/reminders");
 export const createReminder = (payload) =>
-  apiFetch("/reminders", { method: "POST", body: JSON.stringify(payload) });
+  queueableFetch("/reminders", { method: "POST", body: JSON.stringify(payload) }, { kind: "reminder", op: "create" });
 export const updateReminder = (id, payload) =>
-  apiFetch(`/reminders/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  queueableFetch(
+    `/reminders/${id}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    { kind: "reminder", op: "update", resourceId: id }
+  );
+// Conversion/dismiss are 'action', same reasoning as logDeadlineProgress
+// above - they don't map onto a plain list-row patch.
 export const convertReminderToDeadline = (id, payload) =>
-  apiFetch(`/reminders/${id}/convert-to-deadline`, { method: "POST", body: JSON.stringify(payload) });
+  queueableFetch(
+    `/reminders/${id}/convert-to-deadline`,
+    { method: "POST", body: JSON.stringify(payload) },
+    { kind: "reminder", op: "action", resourceId: id }
+  );
 export const convertReminderToTask = (id, payload) =>
-  apiFetch(`/reminders/${id}/convert-to-task`, { method: "POST", body: JSON.stringify(payload) });
-export const dismissReminder = (id) => apiFetch(`/reminders/${id}/dismiss`, { method: "POST" });
-export const deleteReminder = (id) => apiFetch(`/reminders/${id}`, { method: "DELETE" });
+  queueableFetch(
+    `/reminders/${id}/convert-to-task`,
+    { method: "POST", body: JSON.stringify(payload) },
+    { kind: "reminder", op: "action", resourceId: id }
+  );
+export const dismissReminder = (id) =>
+  queueableFetch(`/reminders/${id}/dismiss`, { method: "POST" }, { kind: "reminder", op: "action", resourceId: id });
+export const deleteReminder = (id) =>
+  queueableFetch(`/reminders/${id}`, { method: "DELETE" }, { kind: "reminder", op: "delete", resourceId: id });
 
 export const listTasks = () => apiFetch("/tasks");
 // Completed tasks with both a tag and an estimate, for the priority
@@ -235,19 +363,40 @@ export const listTasks = () => apiFetch("/tasks");
 // separate, filtered endpoint rather than a query param on listTasks.
 export const listCompletedTasks = () => apiFetch("/tasks/completed");
 export const createTask = (title, due_date, recurrence, tag_id, estimate_minutes) =>
-  apiFetch("/tasks", { method: "POST", body: JSON.stringify({ title, due_date, recurrence, tag_id, estimate_minutes }) });
+  queueableFetch(
+    "/tasks",
+    { method: "POST", body: JSON.stringify({ title, due_date, recurrence, tag_id, estimate_minutes }) },
+    // status isn't part of the create payload -- the backend defaults
+    // it to 'open' on insert (see the tasks table). optimisticExtra
+    // fills that in on the local/overlay row only, since TimerPanel,
+    // ManualEntryForm, SessionEditModal, and the priority engine all
+    // filter tasks by status === "open" to build their "link a task"
+    // pickers -- without this a task created offline is invisible to
+    // all of them until it syncs.
+    { kind: "task", op: "create", optimisticExtra: { status: "open" } }
+  );
 export const updateTask = (id, payload) =>
-  apiFetch(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-export const deleteTask = (id) => apiFetch(`/tasks/${id}`, { method: "DELETE" });
+  queueableFetch(
+    `/tasks/${id}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    { kind: "task", op: "update", resourceId: id }
+  );
+export const deleteTask = (id) =>
+  queueableFetch(`/tasks/${id}`, { method: "DELETE" }, { kind: "task", op: "delete", resourceId: id });
 // Feature 3's bump/defer action - resets a task's staleness clock
 // without completing it or touching any other field. See the route's
 // own comment for why this is a dedicated endpoint instead of an empty
-// PATCH.
-export const bumpTask = (id) => apiFetch(`/tasks/${id}/bump`, { method: "POST" });
+// PATCH. 'action', same reasoning as the other one-off endpoints above.
+export const bumpTask = (id) =>
+  queueableFetch(`/tasks/${id}/bump`, { method: "POST" }, { kind: "task", op: "action", resourceId: id });
 
 export const getSettings = () => apiFetch("/settings");
+// Queued like everything else above if offline - App.jsx's updateSetting
+// already applies the change optimistically and only rolls it back on a
+// real rejection, so a queued (not thrown) result here just means that
+// optimistic value quietly sticks until sync confirms it server-side.
 export const updateSettings = (payload) =>
-  apiFetch("/settings", { method: "PUT", body: JSON.stringify(payload) });
+  queueableFetch("/settings", { method: "PUT", body: JSON.stringify(payload) }, { kind: "settings", op: "action" });
 
 // Fire a push for one of the three app-driven events (session_completed,
 // deadline_completed, budget_reached). The client only calls this while

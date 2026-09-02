@@ -529,6 +529,16 @@ button {
   color: var(--brass);
 }
 
+.fd-banner--sync {
+  background: rgba(77, 163, 255, 0.12);
+  color: var(--accent-session);
+}
+
+.fd-banner--sync-error {
+  background: rgba(176, 113, 90, 0.15);
+  color: var(--rust);
+}
+
 /* ---------- Insight card + Risk digest card (Today tab) ---------- */
 
 .fd-insight-card {

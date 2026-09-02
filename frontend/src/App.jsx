@@ -34,6 +34,8 @@ import {
 import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
 import { computePriorityRanking, computeUnscheduledSuggestion } from "./priorityEngine.js";
 import { useSuggestionDismissals } from "./hooks/useSuggestionDismissals.js";
+import { useSyncManager } from "./hooks/useSyncManager.js";
+import { applyOverlay } from "./outbox.js";
 
 const DEFAULT_SETTINGS = {
   push_enabled: true,
@@ -151,18 +153,25 @@ export default function App({ user, onLogout, onUserUpdated }) {
     [toast, notifications]
   );
 
-  const [tags, setTags] = useState([]);
+  // These 6 are the "last successfully fetched from the server" copies -
+  // `raw` prefix distinguishes them from the overlaid versions (plain
+  // `tags`, `deadlines`, etc., defined below via applyOverlay) that the
+  // rest of the app actually reads from, which additionally fold in
+  // anything still sitting in the offline outbox. Everything downstream
+  // (views, analytics) should read the overlaid versions, never these -
+  // only loadAll/refreshTags below should ever call these setters.
+  const [rawTags, setRawTags] = useState([]);
   // Active + archived, fetched in parallel with the active-only `tags`
   // above. Only threaded to SessionLog (see below) - the one place that
   // needs to correctly display/edit a past session that already
   // references a tag someone's since archived, without surfacing
   // archived tags in every other "pick a tag" picker in the app.
-  const [allTags, setAllTags] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [budgets, setBudgets] = useState([]);
-  const [deadlines, setDeadlines] = useState([]);
-  const [reminders, setReminders] = useState([]);
-  const [tasks, setTasks] = useState([]);
+  const [rawAllTags, setRawAllTags] = useState([]);
+  const [rawHistory, setRawHistory] = useState([]);
+  const [rawBudgets, setRawBudgets] = useState([]);
+  const [rawDeadlines, setRawDeadlines] = useState([]);
+  const [rawReminders, setRawReminders] = useState([]);
+  const [rawTasks, setRawTasks] = useState([]);
   // Completed tasks with both a tag and an estimate, for the priority
   // engine's estimate-learning feature (Feature 2) - see GET
   // /tasks/completed for why this is fetched separately from the open
@@ -202,13 +211,13 @@ export default function App({ user, onLogout, onUserUpdated }) {
           listCompletedTasks(),
           getSettings().catch(() => DEFAULT_SETTINGS),
         ]);
-      setTags(tagData);
-      setAllTags(allTagData);
-      setHistory(hist);
-      setBudgets(budgetData);
-      setDeadlines(deadlineData);
-      setReminders(reminderData);
-      setTasks(taskData);
+      setRawTags(tagData);
+      setRawAllTags(allTagData);
+      setRawHistory(hist);
+      setRawBudgets(budgetData);
+      setRawDeadlines(deadlineData);
+      setRawReminders(reminderData);
+      setRawTasks(taskData);
       setCompletedTasks(completedTaskData);
       if (settingsData) setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
       setError(null);
@@ -228,9 +237,30 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // needed. This refetches only what TagManager can actually change.
   async function refreshTags() {
     const [tagData, allTagData] = await Promise.all([listTags(), listTags(true)]);
-    setTags(tagData);
-    setAllTags(allTagData);
+    setRawTags(tagData);
+    setRawAllTags(allTagData);
   }
+
+  // Drains the offline outbox (see outbox.js/api.js) whenever the app
+  // regains connectivity, and re-fetches everything once it's drained
+  // so the overlaid optimistic rows below get replaced by the real
+  // server data. `pending` is read below to derive `tags`/`deadlines`/
+  // etc. from their `raw` counterparts, and to drive the sync-status
+  // banner in the header.
+  const { pending: outboxPending, syncing, lastError: syncError } = useSyncManager(loadAll);
+  const tags = useMemo(() => applyOverlay(rawTags, "tag", outboxPending), [rawTags, outboxPending]);
+  const allTags = useMemo(() => applyOverlay(rawAllTags, "tag", outboxPending), [rawAllTags, outboxPending]);
+  const deadlines = useMemo(() => applyOverlay(rawDeadlines, "deadline", outboxPending), [rawDeadlines, outboxPending]);
+  const budgets = useMemo(() => applyOverlay(rawBudgets, "budget", outboxPending), [rawBudgets, outboxPending]);
+  const reminders = useMemo(() => applyOverlay(rawReminders, "reminder", outboxPending), [rawReminders, outboxPending]);
+  const tasks = useMemo(() => applyOverlay(rawTasks, "task", outboxPending), [rawTasks, outboxPending]);
+  // Manual session create/edit/delete (ManualEntryForm, SessionEditModal,
+  // SessionLog) overlay the same way. The live timer's start/stop is
+  // deliberately NOT part of this overlay - it's already visible via
+  // `runningSession`/`liveSessions` below while in progress, and via the
+  // direct append in handleSessionCompleted once stopped (see there for
+  // why folding it into this generic overlay would double-count it).
+  const history = useMemo(() => applyOverlay(rawHistory, "session", outboxPending), [rawHistory, outboxPending]);
 
   useEffect(() => {
     setSlowRequestHandler(setWaking);
@@ -585,6 +615,21 @@ export default function App({ user, onLogout, onUserUpdated }) {
       notify({ title: "Session complete", body, tone: "success" });
       maybePushEvent("session_completed", "Session complete", body);
     }
+    // If this came back queued (TimerPanel stopped while offline - see
+    // its own comment), `completed` has no real id yet and loadAll()
+    // below will just fail silently against the backend rather than
+    // ever showing it. Append it to the raw list directly so today's
+    // total/streak/heatmap/etc. reflect it right away; loadAll() below
+    // still fires as normal (a no-op while offline, and once it
+    // actually succeeds - on reconnect, after the sync manager flushes
+    // the outbox - it replaces this whole list with the server's real
+    // data, superseding this optimistic entry rather than duplicating
+    // it).
+    if (completed?.started_at && completed?.ended_at) {
+      setRawHistory((prev) =>
+        completed.id != null && prev.some((s) => s.id === completed.id) ? prev : [completed, ...prev]
+      );
+    }
     loadAll();
     setSessionsVersion((v) => v + 1);
   }
@@ -599,7 +644,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // progress, etc.) would otherwise stay stale until the next full
   // reload.
   function handleSessionDeleted(id) {
-    setHistory((prev) => prev.filter((s) => s.id !== id));
+    setRawHistory((prev) => prev.filter((s) => s.id !== id));
   }
 
   return (
@@ -657,6 +702,23 @@ export default function App({ user, onLogout, onUserUpdated }) {
               >
                 Your {summary.streakDays}-day streak is at risk. Log a session before midnight to
                 keep it going.
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {outboxPending.length > 0 && (
+              <motion.div
+                className={`fd-banner fd-banner--sync ${syncError ? "fd-banner--sync-error" : ""}`}
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+              >
+                {syncError
+                  ? `Couldn't sync ${outboxPending.length} change${outboxPending.length === 1 ? "" : "s"}: ${syncError}`
+                  : syncing
+                  ? `Syncing ${outboxPending.length} change${outboxPending.length === 1 ? "" : "s"}…`
+                  : `${outboxPending.length} change${outboxPending.length === 1 ? "" : "s"} pending, will sync when you're back online.`}
               </motion.div>
             )}
           </AnimatePresence>
