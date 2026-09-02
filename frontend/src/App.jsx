@@ -198,32 +198,51 @@ export default function App({ user, onLogout, onUserUpdated }) {
   const [error, setError] = useState(null);
 
   async function loadAll() {
-    try {
-      const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, completedTaskData, settingsData] =
-        await Promise.all([
-          listTags(),
-          listTags(true),
-          getSessionHistory(),
-          listBudgets(),
-          listDeadlines(),
-          listReminders(),
-          listTasks(),
-          listCompletedTasks(),
-          getSettings().catch(() => DEFAULT_SETTINGS),
-        ]);
-      setRawTags(tagData);
-      setRawAllTags(allTagData);
-      setRawHistory(hist);
-      setRawBudgets(budgetData);
-      setRawDeadlines(deadlineData);
-      setRawReminders(reminderData);
-      setRawTasks(taskData);
-      setCompletedTasks(completedTaskData);
-      if (settingsData) setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
-      setError(null);
-      setLoaded(true);
-    } catch (err) {
-      setError(err.message);
+    // Up to 3 attempts with a short, increasing delay. This matters
+    // most right after reconnecting (e.g. once the sync manager has
+    // just replayed the outbox and calls this to refresh with real
+    // data): `navigator.onLine` and the "online" event often fire a
+    // beat before the network is actually usable again, and since this
+    // is 9 requests in parallel, only one of them needs to lose that
+    // race for the whole batch to reject. apiFetch already retries a
+    // single request once internally (see its own comment), but that
+    // doesn't help here - a Promise.all of many requests only needs
+    // ONE unlucky one to fail the batch, so it's worth retrying the
+    // whole batch a couple more times before showing an error banner
+    // for what's usually a half-second-long blip.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, completedTaskData, settingsData] =
+          await Promise.all([
+            listTags(),
+            listTags(true),
+            getSessionHistory(),
+            listBudgets(),
+            listDeadlines(),
+            listReminders(),
+            listTasks(),
+            listCompletedTasks(),
+            getSettings().catch(() => DEFAULT_SETTINGS),
+          ]);
+        setRawTags(tagData);
+        setRawAllTags(allTagData);
+        setRawHistory(hist);
+        setRawBudgets(budgetData);
+        setRawDeadlines(deadlineData);
+        setRawReminders(reminderData);
+        setRawTasks(taskData);
+        setCompletedTasks(completedTaskData);
+        if (settingsData) setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
+        setError(null);
+        setLoaded(true);
+        return;
+      } catch (err) {
+        if (attempt === 2) {
+          setError(err.message);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
     }
   }
 
