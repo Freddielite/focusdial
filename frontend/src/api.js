@@ -228,8 +228,8 @@ export const updateTag = (id, name, color) =>
 export const getRunningSession = () => apiFetch("/sessions/running");
 export const startSession = (tag_id, note, task_id, device_name) =>
   apiFetch("/sessions/start", { method: "POST", body: JSON.stringify({ tag_id, note, task_id, device_name }) });
-export const stopSession = (id, note, quality, interruptions) =>
-  apiFetch(`/sessions/${id}/stop`, { method: "POST", body: JSON.stringify({ note, quality, interruptions }) });
+export const stopSession = (id, note, quality) =>
+  apiFetch(`/sessions/${id}/stop`, { method: "POST", body: JSON.stringify({ note, quality }) });
 
 export const createManualSession = (payload) =>
   queueableFetch("/sessions", { method: "POST", body: JSON.stringify(payload) }, { kind: "session", op: "create" });
