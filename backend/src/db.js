@@ -128,6 +128,22 @@ export async function initSchema() {
     -- the time it started, same as a name tag, not an audited value.
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_name TEXT;
 
+    -- Distraction/interruption log: recorded client-side while a session
+    -- is running (TimerPanel's away-prompt, shown when the tab comes back
+    -- from being hidden long enough to count as "away" - see
+    -- IDLE_THRESHOLD_MS in TimerPanel.jsx) and submitted as a batch once
+    -- the session stops, rather than one write per interruption. Each
+    -- entry is a plain JSON object: {reason, away_seconds, at} - reason is
+    -- one of INTERRUPTION_REASONS (analytics.js), away_seconds is how
+    -- long the tab was hidden for that interruption, at is when the
+    -- reason was logged (ISO string). Not normalized into its own table:
+    -- nothing ever queries across sessions by individual interruption
+    -- (computeInterruptionStats in analytics.js works by pulling
+    -- interruptions off each already-fetched session row), so a JSONB
+    -- array avoids a join for a feature that's read in bulk, written
+    -- rarely, and never filtered on server-side.
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS interruptions JSONB NOT NULL DEFAULT '[]'::jsonb;
+
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
 
     CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at);

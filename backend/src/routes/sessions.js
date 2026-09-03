@@ -108,21 +108,29 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
 const QUALITY_VALUES = ["focused", "neutral", "distracted"];
 
 sessionsRouter.post("/sessions/:id/stop", async (req, res) => {
-  const { note, quality } = req.body || {};
+  const { note, quality, interruptions } = req.body || {};
   if (quality && !QUALITY_VALUES.includes(quality)) {
     return res.status(400).json({ error: "quality must be focused, neutral, or distracted" });
+  }
+  if (interruptions !== undefined && !Array.isArray(interruptions)) {
+    return res.status(400).json({ error: "interruptions must be an array" });
   }
   try {
     const { rows } = await pool.query(
       `WITH updated AS (
-         UPDATE sessions SET ended_at = now(), note = COALESCE($3, note), quality = COALESCE($4, quality), updated_at = now()
+         UPDATE sessions SET ended_at = now(), note = COALESCE($3, note), quality = COALESCE($4, quality),
+           -- Set outright rather than COALESCE/append: the whole array is
+           -- accumulated client-side over the session's lifetime (see the
+           -- db.js column comment) and sent complete exactly once, here -
+           -- there's nothing already on the row to merge with.
+           interruptions = COALESCE($5, interruptions), updated_at = now()
          WHERE id = $1 AND user_id = $2 AND ended_at IS NULL RETURNING *
        )
        SELECT updated.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
        FROM updated
        LEFT JOIN tags t ON t.id = updated.tag_id
        LEFT JOIN tasks tk ON tk.id = updated.task_id`,
-      [req.params.id, req.userId, note || null, quality || null]
+      [req.params.id, req.userId, note || null, quality || null, interruptions ? JSON.stringify(interruptions) : null]
     );
     if (rows.length === 0) {
       return res.status(404).json({ error: "no running session with that id" });
@@ -136,9 +144,13 @@ sessionsRouter.post("/sessions/:id/stop", async (req, res) => {
 
 // Manual backfill entry - a fully-formed session with both timestamps
 // already known, as opposed to the start/stop pair above which only
-// knows the end time once you call /stop.
+// knows the end time once you call /stop. Also what an offline-started
+// timer session collapses into if it never reached the backend at all
+// (see the frontend's TimerPanel.jsx handleStop) - interruptions logged
+// during that offline stretch ride along here the same way they would
+// on a normal /stop call.
 sessionsRouter.post("/sessions", async (req, res) => {
-  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
+  const { tag_id, started_at, ended_at, note, quality, task_id, interruptions } = req.body;
   if (!started_at || !ended_at) {
     return res.status(400).json({ error: "started_at and ended_at are required" });
   }
@@ -148,17 +160,29 @@ sessionsRouter.post("/sessions", async (req, res) => {
   if (quality && !QUALITY_VALUES.includes(quality)) {
     return res.status(400).json({ error: "quality must be focused, neutral, or distracted" });
   }
+  if (interruptions !== undefined && !Array.isArray(interruptions)) {
+    return res.status(400).json({ error: "interruptions must be an array" });
+  }
   try {
     const { rows } = await pool.query(
       `WITH inserted AS (
-         INSERT INTO sessions (tag_id, started_at, ended_at, note, quality, source, task_id, user_id)
-         VALUES ($1, $2, $3, $4, $5, 'manual', $6, $7) RETURNING *
+         INSERT INTO sessions (tag_id, started_at, ended_at, note, quality, source, task_id, user_id, interruptions)
+         VALUES ($1, $2, $3, $4, $5, 'manual', $6, $7, COALESCE($8, '[]'::jsonb)) RETURNING *
        )
        SELECT inserted.*, t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
        FROM inserted
        LEFT JOIN tags t ON t.id = inserted.tag_id
        LEFT JOIN tasks tk ON tk.id = inserted.task_id`,
-      [tag_id || null, started_at, ended_at, note || null, quality || null, task_id || null, req.userId]
+      [
+        tag_id || null,
+        started_at,
+        ended_at,
+        note || null,
+        quality || null,
+        task_id || null,
+        req.userId,
+        interruptions ? JSON.stringify(interruptions) : null,
+      ]
     );
     // Same staleness-clock touch as /sessions/start above - a manually
     // backfilled session against a task is still real evidence the task
@@ -431,7 +455,7 @@ sessionsRouter.get("/sessions", async (req, res) => {
 });
 
 sessionsRouter.patch("/sessions/:id", async (req, res) => {
-  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
+  const { tag_id, started_at, ended_at, note, quality, task_id, interruptions } = req.body;
   // COALESCE-against-null looks right for started_at/ended_at (you'd
   // never intentionally PATCH a timestamp to null), but tag_id and note
   // are legitimately clearable - "remove the tag", "clear the note" - // and COALESCE can't tell "field omitted" from "field explicitly set
@@ -447,6 +471,9 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
   if (hasQualityField && quality && !QUALITY_VALUES.includes(quality)) {
     return res.status(400).json({ error: "quality must be focused, neutral, distracted, or null" });
   }
+  if (interruptions !== undefined && !Array.isArray(interruptions)) {
+    return res.status(400).json({ error: "interruptions must be an array" });
+  }
   try {
     const { rows } = await pool.query(
       `WITH updated AS (
@@ -457,6 +484,7 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
            note = CASE WHEN $8 THEN $6 ELSE note END,
            quality = CASE WHEN $9 THEN $10 ELSE quality END,
            task_id = CASE WHEN $11 THEN $12 ELSE task_id END,
+           interruptions = COALESCE($13, interruptions),
            updated_at = now()
          WHERE id = $1 AND user_id = $2 RETURNING *
        )
@@ -477,6 +505,7 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
         hasQualityField ? quality : null,
         hasTaskField,
         hasTaskField ? task_id : null,
+        interruptions ? JSON.stringify(interruptions) : null,
       ]
     );
     if (rows.length === 0) {

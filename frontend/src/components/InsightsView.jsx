@@ -12,6 +12,7 @@ import WeeklyReviewCard from "./WeeklyReviewCard.jsx";
 import DeadlineTrackRecordCard from "./DeadlineTrackRecordCard.jsx";
 import EstimateAccuracyCard from "./EstimateAccuracyCard.jsx";
 import MilestonesCard from "./MilestonesCard.jsx";
+import InterruptionsCard from "./InterruptionsCard.jsx";
 
 export default function InsightsView({
   summary,
@@ -41,6 +42,7 @@ export default function InsightsView({
         <ComparativeInsightsCard insights={summary.comparativeInsights} />
         <FocusQualityCard quality={summary.quality} />
         <ConsistencyCard consistency={summary.consistency} />
+        <InterruptionsCard interruptions={summary.interruptions} />
         <DeadlineTrackRecordCard trackRecord={deadlineTrackRecord} />
         <EstimateAccuracyCard stats={tagEstimateStats} tags={allTags} />
         <MilestonesCard milestones={summary.milestones} />

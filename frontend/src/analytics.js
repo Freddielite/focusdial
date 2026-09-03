@@ -252,6 +252,73 @@ export function computeConsistencyScore(sessions, now = new Date()) {
   return { score, avgSeconds: mean, stddevSeconds: stddev, activeDays, windowDays };
 }
 
+// Fixed, small set on purpose (see TimerPanel.jsx's away-prompt) - fast
+// enough to tap without thinking, which matters since logging a reason
+// is optional and only happens if it's genuinely no friction, same
+// design call as session quality's closed set above. Shared between
+// TimerPanel (writes the reason onto an interruption entry) and
+// InterruptionsCard (reads it back for the label) so the two can't
+// drift out of sync with each other.
+export const INTERRUPTION_REASONS = [
+  { value: "phone", label: "Phone" },
+  { value: "meeting", label: "Meeting" },
+  { value: "break", label: "Break" },
+  { value: "noise", label: "Noise" },
+  { value: "other", label: "Other" },
+];
+const INTERRUPTION_REASON_LABEL = Object.fromEntries(INTERRUPTION_REASONS.map((r) => [r.value, r.label]));
+export function interruptionReasonLabel(reason) {
+  return INTERRUPTION_REASON_LABEL[reason] || "Other";
+}
+
+const INTERRUPTION_WINDOW_DAYS = 14;
+
+// Rolls up the interruption entries logged on each session (see
+// db.js's `sessions.interruptions` column comment for the entry shape)
+// over the last INTERRUPTION_WINDOW_DAYS completed sessions.
+// `topReason` ranks by time lost, not frequency - a reason that happens
+// rarely but eats half an hour each time it does is more worth noticing
+// than one that happens constantly for a minute at a time.
+export function computeInterruptionStats(sessions, now = new Date()) {
+  const cutoff = now.getTime() - INTERRUPTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const byReason = new Map();
+  let totalCount = 0;
+  let totalSeconds = 0;
+  let sessionsWithInterruptions = 0;
+  let sessionsInWindow = 0;
+
+  for (const s of sessions) {
+    if (!s.ended_at) continue;
+    if (new Date(s.ended_at).getTime() < cutoff) continue;
+    sessionsInWindow += 1;
+    const entries = Array.isArray(s.interruptions) ? s.interruptions : [];
+    if (entries.length === 0) continue;
+    sessionsWithInterruptions += 1;
+    for (const entry of entries) {
+      const reason = entry.reason || "other";
+      const seconds = Number(entry.away_seconds) || 0;
+      totalCount += 1;
+      totalSeconds += seconds;
+      const bucket = byReason.get(reason) || { reason, count: 0, seconds: 0 };
+      bucket.count += 1;
+      bucket.seconds += seconds;
+      byReason.set(reason, bucket);
+    }
+  }
+
+  if (totalCount === 0) return null;
+  const byReasonList = [...byReason.values()].sort((a, b) => b.seconds - a.seconds);
+  return {
+    windowDays: INTERRUPTION_WINDOW_DAYS,
+    totalCount,
+    totalSeconds,
+    sessionsInWindow,
+    sessionsWithInterruptions,
+    topReason: byReasonList[0],
+    byReason: byReasonList,
+  };
+}
+
 // Whether jumping between tags a lot in a day comes with a real cost to
 // how long individual sessions run -- a different question from the
 // existing "which hour/tag am I best in," this looks at same-day
@@ -1219,6 +1286,7 @@ export function computeSummary(sessions, restDayOfWeek = null, graceEnabled = fa
     contextSwitchCost: computeContextSwitchCost(sessions, now),
     comparativeInsights: computeComparativeInsights(sessions, now),
     milestones: computeMilestones(sessions, restDayOfWeek, graceEnabled, now),
+    interruptions: computeInterruptionStats(sessions, now),
   };
 }
 

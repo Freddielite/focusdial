@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { formatDuration } from "../format.js";
 import { deleteSession, listRecentSessions } from "../api.js";
+import { interruptionReasonLabel } from "../analytics.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import SessionEditModal from "./SessionEditModal.jsx";
@@ -310,6 +311,14 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
                   {s.note && <span className="fd-check-card__note">{s.note}</span>}
                   {s.task_title && (
                     <span className="fd-check-card__note fd-log-row__task-badge">✓ {s.task_title}</span>
+                  )}
+                  {Array.isArray(s.interruptions) && s.interruptions.length > 0 && (
+                    <span
+                      className="fd-check-card__note fd-log-row__interruption-badge"
+                      title={s.interruptions.map((i) => interruptionReasonLabel(i.reason)).join(", ")}
+                    >
+                      ⚠ {s.interruptions.length} interruption{s.interruptions.length === 1 ? "" : "s"}
+                    </span>
                   )}
                 </div>
                 <div className="fd-check-card__value">

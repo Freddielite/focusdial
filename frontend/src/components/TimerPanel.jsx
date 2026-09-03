@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getRunningSession, startSession, stopSession, updateSession, updateTask } from "../api.js";
 import { formatClock, formatDuration } from "../format.js";
 import { showRunningSessionNotification, clearRunningSessionNotification } from "../push.js";
-import { matchTagForText } from "../analytics.js";
+import { matchTagForText, INTERRUPTION_REASONS } from "../analytics.js";
 import { useDeviceName } from "../hooks/useDeviceName.js";
 import { enqueue } from "../outbox.js";
 import Dropdown from "./Dropdown.jsx";
@@ -100,8 +100,18 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
   // session actually went, captured the same way as the note: inline
   // while running, not a separate post-stop step.
   const [quality, setQuality] = useState(null);
-  // { awayMs } while the "you were away" prompt is showing, else null.
+  // { awayMs, reason } while the "you were away" prompt is showing, else
+  // null. `reason`, once set, just drives the selected-chip highlight
+  // below (see handleInterruptionReason) - the actual log entry is
+  // already in `interruptions` by the time it's set.
   const [awayPrompt, setAwayPrompt] = useState(null);
+  // Accumulated locally over the running session's lifetime (reset on
+  // Start, read once at Stop) rather than sent to the server one at a
+  // time as they happen - see db.js's `sessions.interruptions` column
+  // comment for why a single batched write at the end is enough for
+  // what this is (an ambient, best-effort log, not something anything
+  // needs to react to in real time).
+  const [interruptions, setInterruptions] = useState([]);
   // Whether the "change tag" control is expanded while a session is
   // running. Separate from selectedTag, which is what pre-selects the
   // *next* session's tag -- reusing that same dropdown for the running
@@ -330,6 +340,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
     setError(null);
     setConflict(null);
     setAwayPrompt(null);
+    setInterruptions([]);
     const tagToUse = tagIdOverride !== undefined ? tagIdOverride : selectedTag || null;
     const initialNote = quickStartText.trim() || null;
     // Shows the timer running from the instant of this click rather than
@@ -467,6 +478,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
           ended_at: endedAtIso,
           note: note.trim() || null,
           quality,
+          interruptions,
         };
         await enqueue({
           kind: "session",
@@ -480,7 +492,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
         });
       } else {
         try {
-          completed = await stopSession(running.id, note.trim() || null, quality);
+          completed = await stopSession(running.id, note.trim() || null, quality, interruptions);
         } catch (err) {
           if (!(err instanceof TypeError)) throw err;
           // Started online (this session has a real id) but the
@@ -488,13 +500,13 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
           // queue the real stop call, and build the same completed
           // shape locally so today's total/streak/etc. reflect it right
           // away instead of waiting on sync.
-          completed = { ...running, ended_at: endedAtIso, note: note.trim() || null, quality };
+          completed = { ...running, ended_at: endedAtIso, note: note.trim() || null, quality, interruptions };
           await enqueue({
             kind: "session",
             op: "action",
             httpMethod: "POST",
             path: `/sessions/${running.id}/stop`,
-            body: JSON.stringify({ note: note.trim() || null, quality }),
+            body: JSON.stringify({ note: note.trim() || null, quality, interruptions }),
             resourceId: running.id,
             tempId: null,
             patch: null,
@@ -517,6 +529,7 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
       setSelectedTask("");
       setMarkTaskDone(true);
       setRetagging(false);
+      setInterruptions([]);
       clearRunningSessionNotification();
       onSessionCompleted(completed);
     } catch (err) {
@@ -542,6 +555,18 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
     }
   }
 
+  // Optional, separate from the Keep it/Trim decision above - tapping a
+  // reason just logs it (feeds the Interruptions insights card once the
+  // session is stopped) and highlights the selected chip; it doesn't by
+  // itself resolve the away-prompt, which still needs Keep it or Trim.
+  function handleInterruptionReason(reason) {
+    setAwayPrompt((p) => (p ? { ...p, reason } : p));
+    setInterruptions((prev) => [
+      ...prev,
+      { reason, away_seconds: Math.round(awayPrompt.awayMs / 1000), at: new Date().toISOString() },
+    ]);
+  }
+
   return (
     <div className="fd-panel fd-timer-panel">
       <div className="fd-panel__label">Timer</div>
@@ -558,6 +583,21 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
             <button type="button" className="fd-link-btn" onClick={handleTrimAway}>
               Trim {formatDuration(awayPrompt.awayMs / 1000)}
             </button>
+          </div>
+          <div className="fd-timer-away-prompt__reasons">
+            <span className="fd-timer-away-prompt__reasons-label">What kept you away? (optional)</span>
+            <div className="fd-chip-row">
+              {INTERRUPTION_REASONS.map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  className={`fd-chip ${awayPrompt.reason === r.value ? "fd-chip--active" : ""}`}
+                  onClick={() => handleInterruptionReason(r.value)}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -659,6 +699,11 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
           onChange={(e) => setNote(e.target.value)}
           maxLength={200}
         />
+      )}
+      {running && interruptions.length > 0 && !awayPrompt && (
+        <div className="fd-timer-interruption-note">
+          {interruptions.length} interruption{interruptions.length === 1 ? "" : "s"} logged this session.
+        </div>
       )}
       {running && (
         <div className="fd-timer-quality">
