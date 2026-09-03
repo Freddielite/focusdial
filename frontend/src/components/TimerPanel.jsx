@@ -4,7 +4,6 @@ import { formatClock, formatDuration } from "../format.js";
 import { showRunningSessionNotification, clearRunningSessionNotification } from "../push.js";
 import { matchTagForText } from "../analytics.js";
 import { useDeviceName } from "../hooks/useDeviceName.js";
-import { enqueue } from "../outbox.js";
 import Dropdown from "./Dropdown.jsx";
 
 const QUALITY_OPTIONS = [
@@ -365,22 +364,6 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
       reportRunning(s);
       showRunningSessionNotification(s);
     } catch (err) {
-      if (err instanceof TypeError) {
-        // Genuinely offline, not a real rejection from the server - the
-        // optimistic session above is all there is for now (no id to
-        // PATCH/stop yet), so keep it running locally rather than
-        // rolling it back. `offlineStarted` tells handleStop to queue
-        // the whole thing as one finished session once it's stopped,
-        // instead of trying to PATCH a session the backend has never
-        // heard of - see handleStop below.
-        setSelectedTag(tagToUse || "");
-        setUserPickedTag(true);
-        setNote(quickStartText.trim());
-        setQuickStartText("");
-        reportRunning({ ...optimistic, offlineStarted: true });
-        setBusy(false);
-        return;
-      }
       // Nothing actually started (or, for a 409, something already was
       // running elsewhere and the optimistic guess above was simply
       // wrong) - roll it back rather than leave the UI claiming a
@@ -443,69 +426,15 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
   }
 
   async function handleStop() {
-    if (!running) return;
-    // id == null and not offlineStarted means the original Start call
-    // is still in flight (waiting on a possibly-slow/cold-starting
-    // backend) - nothing to stop yet either way, same guard as before.
-    if (running.id == null && !running.offlineStarted) return;
+    if (!running || running.id == null) return;
     setBusy(true);
     setError(null);
-    const endedAtIso = new Date().toISOString();
     try {
-      let completed;
-      if (running.offlineStarted) {
-        // Never reached the backend at all - nothing to PATCH/stop
-        // server-side, so the whole session (start through stop) is
-        // queued as a single manual-session create instead of a
-        // start/stop pair. See queueableFetch's own comment for why a
-        // plain create like this doesn't need any id-chaining to sync
-        // correctly later.
-        completed = {
-          tag_id: running.tag_id,
-          task_id: running.task_id,
-          started_at: running.started_at,
-          ended_at: endedAtIso,
-          note: note.trim() || null,
-          quality,
-        };
-        await enqueue({
-          kind: "session",
-          op: "action",
-          httpMethod: "POST",
-          path: "/sessions",
-          body: JSON.stringify(completed),
-          resourceId: null,
-          tempId: null,
-          patch: null,
-        });
-      } else {
-        try {
-          completed = await stopSession(running.id, note.trim() || null, quality);
-        } catch (err) {
-          if (!(err instanceof TypeError)) throw err;
-          // Started online (this session has a real id) but the
-          // connection dropped before Stop could reach the backend -
-          // queue the real stop call, and build the same completed
-          // shape locally so today's total/streak/etc. reflect it right
-          // away instead of waiting on sync.
-          completed = { ...running, ended_at: endedAtIso, note: note.trim() || null, quality };
-          await enqueue({
-            kind: "session",
-            op: "action",
-            httpMethod: "POST",
-            path: `/sessions/${running.id}/stop`,
-            body: JSON.stringify({ note: note.trim() || null, quality }),
-            resourceId: running.id,
-            tempId: null,
-            patch: null,
-          });
-        }
-      }
+      const completed = await stopSession(running.id, note.trim() || null, quality);
       // Closes the loop the other direction from a Deadline's "add as
       // task" -- finishing work linked to a Task can now mark it done
       // right from the stop action, instead of that being a second,
-      // easy-to-forget trip to the Tasks list. Queued the same as any
-      // other task edit (see api.js) if this is also offline.
+      // easy-to-forget trip to the Tasks list.
       if (running.task_id && markTaskDone) {
         await updateTask(running.task_id, { status: "done" }).catch(() => {});
         onDataChanged?.();
