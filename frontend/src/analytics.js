@@ -1524,7 +1524,46 @@ export function computeWeeklyReview({ sessions, deadlinesProgress = [], reminder
 // measure against, so this returns null rather than guessing at an
 // arbitrary end-of-day cutoff.
 const DEFAULT_SESSION_SECONDS = 25 * 60; // used only before there's enough history to know a real typical length
-export function computeOpenSlots({ todaySeconds, dailyGoalSeconds, tagTypicalSeconds, now = new Date() }) {
+const OPEN_SLOTS_DAY_END_HOUR = 21; // matches fetchTodaysBusyBlocks' default on the backend (lib/google.js)
+
+// Sums, gap by gap, how many whole avgSessionSeconds-sized sessions
+// could fit between `now` and dayEnd once the real calendar's busy
+// blocks are carved out - not just total free time, since a 90-minute
+// gap and three 30-minute gaps hold very different numbers of
+// real sessions once a meeting can split them apart.
+function countSlotsAroundBusyBlocks(now, dayEnd, busyBlocks, avgSessionSeconds) {
+  const blocks = busyBlocks
+    .map((b) => ({ start: new Date(b.start), end: new Date(b.end) }))
+    .filter((b) => b.end > now && b.start < dayEnd)
+    .sort((a, b) => a.start - b.start);
+
+  let cursor = now;
+  let count = 0;
+  for (const block of blocks) {
+    const gapEnd = block.start < dayEnd ? block.start : dayEnd;
+    if (gapEnd > cursor) count += Math.floor((gapEnd - cursor) / 1000 / avgSessionSeconds);
+    if (block.end > cursor) cursor = block.end;
+  }
+  if (dayEnd > cursor) count += Math.floor((dayEnd - cursor) / 1000 / avgSessionSeconds);
+  return count;
+}
+
+// "How many more sessions could realistically fit today" - the count
+// that drives the Open Slots card (see OpenSlotsCard.jsx and
+// TodayView.jsx). Two independent ceilings, and the tighter one wins:
+// - goal-based: remaining daily-goal time / a typical session length
+// - calendar-based: real gaps between now and end of day, once actual
+//   meetings (busyBlocks, from fetchTodaysBusyBlocks on the backend)
+//   are carved out of the day - only computed when Google Calendar is
+//   connected and busyBlocks was actually passed; without it, this
+//   behaves exactly as before (goal-math only), so a person who's never
+//   connected a calendar sees no change.
+//
+// Requires a daily goal to be set (same precondition as
+// computeGoalProjection) - without one there's no "remaining" to
+// measure against, so this returns null rather than guessing at an
+// arbitrary end-of-day cutoff.
+export function computeOpenSlots({ todaySeconds, dailyGoalSeconds, tagTypicalSeconds, busyBlocks, now = new Date() }) {
   if (!dailyGoalSeconds || dailyGoalSeconds <= 0) return null;
   const remainingSeconds = Math.max(0, dailyGoalSeconds - todaySeconds);
   if (remainingSeconds <= 0) return null;
@@ -1534,9 +1573,24 @@ export function computeOpenSlots({ todaySeconds, dailyGoalSeconds, tagTypicalSec
     ? typicalValues.reduce((sum, v) => sum + v, 0) / typicalValues.length
     : DEFAULT_SESSION_SECONDS;
 
-  const count = Math.max(0, Math.floor(remainingSeconds / avgSessionSeconds));
+  const goalBasedCount = Math.floor(remainingSeconds / avgSessionSeconds);
+
+  let count = goalBasedCount;
+  let limitedByCalendar = false;
+  if (Array.isArray(busyBlocks) && busyBlocks.length > 0) {
+    const dayEnd = new Date(now);
+    dayEnd.setHours(OPEN_SLOTS_DAY_END_HOUR, 0, 0, 0);
+    if (dayEnd > now) {
+      const calendarBasedCount = countSlotsAroundBusyBlocks(now, dayEnd, busyBlocks, avgSessionSeconds);
+      if (calendarBasedCount < goalBasedCount) {
+        count = calendarBasedCount;
+        limitedByCalendar = true;
+      }
+    }
+  }
+
   if (count === 0) return null;
-  return { count, remainingSeconds, avgSessionSeconds };
+  return { count, remainingSeconds, avgSessionSeconds, limitedByCalendar };
 }
 
 // Rule-based automation (as opposed to everything else in this file,

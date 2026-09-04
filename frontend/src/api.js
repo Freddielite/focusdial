@@ -188,6 +188,7 @@ export const getSessionHistory = () => apiFetch("/sessions/history");
 export const sessionsExportUrl = (format) => `${BASE_URL}/sessions/export?format=${format}`;
 
 export const getGoogleAuthStatus = () => apiFetch("/auth/google/status");
+export const getTodayBusyBlocks = () => apiFetch("/calendar/today-busy");
 // Not an apiFetch call - this is a full-page redirect to Google's
 // consent screen (and back to /api/auth/google/callback), not a JSON
 // request/response.

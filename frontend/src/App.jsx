@@ -17,6 +17,7 @@ import DeadlinesView from "./components/DeadlinesView.jsx";
 import RemindersView from "./components/RemindersView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
 import NamePromptModal from "./components/NamePromptModal.jsx";
+import DailyPlanModal from "./components/DailyPlanModal.jsx";
 import { maybePushEvent } from "./push.js";
 import { formatDuration, firstName } from "./format.js";
 import {
@@ -30,11 +31,13 @@ import {
   getSettings,
   updateSettings,
   setSlowRequestHandler,
+  getTodayBusyBlocks,
   createReminder,
 } from "./api.js";
 import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, computeOpenSlots, computeAutomationTriggers, buildTagVocabulary } from "./analytics.js";
 import { computePriorityRanking, computeUnscheduledSuggestion } from "./priorityEngine.js";
 import { useSuggestionDismissals } from "./hooks/useSuggestionDismissals.js";
+import { useDailyRitualSeen } from "./hooks/useDailyRitual.js";
 
 const DEFAULT_SETTINGS = {
   push_enabled: true,
@@ -165,6 +168,13 @@ export default function App({ user, onLogout, onUserUpdated }) {
   const [deadlines, setDeadlines] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [tasks, setTasks] = useState([]);
+  // Real calendar events for the rest of today (see fetchTodaysBusyBlocks,
+  // backend lib/google.js) - only ever set from a successful loadAll,
+  // and only used to sharpen Open Slots' count; nothing downstream
+  // treats an empty array here as "definitely free," since it's just as
+  // likely to mean "not connected" as "no meetings today."
+  const [todayBusyBlocks, setTodayBusyBlocks] = useState([]);
+  const [googleConnected, setGoogleConnected] = useState(false);
   // Completed tasks with both a tag and an estimate, for the priority
   // engine's estimate-learning feature (Feature 2) - see GET
   // /tasks/completed for why this is fetched separately from the open
@@ -199,7 +209,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
     // requests only needs ONE unlucky one to fail the whole batch.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, completedTaskData, settingsData] =
+        const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, completedTaskData, settingsData, busyData] =
           await Promise.all([
             listTags(),
             listTags(true),
@@ -210,6 +220,13 @@ export default function App({ user, onLogout, onUserUpdated }) {
             listTasks(),
             listCompletedTasks(),
             getSettings().catch(() => DEFAULT_SETTINGS),
+            // The route itself already degrades gracefully (returns
+            // connected:false or an empty blocks array rather than
+            // erroring) if Google isn't connected or is briefly
+            // unreachable - this catch is only for this one request
+            // failing to reach FocusDial's own backend at all, same as
+            // settings' catch just above.
+            getTodayBusyBlocks().catch(() => ({ connected: false, blocks: [] })),
           ]);
         setTags(tagData);
         setAllTags(allTagData);
@@ -220,6 +237,8 @@ export default function App({ user, onLogout, onUserUpdated }) {
         setTasks(taskData);
         setCompletedTasks(completedTaskData);
         if (settingsData) setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
+        setTodayBusyBlocks(busyData?.blocks || []);
+        setGoogleConnected(Boolean(busyData?.connected));
         setError(null);
         setLoaded(true);
         return;
@@ -471,17 +490,61 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // more sessions could still fit today" is useful all day, not just as
   // an end-of-day check-in. Reuses priorityRanking's own
   // tagTypicalSeconds (computePriorityRanking, priorityEngine.js) rather
-  // than recomputing typical session length a second way.
+  // than recomputing typical session length a second way. busyBlocks is
+  // only ever non-empty when Google Calendar is connected (see loadAll)
+  // - computeOpenSlots itself treats an empty array exactly like "no
+  // calendar data at all," so this is a no-op enhancement for anyone
+  // who hasn't connected one.
   const openSlots = useMemo(
     () =>
       computeOpenSlots({
         todaySeconds: summary.todaySeconds,
         dailyGoalSeconds: settings.daily_focus_goal_seconds,
         tagTypicalSeconds: priorityRanking.tagTypicalSeconds,
+        busyBlocks: todayBusyBlocks,
         now: new Date(nowTick),
       }),
-    [summary.todaySeconds, settings.daily_focus_goal_seconds, priorityRanking.tagTypicalSeconds, nowTick]
+    [
+      summary.todaySeconds,
+      settings.daily_focus_goal_seconds,
+      priorityRanking.tagTypicalSeconds,
+      todayBusyBlocks,
+      nowTick,
+    ]
   );
+
+  // ---- Guided daily ritual ----------------------------------------
+  // A morning plan and an evening reflection - see DailyPlanModal.jsx -
+  // each shown automatically once per local day (useDailyRitualSeen,
+  // localStorage-backed) and reopenable any time via TodayView's
+  // "Plan my day"/"Reflect on today" links (see dailyRitualMode's setter
+  // being passed down there). EVENING_HOUR is the one cutoff deciding
+  // which of the two auto-shows first on a given day - deliberately not
+  // configurable in Settings for v1, since either can still be opened
+  // manually regardless of the time.
+  const EVENING_HOUR = 17;
+  const { morningSeenToday, eveningSeenToday, markMorningSeen, markEveningSeen } = useDailyRitualSeen();
+  const [dailyRitualMode, setDailyRitualMode] = useState(null);
+  useEffect(() => {
+    if (!loaded || dailyRitualMode) return;
+    const hour = new Date(nowTick).getHours();
+    if (hour < EVENING_HOUR && !morningSeenToday) setDailyRitualMode("morning");
+    else if (hour >= EVENING_HOUR && !eveningSeenToday) setDailyRitualMode("evening");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+  function closeDailyRitual() {
+    if (dailyRitualMode === "morning") markMorningSeen();
+    else if (dailyRitualMode === "evening") markEveningSeen();
+    setDailyRitualMode(null);
+  }
+  // Sunsama-style "how much did I actually get done today" - filters
+  // liveSessions (which already includes the in-progress session as a
+  // live-updating entry, see its own comment above) down to sessions
+  // that started on today's local calendar day.
+  const todaySessions = useMemo(() => {
+    const key = new Date(nowTick).toDateString();
+    return liveSessions.filter((s) => new Date(s.started_at).toDateString() === key);
+  }, [liveSessions, nowTick]);
 
   // ---- Notification orchestration --------------------------------
   // Every event shows an in-app toast. The three "in-app events"
@@ -785,6 +848,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     userName={userFirstName}
                     priorityRanking={priorityRanking}
                     openSlots={openSlots}
+                    onOpenDailyPlan={setDailyRitualMode}
                     suggestion={suggestion}
                     hasRunningSession={!!runningSession}
                     onRunningChange={setRunningSession}
@@ -859,6 +923,22 @@ export default function App({ user, onLogout, onUserUpdated }) {
 
       {!showSplash && loaded && !user?.displayName && !namePromptDismissed && (
         <NamePromptModal onUserUpdated={onUserUpdated} onDismiss={() => setNamePromptDismissed(true)} />
+      )}
+
+      {!showSplash && loaded && dailyRitualMode && (
+        <DailyPlanModal
+          mode={dailyRitualMode}
+          displayName={userFirstName}
+          onClose={closeDailyRitual}
+          dailyGoalSeconds={settings.daily_focus_goal_seconds}
+          todaySeconds={summary.todaySeconds}
+          todaySessions={todaySessions}
+          googleConnected={googleConnected}
+          busyBlocks={todayBusyBlocks}
+          openSlots={openSlots}
+          ranked={priorityRanking.ranked}
+          onSessionStarted={loadAll}
+        />
       )}
     </div>
   );

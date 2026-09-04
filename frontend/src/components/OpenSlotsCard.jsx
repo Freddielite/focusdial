@@ -68,6 +68,7 @@ export default function OpenSlotsCard({ openSlots, ranked, hasRunningSession, on
       <div className="fd-open-slots-card__footnote">
         Based on ~{formatDuration(openSlots.avgSessionSeconds)} average sessions and{" "}
         {formatDuration(openSlots.remainingSeconds)} left toward today's goal.
+        {openSlots.limitedByCalendar && " Trimmed to fit around what's already on your calendar today."}
       </div>
     </div>
   );

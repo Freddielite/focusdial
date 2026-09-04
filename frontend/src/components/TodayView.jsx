@@ -26,6 +26,7 @@ export default function TodayView({
   priorityRanking,
   suggestion,
   openSlots,
+  onOpenDailyPlan,
   hasRunningSession,
   onRunningChange,
   onSessionCompleted,
@@ -52,6 +53,16 @@ export default function TodayView({
         graceEnabled={graceEnabled}
         userName={userName}
       />
+      {onOpenDailyPlan && (
+        <div className="fd-daily-ritual-links">
+          <button type="button" className="fd-link-btn" onClick={() => onOpenDailyPlan("morning")}>
+            Plan my day
+          </button>
+          <button type="button" className="fd-link-btn" onClick={() => onOpenDailyPlan("evening")}>
+            Reflect on today
+          </button>
+        </div>
+      )}
       <InsightCard insight={insightOfTheDay} />
 
       {/* Feature 1 + Feature 6 of the priority engine. Sit above the

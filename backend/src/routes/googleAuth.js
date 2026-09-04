@@ -9,7 +9,9 @@ import {
   fetchConnectedEmail,
   getCalendarClient,
   fetchSyncTokenBaseline,
+  fetchTodaysBusyBlocks,
   pushItemToGoogle,
+  getAuthedClient,
 } from "../lib/google.js";
 
 export const googleAuthRouter = Router();
@@ -132,6 +134,23 @@ googleAuthRouter.get("/auth/google/callback", async (req, res) => {
   } catch (err) {
     console.error("google oauth callback failed:", err.message);
     redirectTo("error");
+  }
+});
+
+googleAuthRouter.get("/calendar/today-busy", async (req, res) => {
+  if (!googleConfigured) return res.json({ connected: false, blocks: [] });
+  try {
+    const authClient = await getAuthedClient(req.userId);
+    if (!authClient) return res.json({ connected: false, blocks: [] });
+    const blocks = await fetchTodaysBusyBlocks(req.userId, authClient);
+    res.json({ connected: true, blocks });
+  } catch (err) {
+    console.error("failed to fetch today's calendar events:", err.message);
+    // Same "degrade rather than fail the whole request" reasoning as
+    // pushItemToGoogle - Open Slots/the morning plan should still work
+    // off goal-math alone if Google is briefly unreachable, not error
+    // out entirely for something that's meant to be an enhancement.
+    res.json({ connected: true, blocks: [], error: "calendar_unavailable" });
   }
 });
 

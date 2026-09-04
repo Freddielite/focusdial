@@ -123,6 +123,48 @@ export function getCalendarClient(authClient) {
   return google.calendar({ version: "v3", auth: authClient });
 }
 
+// Real, timed events on the person's actual calendar for the rest of
+// today - as opposed to everything above, which only ever pushes
+// FocusDial's own deadlines/reminders *out* and reads back changes to
+// those same pushed events. This is the one place FocusDial reads
+// someone's *other* calendar content, and only to compute free time
+// with (Open Slots, the morning plan) - titles are returned since
+// they're shown in the UI, but nothing here is stored.
+//
+// google_event_links-linked events (FocusDial's own reminders, pushed
+// as 15-minute blocks - see reminderToEvent above) are excluded, or
+// every reminder would double as a fake "meeting" eating into the free
+// time being measured. All-day events are excluded too (no real
+// start/end to treat as a busy block).
+export async function fetchTodaysBusyBlocks(userId, authClient, dayEndHour = 21) {
+  const calendar = getCalendarClient(authClient);
+  const now = new Date();
+  const dayEnd = new Date(now);
+  dayEnd.setHours(dayEndHour, 0, 0, 0);
+  if (dayEnd <= now) return []; // already past the configured end of day - no remaining window to check
+
+  const { data } = await calendar.events.list({
+    calendarId: "primary",
+    timeMin: now.toISOString(),
+    timeMax: dayEnd.toISOString(),
+    singleEvents: true,
+    orderBy: "startTime",
+  });
+  const events = data.items || [];
+  if (events.length === 0) return [];
+
+  const { rows: linkRows } = await pool.query(
+    `SELECT google_event_id FROM google_event_links
+     WHERE google_event_id = ANY($1::text[])`,
+    [events.map((e) => e.id)]
+  );
+  const ownIds = new Set(linkRows.map((r) => r.google_event_id));
+
+  return events
+    .filter((e) => e.start?.dateTime && e.end?.dateTime && !ownIds.has(e.id) && e.status !== "cancelled")
+    .map((e) => ({ title: e.summary || "Busy", start: e.start.dateTime, end: e.end.dateTime }));
+}
+
 // Establishes (or re-establishes) the incremental-sync cursor. Google
 // Calendar API's syncToken mechanism requires the *first* request in a
 // sync sequence to carry whatever filters should apply throughout - // timeMin (only future events matter here) and showDeleted (so
