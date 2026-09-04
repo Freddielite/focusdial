@@ -17,7 +17,7 @@ function formatHoursShort(hours) {
 // number like "157h/day", which is technically correct but reads as
 // broken. Below a day left, this switches to stating remaining work
 // against remaining time directly instead.
-function deadlinePaceFragment(d) {
+export function deadlinePaceFragment(d) {
   const hoursLeft = d.daysLeft * 24;
   if (hoursLeft > 0 && hoursLeft < 24) {
     return `${formatHoursShort(d.remainingHours)}, with only ${formatHoursShort(hoursLeft)} left`;
@@ -1509,5 +1509,94 @@ export function computeWeeklyReview({ sessions, deadlinesProgress = [], reminder
     upcomingDeadlines,
     upcomingReminders,
   };
+}
+
+// "How many more sessions could realistically fit today" - the count
+// that drives the Open Slots card (see OpenSlotsCard.jsx and
+// TodayView.jsx). Deliberately simple: remaining goal time divided by a
+// typical session length, not anything that tries to model actual free
+// time on a calendar (this app has no calendar integration) - a rough
+// "you could probably still fit 3 more" beats a falsely precise number
+// built on data the app doesn't have.
+//
+// Requires a daily goal to be set (same precondition as
+// computeGoalProjection) - without one there's no "remaining" to
+// measure against, so this returns null rather than guessing at an
+// arbitrary end-of-day cutoff.
+const DEFAULT_SESSION_SECONDS = 25 * 60; // used only before there's enough history to know a real typical length
+export function computeOpenSlots({ todaySeconds, dailyGoalSeconds, tagTypicalSeconds, now = new Date() }) {
+  if (!dailyGoalSeconds || dailyGoalSeconds <= 0) return null;
+  const remainingSeconds = Math.max(0, dailyGoalSeconds - todaySeconds);
+  if (remainingSeconds <= 0) return null;
+
+  const typicalValues = [...(tagTypicalSeconds?.values() || [])].filter((v) => v > 0);
+  const avgSessionSeconds = typicalValues.length
+    ? typicalValues.reduce((sum, v) => sum + v, 0) / typicalValues.length
+    : DEFAULT_SESSION_SECONDS;
+
+  const count = Math.max(0, Math.floor(remainingSeconds / avgSessionSeconds));
+  if (count === 0) return null;
+  return { count, remainingSeconds, avgSessionSeconds };
+}
+
+// Rule-based automation (as opposed to everything else in this file,
+// which only ever surfaces an insight for a person to read and act on
+// themselves): when a deadline slips to behind/overdue, or a budget
+// drops under 70% with the week more than half over, this returns a
+// Reminder to actually create - a persistent, dismissible artifact
+// rather than a banner that vanishes the moment the underlying number
+// recovers.
+//
+// `existingReminders` is checked so the same deadline/budget doesn't
+// get a fresh reminder every time this runs (see auto_source_type/
+// auto_source_id on the reminders table, db.js) - once one's pending
+// for a given source, this simply won't return a duplicate for it
+// until that one's dismissed/converted/completed.
+//
+// Deliberately narrower than automation_deadline_pace's push
+// notification (which also fires on "tight"): a real, persistent
+// Reminder is a stronger claim on someone's attention than a
+// notification that disappears, so this only fires on behind/overdue,
+// not merely tight.
+const BUDGET_RISK_PCT = 0.7;
+const BUDGET_RISK_MIN_WEEKDAY = 4; // Thursday (0=Sun) - before that, "behind" is just "the week isn't over yet"
+export function computeAutomationTriggers({ deadlinesProgress = [], budgetsProgress = [], existingReminders = [], now = new Date() }) {
+  const hasPendingFor = (type, id) =>
+    existingReminders.some((r) => r.auto_source_type === type && r.auto_source_id === id);
+
+  const triggers = [];
+
+  for (const d of deadlinesProgress) {
+    if (d.status !== "behind" && d.status !== "overdue") continue;
+    if (hasPendingFor("deadline_risk", d.id)) continue;
+    triggers.push({
+      auto_source_type: "deadline_risk",
+      auto_source_id: d.id,
+      title: d.status === "overdue" ? `"${d.title}" is overdue` : `Catch up on "${d.title}"`,
+      note:
+        d.status === "overdue"
+          ? "This deadline's due date has passed."
+          : `You need ${deadlinePaceFragment(d)} to catch up.`,
+      remind_at: now.toISOString(),
+    });
+  }
+
+  if (now.getDay() >= BUDGET_RISK_MIN_WEEKDAY) {
+    for (const b of budgetsProgress) {
+      if (b.pct >= BUDGET_RISK_PCT) continue;
+      if (hasPendingFor("budget_risk", b.id)) continue;
+      triggers.push({
+        auto_source_type: "budget_risk",
+        auto_source_id: b.id,
+        title: `"${b.name}" budget is behind this week`,
+        note: `You're at ${Math.round(b.pct * 100)}% of the ${formatDuration(b.targetSeconds)} weekly target, with ${formatDuration(
+          Math.max(0, b.hoursLeftInWeek * 3600)
+        )} left in the week.`,
+        remind_at: now.toISOString(),
+      });
+    }
+  }
+
+  return triggers;
 }
 

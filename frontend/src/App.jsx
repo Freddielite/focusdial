@@ -30,8 +30,9 @@ import {
   getSettings,
   updateSettings,
   setSlowRequestHandler,
+  createReminder,
 } from "./api.js";
-import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, buildTagVocabulary } from "./analytics.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, computeOpenSlots, computeAutomationTriggers, buildTagVocabulary } from "./analytics.js";
 import { computePriorityRanking, computeUnscheduledSuggestion } from "./priorityEngine.js";
 import { useSuggestionDismissals } from "./hooks/useSuggestionDismissals.js";
 
@@ -49,6 +50,7 @@ const DEFAULT_SETTINGS = {
   // itself fails (the .catch below), which already falls back to
   // this whole object rather than a live server value in that case.
   automation_category_nudge: true,
+  automation_risk_reminders: true,
   notify_session_completed: true,
   notify_deadline_completed: true,
   notify_budget_reached: true,
@@ -243,6 +245,15 @@ export default function App({ user, onLogout, onUserUpdated }) {
     const [tagData, allTagData] = await Promise.all([listTags(), listTags(true)]);
     setTags(tagData);
     setAllTags(allTagData);
+  }
+
+  // Same "just refetch the one thing that changed" reasoning as
+  // refreshTags above - the risk-reminder automation effect below only
+  // ever touches reminders, so a full loadAll() (9 parallel requests,
+  // including the whole session history) would be a lot of unrelated
+  // work just to show one new reminder.
+  async function refreshReminders() {
+    setReminders(await listReminders());
   }
 
   useEffect(() => {
@@ -456,6 +467,22 @@ export default function App({ user, onLogout, onUserUpdated }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowTick, summary.todaySeconds, settings.daily_focus_goal_seconds]);
 
+  // Unlike goalProjection above, not gated to evening-only - "how many
+  // more sessions could still fit today" is useful all day, not just as
+  // an end-of-day check-in. Reuses priorityRanking's own
+  // tagTypicalSeconds (computePriorityRanking, priorityEngine.js) rather
+  // than recomputing typical session length a second way.
+  const openSlots = useMemo(
+    () =>
+      computeOpenSlots({
+        todaySeconds: summary.todaySeconds,
+        dailyGoalSeconds: settings.daily_focus_goal_seconds,
+        tagTypicalSeconds: priorityRanking.tagTypicalSeconds,
+        now: new Date(nowTick),
+      }),
+    [summary.todaySeconds, settings.daily_focus_goal_seconds, priorityRanking.tagTypicalSeconds, nowTick]
+  );
+
   // ---- Notification orchestration --------------------------------
   // Every event shows an in-app toast. The three "in-app events"
   // (session/deadline/budget) additionally fire a push, but only when
@@ -475,6 +502,17 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // neglected since before this feature existed doesn't fire a notice
   // the moment someone opens the app.
   const neglectedTagsRef = useRef(new Set());
+  // "type:id" strings this session has already attempted an auto-reminder
+  // create for - see the automation effect below for why this matters:
+  // deadlinesWithProgress/budgetsWithProgress recompute every second
+  // while a timer's running (they derive from liveSessions, which ticks
+  // with the clock), so without this the effect would re-fire every
+  // second and race the backend's own dedup check (reminders won't have
+  // refetched yet by the next tick), spamming duplicate reminders. This
+  // ref makes each source a same-session one-shot regardless of how
+  // often the effect re-runs; the backend check (via computeAutomationTriggers
+  // reading `reminders`) is what protects across reloads instead.
+  const autoReminderFiredRef = useRef(new Set());
   const initRef = useRef(false);
 
   // Seed the "previous state" refs on the first populated load so we
@@ -560,6 +598,56 @@ export default function App({ user, onLogout, onUserUpdated }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priorityRanking.categoryBalance]);
+
+  // Rule-based automation (as distinct from every notify() above, which
+  // only ever fires a transient toast/push): creates a real, persistent
+  // Reminder when a deadline slips to behind/overdue or a budget falls
+  // behind late in the week. computeAutomationTriggers (analytics.js)
+  // checks `reminders` for an existing pending one on the same source,
+  // but that alone isn't enough here - see autoReminderFiredRef's own
+  // comment above for why this effect can re-run many times a second
+  // while a timer's running, faster than a create-then-refetch round
+  // trip can keep `reminders` current. The ref makes each source a
+  // same-session one-shot on top of that check, so the two together
+  // guard both within-session races and across-reload duplicates.
+  // Runs after `initRef.current` is set (same as the effects above) so
+  // it never fires retroactively for something that was already behind
+  // before this session opened the app; only genuine changes create a
+  // reminder.
+  useEffect(() => {
+    if (!initRef.current) return;
+    if (!settings.automation_risk_reminders) return;
+    const triggers = computeAutomationTriggers({
+      deadlinesProgress: deadlinesWithProgress,
+      budgetsProgress: budgetsWithProgress,
+      existingReminders: reminders,
+      now: new Date(),
+    });
+    for (const t of triggers) {
+      const key = `${t.auto_source_type}:${t.auto_source_id}`;
+      if (autoReminderFiredRef.current.has(key)) continue;
+      autoReminderFiredRef.current.add(key);
+      createReminder(t)
+        .then(() => {
+          // Clears the guard once `reminders` reflects the new row -
+          // from here on, computeAutomationTriggers' own check against
+          // real reminder state is what prevents a duplicate, so this
+          // key is free to re-arm. That matters if the person dismisses
+          // this reminder later while the deadline/budget is still
+          // behind - without clearing it, a second one could never be
+          // created for the rest of this session even though it should be.
+          return refreshReminders();
+        })
+        .then(() => autoReminderFiredRef.current.delete(key))
+        .catch(() => {
+          // Also clears on failure - let a future re-evaluation retry
+          // rather than getting permanently stuck on one failed attempt
+          // (e.g. a transient network error).
+          autoReminderFiredRef.current.delete(key);
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deadlinesWithProgress, budgetsWithProgress, settings.automation_risk_reminders]);
 
   // Reminders coming due while the app is open.
   useEffect(() => {
@@ -696,6 +784,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     tagVocabulary={tagVocabulary}
                     userName={userFirstName}
                     priorityRanking={priorityRanking}
+                    openSlots={openSlots}
                     suggestion={suggestion}
                     hasRunningSession={!!runningSession}
                     onRunningChange={setRunningSession}

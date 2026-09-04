@@ -8,6 +8,7 @@ import SessionLog from "./SessionLog.jsx";
 import TasksWidget from "./TasksWidget.jsx";
 import PriorityCard from "./PriorityCard.jsx";
 import SuggestionCard from "./SuggestionCard.jsx";
+import OpenSlotsCard from "./OpenSlotsCard.jsx";
 
 export default function TodayView({
   tags,
@@ -24,6 +25,7 @@ export default function TodayView({
   userName,
   priorityRanking,
   suggestion,
+  openSlots,
   hasRunningSession,
   onRunningChange,
   onSessionCompleted,
@@ -80,6 +82,12 @@ export default function TodayView({
           onDismiss={onDismissSuggestion}
         />
       )}
+      <OpenSlotsCard
+        openSlots={openSlots}
+        ranked={priorityRanking.ranked}
+        hasRunningSession={hasRunningSession}
+        onSessionStarted={onSessionStarted}
+      />
 
       <div className="fd-main__top">
         <div className="fd-main__timer-col">

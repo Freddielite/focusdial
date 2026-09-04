@@ -130,6 +130,7 @@ function DeviceNameRow({ deviceName, onDeviceNameChange }) {
 const AUTOMATION_ROWS = [
   { key: "automation_reminders", title: "Reminders", desc: "Ping me when a reminder is due, even if the app is closed." },
   { key: "automation_deadline_pace", title: "Deadline pace changes", desc: "Warn me when a deadline slips to tight, behind, or overdue." },
+  { key: "automation_risk_reminders", title: "Auto-create risk reminders", desc: "When a deadline goes behind/overdue or a budget falls behind late in the week, add a real reminder for it (not just a notification)." },
   { key: "automation_streak", title: "Streak at risk", desc: "Nudge me in the evening if I haven't logged a session yet." },
   { key: "automation_runaway_timer", title: "Runaway timer", desc: "Warn me if a running session goes past 4 hours, probably forgot to stop it." },
   { key: "automation_weekly_digest", title: "Weekly digest", desc: "Total hours logged and your best day, in one push. Timing is configurable below." },

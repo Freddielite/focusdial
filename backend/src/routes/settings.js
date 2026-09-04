@@ -16,6 +16,7 @@ const BOOLEAN_FIELDS = [
   "automation_weekly_digest",
   "automation_google_sync",
   "automation_category_nudge",
+  "automation_risk_reminders",
   "notify_session_completed",
   "notify_deadline_completed",
   "notify_budget_reached",

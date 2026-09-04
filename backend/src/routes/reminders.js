@@ -18,15 +18,23 @@ remindersRouter.get("/reminders", async (req, res) => {
 });
 
 remindersRouter.post("/reminders", async (req, res) => {
-  const { title, note, remind_at, recurrence } = req.body;
+  const { title, note, remind_at, recurrence, auto_source_type, auto_source_id } = req.body;
   if (!title || !title.trim() || !remind_at) {
     return res.status(400).json({ error: "title and remind_at are required" });
   }
+  // Both or neither -- see the auto_source_type column's CHECK
+  // constraint in db.js for the valid type values; a source_id with no
+  // type (or vice versa) can't be used for the dedup lookup
+  // computeAutomationTriggers relies on, so it's rejected here rather
+  // than silently stored as a half-tagged row.
+  if ((auto_source_type == null) !== (auto_source_id == null)) {
+    return res.status(400).json({ error: "auto_source_type and auto_source_id must be provided together" });
+  }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO reminders (title, note, remind_at, recurrence, user_id)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [title.trim(), note || null, remind_at, recurrence || "none", req.userId]
+      `INSERT INTO reminders (title, note, remind_at, recurrence, user_id, auto_source_type, auto_source_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [title.trim(), note || null, remind_at, recurrence || "none", req.userId, auto_source_type || null, auto_source_id || null]
     );
     await pushItemToGoogle(req.userId, "reminder", rows[0]);
     res.status(201).json(rows[0]);
