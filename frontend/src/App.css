@@ -211,6 +211,17 @@ html {
      is if it had been evicted from memory) since that's checked here, not
      on body. */
   overscroll-behavior-y: contain;
+  /* Backstop, not the fix - the actual fix for any given case is making
+     the overflowing element shrink properly (e.g. min-width: 0 on a
+     flex item, see .fd-quick-task-form input below for the bug that
+     prompted this comment). This just contains the damage if a future
+     one slips through: without it, a single child a few pixels too
+     wide anywhere on the page makes the *entire* page horizontally
+     scrollable, dragging every sibling card along horizontally with it
+     even though their own CSS is fine - which is what actually made
+     the bug visible (stats cards looking cut off that had nothing to
+     do with the real culprit). */
+  overflow-x: hidden;
 }
 
 body {
@@ -224,6 +235,7 @@ body {
   transition: background 0.3s ease, color 0.3s ease;
   overscroll-behavior-y: contain;
   -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
 }
 
 /* Long-press-to-select/copy on plain UI text (labels, stats, card
@@ -2899,6 +2911,12 @@ button {
 
 .fd-quick-task-form input {
   flex: 1;
+  /* Flex items default to min-width: auto, not 0 - without this, the
+     browser won't shrink the input below its intrinsic default size
+     (~170-200px) to make room for the 3 icon toggles + Add button
+     beside it, so on a narrow phone the row (and everything after it,
+     see html/body's overflow-x above) ends up wider than the screen. */
+  min-width: 0;
   padding: 8px 10px;
   background: var(--grad-input);
   border: 1px solid var(--line);
