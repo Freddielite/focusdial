@@ -211,17 +211,6 @@ html {
      is if it had been evicted from memory) since that's checked here, not
      on body. */
   overscroll-behavior-y: contain;
-  /* Backstop, not the fix - the actual fix for any given case is making
-     the overflowing element shrink properly (e.g. min-width: 0 on a
-     flex item, see .fd-quick-task-form input below for the bug that
-     prompted this comment). This just contains the damage if a future
-     one slips through: without it, a single child a few pixels too
-     wide anywhere on the page makes the *entire* page horizontally
-     scrollable, dragging every sibling card along horizontally with it
-     even though their own CSS is fine - which is what actually made
-     the bug visible (stats cards looking cut off that had nothing to
-     do with the real culprit). */
-  overflow-x: hidden;
 }
 
 body {
@@ -235,7 +224,23 @@ body {
   transition: background 0.3s ease, color 0.3s ease;
   overscroll-behavior-y: contain;
   -webkit-tap-highlight-color: transparent;
+  /* Backstop against a horizontally-overflowing child dragging the
+     whole page into horizontal scroll (see .fd-quick-task-form input's
+     own comment for the bug that prompted this) - explicitly set on
+     both axes, not just overflow-x, because setting only one axis to
+     'hidden' while the other is left as the 'visible' default makes the
+     browser silently promote the other axis to its own 'auto' scroll
+     container per spec. That's exactly what broke vertical scrolling
+     the first time this was added to <html> as well as <body>: two
+     separately-scrolling boxes fighting over which one actually owns
+     the page's scroll, on the one element (documentElement) mobile
+     Safari treats specially for viewport scrolling. Body is the app's
+     one real scrolling element (per the comment above) - this keeps it
+     that way instead of quietly creating a second one, and stays off
+     <html> entirely since that's the element mobile browsers get most
+     unpredictable about here. */
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Long-press-to-select/copy on plain UI text (labels, stats, card
