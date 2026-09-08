@@ -1804,8 +1804,11 @@ button {
 
 .fd-daily-ritual-links {
   display: flex;
-  gap: 16px;
-  margin: -4px 0 14px;
+  justify-content: space-between;
+  /* No margin - .fd-view's own 20px gap between children already
+     spaces this from HeroCard above and InsightCard below, same as
+     every other panel (see .fd-view's comment). Adding one here just
+     stacked on top of that gap instead of replacing it. */
 }
 
 .fd-daily-plan-modal {
