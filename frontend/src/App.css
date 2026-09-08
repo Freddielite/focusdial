@@ -1849,6 +1849,11 @@ button {
   white-space: nowrap;
 }
 
+.fd-backfill-card {
+  width: 100%;
+  justify-content: flex-start;
+}
+
 .fd-daily-plan-modal {
   width: min(440px, 100%);
   text-align: left;

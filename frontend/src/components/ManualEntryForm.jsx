@@ -4,6 +4,17 @@ import { toLocalInputValue } from "../format.js";
 import Dropdown from "./Dropdown.jsx";
 import { DateTimePicker } from "./DateTimeField.jsx";
 
+// Same hand-drawn icon convention as TodayView's Plan my day/Reflect on
+// today cards - a plain plus, since this isn't a "kind of day" concept
+// like sun/moon, just an add action.
+function PlusIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
 const QUALITY_OPTIONS = [
   { value: "focused", label: "Focused" },
   { value: "neutral", label: "Neutral" },
@@ -55,8 +66,11 @@ export default function ManualEntryForm({ tags, tasks, onSessionCreated, onDataC
 
   if (!open) {
     return (
-      <button className="fd-link-btn" onClick={() => setOpen(true)}>
-        + Backfill a past session
+      <button type="button" className="fd-daily-ritual-card fd-backfill-card" onClick={() => setOpen(true)}>
+        <span className="fd-daily-ritual-card__icon">
+          <PlusIcon />
+        </span>
+        <span className="fd-daily-ritual-card__label">Backfill a past session</span>
       </button>
     );
   }
