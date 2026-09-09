@@ -721,6 +721,10 @@ button {
 
 .fd-milestones-card__title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
   color: var(--parchment-dim);
 }
@@ -730,6 +734,7 @@ button {
   font-weight: 700;
   font-size: 16px;
   color: var(--brass-strong);
+  flex-shrink: 0;
 }
 
 .fd-milestones-card__meta {
@@ -840,14 +845,20 @@ button {
 
 .fd-main__insights {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
   align-items: start;
 }
 
 @media (max-width: 900px) {
   .fd-main__insights {
-    grid-template-columns: 1fr;
+    /* Same fix, same reasoning, as .fd-main__top's mobile breakpoint
+       above - a bare 1fr track won't shrink below the widest
+       min-content of any card inside it (Consistency, Context Switch
+       Cost, Milestones, Interruptions, etc. all share this one grid on
+       the Insights tab), so one wide stat/label anywhere in any of
+       them could blow out every card in the grid together. */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -990,7 +1001,16 @@ button {
    right-aligned so the whole list scans as a column of dates. */
 .fd-upcoming-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* minmax(0, 1fr), not bare 1fr - the middle track holds the title,
+     which already has overflow: hidden + ellipsis below, but that only
+     ever engages once the box is narrower than its content. A grid
+     item's default min-width is auto, so without the 0 floor here the
+     track never shrinks the title box down that far in the first place
+     - the ellipsis rule would sit there unused while the whole row
+     overflows instead. Same trap as every other flex:1/1fr fix in this
+     file, just one syntax further from obvious since the fix for it
+     lives on the *container*, not the item that visibly looks wrong. */
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 10px;
   padding: 8px 10px 8px 12px;
@@ -1025,6 +1045,7 @@ button {
 }
 
 .fd-upcoming-row__title {
+  min-width: 0;
   font-size: 13px;
   color: var(--parchment);
   overflow: hidden;
@@ -1302,6 +1323,16 @@ button {
 }
 
 .fd-dropdown__value {
+  /* Same broken-ellipsis trap as .fd-upcoming-row__title above - the
+     ellipsis rules below do nothing without this, since a flex item's
+     default min-width is auto and the trigger (display: flex,
+     justify-content: space-between) would rather push the chevron out
+     of the button entirely than shrink this box down to where the
+     ellipsis could engage. Worth catching here specifically since
+     Dropdown.jsx backs most of the pickers in the app - tag selects,
+     filters, quality selects - so a long option name anywhere hits
+     this the same way. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1748,6 +1779,11 @@ button {
 }
 
 .fd-deadline-completed__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   color: var(--parchment);
 }
@@ -1948,9 +1984,14 @@ button {
 }
 
 .fd-daily-plan-modal__event-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.fd-daily-plan-modal__event .fd-link-btn {
+  flex-shrink: 0;
 }
 
 .fd-day-detail-panel {
@@ -2322,12 +2363,23 @@ button {
 
 .fd-tag-row__name {
   flex: 1;
+  /* Same missing-shrink bug as .fd-quick-task-form input and
+     .fd-timer-tag-live__label - a long tag name here (this row is
+     reused for budget/deadline progress and the Hero card's tag
+     breakdown - see .fd-budget-card/.fd-deadline-card's selectors
+     targeting .fd-tag-row above) would push .fd-tag-row__total off
+     the row instead of yielding space to it. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fd-tag-row__total {
   font-family: var(--font-mono);
   color: var(--parchment-dim);
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .fd-tag-row__bar-track {
@@ -2492,6 +2544,7 @@ button {
   .fd-log-filters__date {
     max-width: none;
     flex: 1;
+    min-width: 0;
   }
 
   .fd-log-filters__clear {
@@ -3779,6 +3832,10 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
@@ -3813,6 +3870,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.03em;
@@ -4388,6 +4446,10 @@ button {
 
 .fd-budget-manager__name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 14.5px;
@@ -4397,6 +4459,7 @@ button {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--brass);
+  flex-shrink: 0;
 }
 
 .fd-tag-manager--embedded {
