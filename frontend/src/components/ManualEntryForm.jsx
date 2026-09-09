@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { createManualSession, updateTask } from "../api.js";
 import { toLocalInputValue } from "../format.js";
 import Dropdown from "./Dropdown.jsx";
@@ -64,97 +65,119 @@ export default function ManualEntryForm({ tags, tasks, onSessionCreated, onDataC
     }
   }
 
-  if (!open) {
-    return (
-      <button type="button" className="fd-daily-ritual-card fd-backfill-card" onClick={() => setOpen(true)}>
-        <span className="fd-daily-ritual-card__icon">
-          <PlusIcon />
-        </span>
-        <span className="fd-daily-ritual-card__label">Backfill a past session</span>
-      </button>
-    );
-  }
-
   return (
-    <form className="fd-manual-form" onSubmit={handleSubmit}>
-      <div className="fd-manual-form__row">
-        <label>
-          Tag
-          <Dropdown className="fd-select" value={tagId} onChange={(e) => setTagId(e.target.value)}>
-            <option value="">No tag</option>
-            {tags.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Dropdown>
-        </label>
-        {openTasks.length > 0 && (
+    // Same AnimatePresence + motion.form treatment DeadlinesView's own
+    // add-form uses (same .fd-manual-form class, in fact) - this one
+    // was missed when it was rebuilt as a card a few messages back, so
+    // it popped open/closed abruptly instead of animating like every
+    // other toggle-form in the app.
+    <AnimatePresence mode="wait" initial={false}>
+      {!open ? (
+        <motion.button
+          key="collapsed"
+          type="button"
+          className="fd-daily-ritual-card fd-backfill-card"
+          onClick={() => setOpen(true)}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <span className="fd-daily-ritual-card__icon">
+            <PlusIcon />
+          </span>
+          <span className="fd-daily-ritual-card__label">Backfill a past session</span>
+        </motion.button>
+      ) : (
+        <motion.form
+          key="expanded"
+          className="fd-manual-form"
+          onSubmit={handleSubmit}
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.25 }}
+        >
+        <div className="fd-manual-form__row">
           <label>
-            Linked task (optional)
-            <Dropdown className="fd-select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
-              <option value="">No linked task</option>
-              {openTasks.map((t) => (
+            Tag
+            <Dropdown className="fd-select" value={tagId} onChange={(e) => setTagId(e.target.value)}>
+              <option value="">No tag</option>
+              {tags.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.title}
+                  {t.name}
                 </option>
               ))}
             </Dropdown>
           </label>
-        )}
-      </div>
-      <div className="fd-manual-form__row fd-manual-form__row--dates">
-        <label>
-          Start
-          <DateTimePicker value={start} onChange={(e) => setStart(e.target.value)} required />
-        </label>
-        <label>
-          End
-          <DateTimePicker value={end} onChange={(e) => setEnd(e.target.value)} required />
-        </label>
-      </div>
-      <div className="fd-manual-form__row">
-        <label>
-          Note (optional)
-          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
-        </label>
-      </div>
-      <div className="fd-manual-form__row">
-        <label>
-          Quality (optional)
-          <div className="fd-timer-quality">
-            {QUALITY_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                className={`fd-timer-quality__btn fd-timer-quality__btn--${o.value} ${
-                  quality === o.value ? "fd-timer-quality__btn--active" : ""
-                }`}
-                onClick={() => setQuality((q) => (q === o.value ? null : o.value))}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </label>
-      </div>
-      {taskId && (
-        <div className="fd-manual-form__row">
-          <label className="fd-checkbox-row">
-            <input type="checkbox" checked={markTaskDone} onChange={(e) => setMarkTaskDone(e.target.checked)} />
-            Mark the linked task done too
+          {openTasks.length > 0 && (
+            <label>
+              Linked task (optional)
+              <Dropdown className="fd-select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+                <option value="">No linked task</option>
+                {openTasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </Dropdown>
+            </label>
+          )}
+        </div>
+        <div className="fd-manual-form__row fd-manual-form__row--dates">
+          <label>
+            Start
+            <DateTimePicker value={start} onChange={(e) => setStart(e.target.value)} required />
+          </label>
+          <label>
+            End
+            <DateTimePicker value={end} onChange={(e) => setEnd(e.target.value)} required />
           </label>
         </div>
+        <div className="fd-manual-form__row">
+          <label>
+            Note (optional)
+            <input type="text" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
+          </label>
+        </div>
+        <div className="fd-manual-form__row">
+          <label>
+            Quality (optional)
+            <div className="fd-timer-quality">
+              {QUALITY_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`fd-timer-quality__btn fd-timer-quality__btn--${o.value} ${
+                    quality === o.value ? "fd-timer-quality__btn--active" : ""
+                  }`}
+                  onClick={() => setQuality((q) => (q === o.value ? null : o.value))}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </label>
+        </div>
+        {taskId && (
+          <div className="fd-manual-form__row">
+            <label className="fd-checkbox-row">
+              <input type="checkbox" checked={markTaskDone} onChange={(e) => setMarkTaskDone(e.target.checked)} />
+              Mark the linked task done too
+            </label>
+          </div>
+        )}
+        {error && <div className="fd-inline-error">{error}</div>}
+        <div className="fd-manual-form__actions">
+          <button type="button" className="fd-link-btn" onClick={() => setOpen(false)}>
+            Cancel
+          </button>
+          <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
+            Add Session
+          </button>
+        </div>
+        </motion.form>
       )}
-      {error && <div className="fd-inline-error">{error}</div>}
-      <div className="fd-manual-form__actions">
-        <button type="button" className="fd-link-btn" onClick={() => setOpen(false)}>
-          Cancel
-        </button>
-        <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
-          Add Session
-        </button>
-      </div>
-    </form>
+    </AnimatePresence>
   );
 }
