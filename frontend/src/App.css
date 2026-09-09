@@ -752,6 +752,21 @@ button {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  /* Same reasoning as body's overflow-x above, one level deeper - a
+     hard boundary at the layout level itself, not just the document
+     root, so a still-undiscovered overflow bug in any one card gets
+     silently clipped inside that card's own space instead of pushing
+     .fd-main (and therefore the page) wider than the screen.
+     overflow-y is set explicitly (not left implicit) for the same
+     reason it's explicit on body above - leaving it unset while only
+     constraining x lets the browser silently promote y to its own
+     'auto' scroll container per spec, which is exactly what broke
+     vertical scrolling the first time this class of fix was tried on
+     <html>. .fd-main was never meant to scroll on its own (body is the
+     one real scrolling element, per body's comment) - staying explicit
+     here keeps it that way. */
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .fd-loading {
@@ -2737,8 +2752,28 @@ button {
   color: var(--parchment-dim);
 }
 
+.fd-timer-tag-live__label {
+  /* Same missing-shrink class of bug as .fd-quick-task-form input had -
+     this label and the "Change tag" button beside it are both flex
+     children of a max-width: 260px row, but without min-width: 0 a long
+     tag name won't shrink or truncate; it just overflows the row
+     visibly instead; a long enough name is real (any custom tag name
+     the person picks), not a hypothetical edge case. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fd-timer-tag-live__label strong {
   color: var(--parchment);
+}
+
+.fd-timer-tag-live .fd-link-btn {
+  /* "Change tag" needs to stay fully visible/clickable regardless of
+     how long the tag name above ends up truncating to - the label
+     gives up space, not this. */
+  flex-shrink: 0;
 }
 
 .fd-timer-note {
