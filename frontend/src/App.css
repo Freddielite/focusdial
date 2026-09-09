@@ -813,7 +813,18 @@ button {
 
 @media (max-width: 800px) {
   .fd-main__top {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), not bare 1fr - a bare 1fr track still won't
+       shrink below the *widest min-content of anything nested inside
+       it* (grid items default to min-width: auto, the same trap flex
+       items have - see .fd-quick-task-form input's and
+       .fd-timer-tag-live__label's own comments for two examples that
+       hit it one level down). Without the 0 floor here, a single wide
+       element anywhere in either column - Timer, Backfill, StatsStrip,
+       Quick Tasks, all of which share this one track on mobile - blows
+       out the whole track's width instead of shrinking to fit, which
+       is what actually pushed every card below Timer off the right
+       edge together rather than one at a time. */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -821,6 +832,10 @@ button {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* Belt-and-suspenders alongside the grid track's own minmax(0, ...)
+     above - this is a flex container too, so it inherits the same
+     default-min-width trap independently of whatever the grid does. */
+  min-width: 0;
 }
 
 .fd-main__insights {
@@ -2720,6 +2735,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
 }
 
 /* ---------- Timer suggestion hint ---------- */
