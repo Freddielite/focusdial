@@ -2910,17 +2910,22 @@ button {
 
 .fd-quick-task-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
 }
 
 .fd-quick-task-form input {
-  flex: 1;
-  /* Flex items default to min-width: auto, not 0 - without this, the
-     browser won't shrink the input below its intrinsic default size
-     (~170-200px) to make room for the 3 icon toggles + Add button
-     beside it, so on a narrow phone the row (and everything after it,
-     see html/body's overflow-x above) ends up wider than the screen. */
+  /* flex-basis 160px (not 0, like most flex:1 inputs elsewhere in this
+     file) is deliberate: it's what the wrap below is measured against.
+     Below ~160px + the actions group's own width, the actions group
+     (flex-shrink: 0, so it can't be squeezed) drops to its own line
+     under the input instead - guaranteeing this row can never overflow
+     the viewport on any screen width, rather than relying on shrink
+     math that broke here twice already (min-width: 0 alone wasn't
+     enough once the actions group's fixed width plus the input's
+     realistic minimum exceeded a narrow phone's available space). */
+  flex: 1 1 160px;
   min-width: 0;
   padding: 8px 10px;
   background: var(--grad-input);
@@ -2928,6 +2933,13 @@ button {
   color: var(--parchment);
   border-radius: 4px;
   font-family: var(--font-body);
+}
+
+.fd-quick-task-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .fd-task-list {

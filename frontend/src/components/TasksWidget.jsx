@@ -170,39 +170,41 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
           maxLength={100}
           disabled={busy}
         />
-        <button
-          type="button"
-          className={`fd-icon-btn ${tagId ? "fd-icon-btn--active" : ""}`}
-          onClick={() => setShowTag((v) => !v)}
-          aria-label="Set category"
-          title="Set category"
-          disabled={busy}
-        >
-          <TagGlyph />
-        </button>
-        <button
-          type="button"
-          className={`fd-icon-btn ${estimateMinutes ? "fd-icon-btn--active" : ""}`}
-          onClick={() => setShowEstimate((v) => !v)}
-          aria-label="Set time estimate"
-          title="Set time estimate"
-          disabled={busy}
-        >
-          <EstimateGlyph />
-        </button>
-        <button
-          type="button"
-          className={`fd-icon-btn ${dueDate ? "fd-icon-btn--active" : ""}`}
-          onClick={() => setShowDueDate((v) => !v)}
-          aria-label="Set due date"
-          title="Set due date"
-          disabled={busy}
-        >
-          <CalendarGlyph />
-        </button>
-        <button type="submit" className="fd-link-btn" disabled={busy}>
-          {busy ? "Adding…" : "Add"}
-        </button>
+        <div className="fd-quick-task-form__actions">
+          <button
+            type="button"
+            className={`fd-icon-btn ${tagId ? "fd-icon-btn--active" : ""}`}
+            onClick={() => setShowTag((v) => !v)}
+            aria-label="Set category"
+            title="Set category"
+            disabled={busy}
+          >
+            <TagGlyph />
+          </button>
+          <button
+            type="button"
+            className={`fd-icon-btn ${estimateMinutes ? "fd-icon-btn--active" : ""}`}
+            onClick={() => setShowEstimate((v) => !v)}
+            aria-label="Set time estimate"
+            title="Set time estimate"
+            disabled={busy}
+          >
+            <EstimateGlyph />
+          </button>
+          <button
+            type="button"
+            className={`fd-icon-btn ${dueDate ? "fd-icon-btn--active" : ""}`}
+            onClick={() => setShowDueDate((v) => !v)}
+            aria-label="Set due date"
+            title="Set due date"
+            disabled={busy}
+          >
+            <CalendarGlyph />
+          </button>
+          <button type="submit" className="fd-link-btn" disabled={busy}>
+            {busy ? "Adding…" : "Add"}
+          </button>
+        </div>
       </form>
       {showTag && (
         <div className="fd-quick-task-due">
