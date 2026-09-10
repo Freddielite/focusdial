@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { formatDuration } from "../format.js";
 
 // Matches the Monday-first order analytics.js already reorders `weekday`
@@ -82,48 +83,64 @@ export default function WeekdayBreakdown({ weekday, bestWeekday, history }) {
         })}
       </div>
 
-      {selected && (
-        <div className="fd-modal-overlay" onClick={() => setSelected(null)}>
-          <div className="fd-panel fd-modal-panel fd-day-detail-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="fd-panel__label" style={{ marginBottom: 0 }}>
-              {DAY_LABELS_FULL[weekday.indexOf(selected)]}
-            </div>
-            <div className="fd-day-detail__total">
-              {formatDuration(selected.seconds)} logged all-time
-              {detailSessions.length > 0 &&
-                ` across ${detailSessions.length} session${detailSessions.length === 1 ? "" : "s"}`}
-            </div>
-
-            {detailTags.length === 0 ? (
-              <div className="fd-empty">Nothing logged on this day yet.</div>
-            ) : (
-              <div className="fd-tag-list fd-day-detail__list">
-                {detailTags.map((t) => (
-                  <div key={t.name} className="fd-tag-row">
-                    <div className="fd-tag-row__head">
-                      <span className="fd-tag-dot" style={{ background: t.color }} />
-                      <span className="fd-tag-row__name">
-                        {t.name} ({t.count})
-                      </span>
-                      <span className="fd-tag-row__total">{formatDuration(t.seconds)}</span>
-                    </div>
-                    <div className="fd-tag-row__bar-track">
-                      <div
-                        className="fd-tag-row__bar"
-                        style={{ width: `${(t.seconds / maxTagSeconds) * 100}%`, background: t.color }}
-                      />
-                    </div>
-                  </div>
-                ))}
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            className="fd-modal-overlay"
+            onClick={() => setSelected(null)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <motion.div
+              className="fd-panel fd-modal-panel fd-day-detail-panel"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 6 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="fd-panel__label" style={{ marginBottom: 0 }}>
+                {DAY_LABELS_FULL[weekday.indexOf(selected)]}
               </div>
-            )}
+              <div className="fd-day-detail__total">
+                {formatDuration(selected.seconds)} logged all-time
+                {detailSessions.length > 0 &&
+                  ` across ${detailSessions.length} session${detailSessions.length === 1 ? "" : "s"}`}
+              </div>
 
-            <button type="button" className="fd-link-btn fd-day-detail__close" onClick={() => setSelected(null)}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+              {detailTags.length === 0 ? (
+                <div className="fd-empty">Nothing logged on this day yet.</div>
+              ) : (
+                <div className="fd-tag-list fd-day-detail__list">
+                  {detailTags.map((t) => (
+                    <div key={t.name} className="fd-tag-row">
+                      <div className="fd-tag-row__head">
+                        <span className="fd-tag-dot" style={{ background: t.color }} />
+                        <span className="fd-tag-row__name">
+                          {t.name} ({t.count})
+                        </span>
+                        <span className="fd-tag-row__total">{formatDuration(t.seconds)}</span>
+                      </div>
+                      <div className="fd-tag-row__bar-track">
+                        <div
+                          className="fd-tag-row__bar"
+                          style={{ width: `${(t.seconds / maxTagSeconds) * 100}%`, background: t.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button type="button" className="fd-link-btn fd-day-detail__close" onClick={() => setSelected(null)}>
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

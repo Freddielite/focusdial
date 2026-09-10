@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { updateProfile } from "../api.js";
 
 // Shown once per session (via App.jsx's `dismissed` local state, not
@@ -34,8 +35,22 @@ export default function NamePromptModal({ onUserUpdated, onDismiss }) {
   }
 
   return (
-    <div className="fd-modal-overlay" onClick={onDismiss}>
-      <div className="fd-panel fd-modal-panel fd-confirm-panel" onClick={(e) => e.stopPropagation()}>
+    <motion.div
+      className="fd-modal-overlay"
+      onClick={onDismiss}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <motion.div
+        className="fd-panel fd-modal-panel fd-confirm-panel"
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 6 }}
+        transition={{ duration: 0.2 }}
+      >
         <div className="fd-panel__label">What should we call you?</div>
         <div className="fd-confirm-body">
           Used to personalize greetings, your weekly review, and notifications - not shown to anyone else.
@@ -60,7 +75,7 @@ export default function NamePromptModal({ onUserUpdated, onDismiss }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

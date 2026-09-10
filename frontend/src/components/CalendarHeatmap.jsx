@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { formatDuration } from "../format.js";
 import { startOfLocalDay } from "../analytics.js";
 import { QUALITY_LABEL } from "./SessionLog.jsx";
@@ -89,62 +90,78 @@ export default function CalendarHeatmap({ daily, streakDays, history }) {
         {streakDays > 0 ? " Keep it going." : " Log a session to start one."}
       </div>
 
-      {selectedDay && (
-        <div className="fd-modal-overlay" onClick={() => setSelectedDay(null)}>
-          <div className="fd-panel fd-modal-panel fd-day-detail-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="fd-panel__label" style={{ marginBottom: 0 }}>
-              {dayLabel(selectedDay)}
-            </div>
-            <div className="fd-day-detail__total">{formatDuration(selectedDay.seconds)} logged</div>
+      <AnimatePresence>
+        {selectedDay && (
+          <motion.div
+            className="fd-modal-overlay"
+            onClick={() => setSelectedDay(null)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <motion.div
+              className="fd-panel fd-modal-panel fd-day-detail-panel"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 6 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="fd-panel__label" style={{ marginBottom: 0 }}>
+                {dayLabel(selectedDay)}
+              </div>
+              <div className="fd-day-detail__total">{formatDuration(selectedDay.seconds)} logged</div>
 
-            {(() => {
-              const sessions = sessionsForDay(history, selectedDay.date);
-              if (sessions.length === 0) {
-                return <div className="fd-empty">Nothing logged this day.</div>;
-              }
-              return (
-                <div className="fd-log-list fd-day-detail__list">
-                  {sessions.map((s) => (
-                    <div key={s.id} className="fd-log-row-wrap">
-                      <div
-                        className="fd-log-row fd-check-card"
-                        style={{ "--check-accent": s.tag_color || "var(--accent-session)" }}
-                      >
-                        <div className="fd-check-card__body">
-                          <span className="fd-check-card__title">{s.tag_name || "Untagged"}</span>
-                          <span className="fd-check-card__meta">{timeRange(s)}</span>
-                          {(s.crossesBefore || s.crossesAfter) && (
-                            <span className="fd-check-card__note">
-                              {s.crossesBefore && "\u2190 started the day before"}
-                              {s.crossesBefore && s.crossesAfter && " \u00b7 "}
-                              {s.crossesAfter && "continues past midnight \u2192"}
-                            </span>
-                          )}
-                        </div>
-                        <div className="fd-check-card__value">
-                          <span className="fd-check-card__value-num">
-                            {s.quality && (
-                              <span
-                                className={`fd-quality-dot fd-quality-dot--${s.quality}`}
-                                title={QUALITY_LABEL[s.quality]}
-                              />
+              {(() => {
+                const sessions = sessionsForDay(history, selectedDay.date);
+                if (sessions.length === 0) {
+                  return <div className="fd-empty">Nothing logged this day.</div>;
+                }
+                return (
+                  <div className="fd-log-list fd-day-detail__list">
+                    {sessions.map((s) => (
+                      <div key={s.id} className="fd-log-row-wrap">
+                        <div
+                          className="fd-log-row fd-check-card"
+                          style={{ "--check-accent": s.tag_color || "var(--accent-session)" }}
+                        >
+                          <div className="fd-check-card__body">
+                            <span className="fd-check-card__title">{s.tag_name || "Untagged"}</span>
+                            <span className="fd-check-card__meta">{timeRange(s)}</span>
+                            {(s.crossesBefore || s.crossesAfter) && (
+                              <span className="fd-check-card__note">
+                                {s.crossesBefore && "\u2190 started the day before"}
+                                {s.crossesBefore && s.crossesAfter && " \u00b7 "}
+                                {s.crossesAfter && "continues past midnight \u2192"}
+                              </span>
                             )}
-                            {formatDuration((new Date(s.ended_at) - new Date(s.started_at)) / 1000)}
-                          </span>
+                          </div>
+                          <div className="fd-check-card__value">
+                            <span className="fd-check-card__value-num">
+                              {s.quality && (
+                                <span
+                                  className={`fd-quality-dot fd-quality-dot--${s.quality}`}
+                                  title={QUALITY_LABEL[s.quality]}
+                                />
+                              )}
+                              {formatDuration((new Date(s.ended_at) - new Date(s.started_at)) / 1000)}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
+                    ))}
+                  </div>
+                );
+              })()}
 
-            <button type="button" className="fd-link-btn fd-day-detail__close" onClick={() => setSelectedDay(null)}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+              <button type="button" className="fd-link-btn fd-day-detail__close" onClick={() => setSelectedDay(null)}>
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

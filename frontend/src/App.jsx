@@ -921,25 +921,29 @@ export default function App({ user, onLogout, onUserUpdated }) {
         </motion.div>
       )}
 
-      {!showSplash && loaded && !user?.displayName && !namePromptDismissed && (
-        <NamePromptModal onUserUpdated={onUserUpdated} onDismiss={() => setNamePromptDismissed(true)} />
-      )}
+      <AnimatePresence>
+        {!showSplash && loaded && !user?.displayName && !namePromptDismissed && (
+          <NamePromptModal onUserUpdated={onUserUpdated} onDismiss={() => setNamePromptDismissed(true)} />
+        )}
+      </AnimatePresence>
 
-      {!showSplash && loaded && dailyRitualMode && (
-        <DailyPlanModal
-          mode={dailyRitualMode}
-          displayName={userFirstName}
-          onClose={closeDailyRitual}
-          dailyGoalSeconds={settings.daily_focus_goal_seconds}
-          todaySeconds={summary.todaySeconds}
-          todaySessions={todaySessions}
-          googleConnected={googleConnected}
-          busyBlocks={todayBusyBlocks}
-          openSlots={openSlots}
-          ranked={priorityRanking.ranked}
-          onSessionStarted={loadAll}
-        />
-      )}
+      <AnimatePresence>
+        {!showSplash && loaded && dailyRitualMode && (
+          <DailyPlanModal
+            mode={dailyRitualMode}
+            displayName={userFirstName}
+            onClose={closeDailyRitual}
+            dailyGoalSeconds={settings.daily_focus_goal_seconds}
+            todaySeconds={summary.todaySeconds}
+            todaySessions={todaySessions}
+            googleConnected={googleConnected}
+            busyBlocks={todayBusyBlocks}
+            openSlots={openSlots}
+            ranked={priorityRanking.ranked}
+            onSessionStarted={loadAll}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

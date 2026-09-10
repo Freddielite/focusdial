@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import TagManager from "./TagManager.jsx";
 import BudgetManager from "./BudgetManager.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
@@ -399,17 +399,25 @@ function ResetSection({ onDataChanged }) {
           Clear selected ({chosen.length})
         </button>
       )}
-      {confirming && (
-        <div className="fd-reset__confirm">
-          <span>This deletes the selected data. You'll have a few seconds to undo after.</span>
-          <div className="fd-reset__confirm-actions">
-            <button className="fd-link-btn" onClick={() => setConfirming(false)}>Cancel</button>
-            <button className="fd-btn fd-btn--danger fd-btn--sm" onClick={run}>
-              Yes, delete
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {confirming && (
+          <motion.div
+            className="fd-reset__confirm"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <span>This deletes the selected data. You'll have a few seconds to undo after.</span>
+            <div className="fd-reset__confirm-actions">
+              <button className="fd-link-btn" onClick={() => setConfirming(false)}>Cancel</button>
+              <button className="fd-btn fd-btn--danger fd-btn--sm" onClick={run}>
+                Yes, delete
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -449,38 +457,53 @@ function AccountName({ user, onUserUpdated }) {
     }
   }
 
-  if (!editing) {
-    return (
-      <Row title={user?.email || "Signed in"} desc={user?.displayName || "FocusDial account"}>
-        <button className="fd-link-btn" onClick={startEditing}>Edit name</button>
-      </Row>
-    );
-  }
-
   return (
-    <div className="fd-set-row fd-account-name-edit-row">
-      <div className="fd-set-row__text">
-        <div className="fd-set-row__title">{user?.email || "Signed in"}</div>
-        <div className="fd-set-row__desc">Editing name</div>
-      </div>
-      <div className="fd-account-name-edit">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          maxLength={80}
-          autoFocus
-          disabled={busy}
-        />
-        <div className="fd-account-name-edit__actions">
-          <button className="fd-btn fd-btn--start fd-btn--sm" onClick={save} disabled={busy}>
-            {busy ? "Saving…" : "Save"}
-          </button>
-          <button className="fd-link-btn" onClick={() => setEditing(false)} disabled={busy}>Cancel</button>
-        </div>
-      </div>
-      {error && <div className="fd-inline-error">{error}</div>}
-    </div>
+    <AnimatePresence mode="wait" initial={false}>
+      {!editing ? (
+        <motion.div
+          key="view"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <Row title={user?.email || "Signed in"} desc={user?.displayName || "FocusDial account"}>
+            <button className="fd-link-btn" onClick={startEditing}>Edit name</button>
+          </Row>
+        </motion.div>
+      ) : (
+        <motion.div
+          key="edit"
+          className="fd-set-row fd-account-name-edit-row"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <div className="fd-set-row__text">
+            <div className="fd-set-row__title">{user?.email || "Signed in"}</div>
+            <div className="fd-set-row__desc">Editing name</div>
+          </div>
+          <div className="fd-account-name-edit">
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              maxLength={80}
+              autoFocus
+              disabled={busy}
+            />
+            <div className="fd-account-name-edit__actions">
+              <button className="fd-btn fd-btn--start fd-btn--sm" onClick={save} disabled={busy}>
+                {busy ? "Saving…" : "Save"}
+              </button>
+              <button className="fd-link-btn" onClick={() => setEditing(false)} disabled={busy}>Cancel</button>
+            </div>
+          </div>
+          {error && <div className="fd-inline-error">{error}</div>}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

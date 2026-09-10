@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   formatDateValue,
   formatDateDisplay,
@@ -71,6 +72,36 @@ function usePopover() {
   }, [open]);
 
   return { open, setOpen, coords, triggerRef, panelRef };
+}
+
+// Shared animated portal shell for all three pickers below - same
+// spring-pop feel as Dropdown.jsx's menu (they're both fixed-position
+// popovers measured off a trigger, so it made sense to match rather
+// than invent a second popover animation style) and as
+// NotificationBell's panel, which is where that style first came from.
+// Kept in one place rather than repeated three times so the three
+// pickers can't quietly drift out of sync with each other's motion feel.
+function PopoverPanel({ open, coords, panelRef, className, children }) {
+  return (
+    <AnimatePresence>
+      {open &&
+        coords &&
+        createPortal(
+          <motion.div
+            ref={panelRef}
+            className={className}
+            style={{ left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
+            initial={{ opacity: 0, scale: 0.92, y: coords.bottom != null ? 6 : -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: coords.bottom != null ? 4 : -4 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+          >
+            {children}
+          </motion.div>,
+          document.body
+        )}
+    </AnimatePresence>
+  );
 }
 
 // Calendar grid for a single month. Pure display + click -- the caller
@@ -236,18 +267,9 @@ export function DatePicker({ value, onChange, required, className = "", placehol
         </span>
         <CalendarGlyph />
       </button>
-      {open &&
-        coords &&
-        createPortal(
-          <div
-            ref={panelRef}
-            className="fd-datefield__popover"
-            style={{ left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
-          >
-            <CalendarGrid selected={selected} onSelect={commit} />
-          </div>,
-          document.body
-        )}
+      <PopoverPanel open={open} coords={coords} panelRef={panelRef} className="fd-datefield__popover">
+        <CalendarGrid selected={selected} onSelect={commit} />
+      </PopoverPanel>
     </>
   );
 }
@@ -277,21 +299,17 @@ export function TimePicker({ value, onChange, className = "", placeholder = "Sel
         </span>
         <ClockGlyph />
       </button>
-      {open &&
-        coords &&
-        createPortal(
-          <div
-            ref={panelRef}
-            className="fd-datefield__popover fd-datefield__popover--time"
-            style={{ left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
-          >
-            <TimeColumns hour24={t.hour24} minute={t.minute} onChange={handleChange} />
-            <button type="button" className="fd-btn fd-btn--start fd-datefield__done" onClick={() => setOpen(false)}>
-              Done
-            </button>
-          </div>,
-          document.body
-        )}
+      <PopoverPanel
+        open={open}
+        coords={coords}
+        panelRef={panelRef}
+        className="fd-datefield__popover fd-datefield__popover--time"
+      >
+        <TimeColumns hour24={t.hour24} minute={t.minute} onChange={handleChange} />
+        <button type="button" className="fd-btn fd-btn--start fd-datefield__done" onClick={() => setOpen(false)}>
+          Done
+        </button>
+      </PopoverPanel>
     </>
   );
 }
@@ -335,23 +353,19 @@ export function DateTimePicker({ value, onChange, required, className = "", plac
         <span className={`fd-dropdown__value ${!value ? "fd-datefield__placeholder" : ""}`}>{display}</span>
         <CalendarGlyph />
       </button>
-      {open &&
-        coords &&
-        createPortal(
-          <div
-            ref={panelRef}
-            className="fd-datefield__popover fd-datefield__popover--combo"
-            style={{ left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
-          >
-            <CalendarGrid selected={selectedDate} onSelect={handleDaySelect} />
-            <div className="fd-datefield__divider" />
-            <TimeColumns hour24={t.hour24} minute={t.minute} onChange={handleTimeChange} />
-            <button type="button" className="fd-btn fd-btn--start fd-datefield__done" onClick={() => setOpen(false)}>
-              Done
-            </button>
-          </div>,
-          document.body
-        )}
+      <PopoverPanel
+        open={open}
+        coords={coords}
+        panelRef={panelRef}
+        className="fd-datefield__popover fd-datefield__popover--combo"
+      >
+        <CalendarGrid selected={selectedDate} onSelect={handleDaySelect} />
+        <div className="fd-datefield__divider" />
+        <TimeColumns hour24={t.hour24} minute={t.minute} onChange={handleTimeChange} />
+        <button type="button" className="fd-btn fd-btn--start fd-datefield__done" onClick={() => setOpen(false)}>
+          Done
+        </button>
+      </PopoverPanel>
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { getRunningSession, startSession, stopSession, updateSession, updateTask } from "../api.js";
 import { formatClock, formatDuration } from "../format.js";
 import { showRunningSessionNotification, clearRunningSessionNotification } from "../push.js";
@@ -477,36 +478,52 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
       <div className={`fd-timer-display ${running ? "fd-timer-display--running" : ""}`}>
         {formatClock(elapsed)}
       </div>
-      {awayPrompt && (
-        <div className="fd-timer-away-prompt">
-          <span>You were away for {formatDuration(awayPrompt.awayMs / 1000)}. Keep it in this session?</span>
-          <div className="fd-timer-away-prompt__actions">
-            <button type="button" className="fd-link-btn" onClick={() => setAwayPrompt(null)}>
-              Keep it
-            </button>
-            <button type="button" className="fd-link-btn" onClick={handleTrimAway}>
-              Trim {formatDuration(awayPrompt.awayMs / 1000)}
-            </button>
-          </div>
-        </div>
-      )}
-      {conflict && !running && (
-        <div className="fd-timer-conflict">
-          <span className="fd-timer-conflict__text">
-            Already running on {conflict.device_name ? <strong>{conflict.device_name}</strong> : "another device"}:{" "}
-            <strong>{conflict.tag_name || "No tag"}</strong>, started{" "}
-            {formatDuration((conflictNowMs - new Date(conflict.started_at).getTime()) / 1000)} ago.
-          </span>
-          <div className="fd-timer-conflict__actions">
-            <button type="button" className="fd-link-btn" onClick={handleAdoptConflict}>
-              Switch to it here
-            </button>
-            <button type="button" className="fd-icon-btn" onClick={() => setConflict(null)} aria-label="Dismiss">
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {awayPrompt && (
+          <motion.div
+            className="fd-timer-away-prompt"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <span>You were away for {formatDuration(awayPrompt.awayMs / 1000)}. Keep it in this session?</span>
+            <div className="fd-timer-away-prompt__actions">
+              <button type="button" className="fd-link-btn" onClick={() => setAwayPrompt(null)}>
+                Keep it
+              </button>
+              <button type="button" className="fd-link-btn" onClick={handleTrimAway}>
+                Trim {formatDuration(awayPrompt.awayMs / 1000)}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {conflict && !running && (
+          <motion.div
+            className="fd-timer-conflict"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <span className="fd-timer-conflict__text">
+              Already running on {conflict.device_name ? <strong>{conflict.device_name}</strong> : "another device"}:{" "}
+              <strong>{conflict.tag_name || "No tag"}</strong>, started{" "}
+              {formatDuration((conflictNowMs - new Date(conflict.started_at).getTime()) / 1000)} ago.
+            </span>
+            <div className="fd-timer-conflict__actions">
+              <button type="button" className="fd-link-btn" onClick={handleAdoptConflict}>
+                Switch to it here
+              </button>
+              <button type="button" className="fd-icon-btn" onClick={() => setConflict(null)} aria-label="Dismiss">
+                ✕
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {!running && (
         <input
           type="text"
@@ -549,21 +566,30 @@ export default function TimerPanel({ tags, tasks, hourlyTagSuggestions, tagVocab
           ))}
         </Dropdown>
       )}
-      {running && retagging && (
-        <Dropdown
-          className="fd-select"
-          value={running.tag_id || ""}
-          onChange={(e) => handleRetag(e.target.value)}
-          disabled={retagBusy}
-        >
-          <option value="">No tag</option>
-          {tags.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </Dropdown>
-      )}
+      <AnimatePresence>
+        {running && retagging && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Dropdown
+              className="fd-select"
+              value={running.tag_id || ""}
+              onChange={(e) => handleRetag(e.target.value)}
+              disabled={retagBusy}
+            >
+              <option value="">No tag</option>
+              {tags.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </Dropdown>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {suggestedTagId && !running && (
         <div className="fd-timer-suggestion">
           Suggested based on what you usually work on now

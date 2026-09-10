@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { startSession } from "../api.js";
 import { useDeviceName } from "../hooks/useDeviceName.js";
 import { formatDuration } from "../format.js";
@@ -64,10 +65,21 @@ export default function DailyPlanModal({
   const greetingName = displayName ? `, ${displayName}` : "";
 
   return (
-    <div className="fd-modal-overlay" onClick={onClose}>
-      <div
+    <motion.div
+      className="fd-modal-overlay"
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <motion.div
         className="fd-panel fd-modal-panel fd-confirm-panel fd-daily-plan-modal"
         onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 6 }}
+        transition={{ duration: 0.2 }}
       >
         <div className="fd-panel__label">
           {mode === "morning" ? `Good morning${greetingName}` : `How did today go${greetingName}?`}
@@ -151,7 +163,7 @@ export default function DailyPlanModal({
             {mode === "morning" ? "Let's go" : "Done"}
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

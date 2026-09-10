@@ -1,5 +1,6 @@
 import { Children, isValidElement, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 
 let dropdownIdCounter = 0;
 
@@ -140,25 +141,33 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      {open &&
-        coords &&
-        createPortal(
-          <ul
-            className="fd-dropdown__list"
-            role="listbox"
-            ref={listRef}
-            tabIndex={-1}
-            onKeyDown={onListKeyDown}
-            aria-activedescendant={`${idRef.current}-${highlighted}`}
-            style={{
-              left: coords.left,
-              minWidth: coords.minWidth,
-              maxWidth: `calc(100vw - ${coords.left * 2}px)`,
-              top: coords.top,
-              bottom: coords.bottom,
-              maxHeight: coords.maxHeight,
-            }}
-          >
+      <AnimatePresence>
+        {open &&
+          coords &&
+          createPortal(
+            <motion.ul
+              className="fd-dropdown__list"
+              role="listbox"
+              ref={listRef}
+              tabIndex={-1}
+              onKeyDown={onListKeyDown}
+              aria-activedescendant={`${idRef.current}-${highlighted}`}
+              style={{
+                left: coords.left,
+                minWidth: coords.minWidth,
+                maxWidth: `calc(100vw - ${coords.left * 2}px)`,
+                top: coords.top,
+                bottom: coords.bottom,
+                maxHeight: coords.maxHeight,
+              }}
+              // Same popover feel as NotificationBell's panel - grows from
+              // the trigger rather than just appearing, spring instead of
+              // a linear fade so it matches that same snappy weight.
+              initial={{ opacity: 0, scale: 0.92, y: coords.bottom != null ? 6 : -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: coords.bottom != null ? 4 : -4 }}
+              transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            >
             {options.map((opt, i) => (
               <li
                 key={`${opt.value}-${i}`}
@@ -179,9 +188,10 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
                 {opt.label}
               </li>
             ))}
-          </ul>,
-          document.body,
-        )}
+          </motion.ul>,
+            document.body,
+          )}
+      </AnimatePresence>
     </>
   );
 }

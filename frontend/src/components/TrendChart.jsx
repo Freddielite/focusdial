@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { formatDuration } from "../format.js";
 
 // Fixed width per bar column so labels always have enough room to sit
@@ -177,56 +178,76 @@ export default function TrendChart({ weeklyTotals, monthlyTotals, weekOverWeek, 
         </div>
       </div>
 
-      {selected &&
-        (() => {
-          const detailSessions = sessionsForPeriod(history, selected.periodStart, view);
-          const detailTags = tagBreakdownFor(detailSessions);
-          const maxTagSeconds = Math.max(...detailTags.map((t) => t.seconds), 1);
-          const label = view === "week" ? weekLabel(selected.periodStart) : monthLabel(selected.periodStart, now);
-          return (
-            <div className="fd-modal-overlay" onClick={() => setSelected(null)}>
-              <div className="fd-panel fd-modal-panel fd-day-detail-panel" onClick={(e) => e.stopPropagation()}>
-                <div className="fd-panel__label" style={{ marginBottom: 0 }}>
-                  {view === "week" ? `Week of ${label}` : label}
-                  {selected.isCurrent ? " (in progress)" : ""}
-                </div>
-                <div className="fd-day-detail__total">
-                  {formatDuration(selected.seconds)} logged
-                  {detailSessions.length > 0 &&
-                    ` across ${detailSessions.length} session${detailSessions.length === 1 ? "" : "s"}`}
-                </div>
-
-                {detailTags.length === 0 ? (
-                  <div className="fd-empty">Nothing logged this {view === "week" ? "week" : "month"}.</div>
-                ) : (
-                  <div className="fd-tag-list fd-day-detail__list">
-                    {detailTags.map((t) => (
-                      <div key={t.name} className="fd-tag-row">
-                        <div className="fd-tag-row__head">
-                          <span className="fd-tag-dot" style={{ background: t.color }} />
-                          <span className="fd-tag-row__name">
-                            {t.name} ({t.count})
-                          </span>
-                          <span className="fd-tag-row__total">{formatDuration(t.seconds)}</span>
-                        </div>
-                        <div className="fd-tag-row__bar-track">
-                          <div
-                            className="fd-tag-row__bar"
-                            style={{ width: `${(t.seconds / maxTagSeconds) * 100}%`, background: t.color }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+      <AnimatePresence>
+        {selected &&
+          (() => {
+            const detailSessions = sessionsForPeriod(history, selected.periodStart, view);
+            const detailTags = tagBreakdownFor(detailSessions);
+            const maxTagSeconds = Math.max(...detailTags.map((t) => t.seconds), 1);
+            const label = view === "week" ? weekLabel(selected.periodStart) : monthLabel(selected.periodStart, now);
+            return (
+              <motion.div
+                className="fd-modal-overlay"
+                onClick={() => setSelected(null)}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                <motion.div
+                  className="fd-panel fd-modal-panel fd-day-detail-panel"
+                  onClick={(e) => e.stopPropagation()}
+                  initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.97, y: 6 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="fd-panel__label" style={{ marginBottom: 0 }}>
+                    {view === "week" ? `Week of ${label}` : label}
+                    {selected.isCurrent ? " (in progress)" : ""}
                   </div>
-                )}
+                  <div className="fd-day-detail__total">
+                    {formatDuration(selected.seconds)} logged
+                    {detailSessions.length > 0 &&
+                      ` across ${detailSessions.length} session${detailSessions.length === 1 ? "" : "s"}`}
+                  </div>
 
-                <button type="button" className="fd-link-btn fd-day-detail__close" onClick={() => setSelected(null)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          );
-        })()}
+                  {detailTags.length === 0 ? (
+                    <div className="fd-empty">Nothing logged this {view === "week" ? "week" : "month"}.</div>
+                  ) : (
+                    <div className="fd-tag-list fd-day-detail__list">
+                      {detailTags.map((t) => (
+                        <div key={t.name} className="fd-tag-row">
+                          <div className="fd-tag-row__head">
+                            <span className="fd-tag-dot" style={{ background: t.color }} />
+                            <span className="fd-tag-row__name">
+                              {t.name} ({t.count})
+                            </span>
+                            <span className="fd-tag-row__total">{formatDuration(t.seconds)}</span>
+                          </div>
+                          <div className="fd-tag-row__bar-track">
+                            <div
+                              className="fd-tag-row__bar"
+                              style={{ width: `${(t.seconds / maxTagSeconds) * 100}%`, background: t.color }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="fd-link-btn fd-day-detail__close"
+                    onClick={() => setSelected(null)}
+                  >
+                    Close
+                  </button>
+                </motion.div>
+              </motion.div>
+            );
+          })()}
+      </AnimatePresence>
     </div>
   );
 }
