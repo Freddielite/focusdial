@@ -28,6 +28,7 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
   const triggerRef = useRef(null);
   const listRef = useRef(null);
   const idRef = useRef(`fd-dd-${++dropdownIdCounter}`);
+  const hasFocusedRef = useRef(false);
 
   const selectedIndex = Math.max(0, options.findIndex((o) => o.value === value));
   const selected = options[selectedIndex];
@@ -37,7 +38,12 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const listHeight = Math.min(280, options.length * 38 + 8);
-    const spaceBelow = window.innerHeight - rect.bottom;
+    // visualViewport reflects the actual visible area and shrinks when the
+    // on-screen keyboard opens; window.innerHeight doesn't reliably update
+    // for that on iOS Safari, so a popover positioned against it can end
+    // up placed behind/clipped by the keyboard instead of above it.
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom;
     const flipUp = spaceBelow < listHeight && rect.top > spaceBelow;
     setCoords({
       left: rect.left,
@@ -47,7 +53,7 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
       // with longer labels even when there's plenty of room to grow.
       minWidth: rect.width,
       top: flipUp ? undefined : rect.bottom + 4,
-      bottom: flipUp ? window.innerHeight - rect.top + 4 : undefined,
+      bottom: flipUp ? viewportHeight - rect.top + 4 : undefined,
       maxHeight: flipUp ? Math.min(280, rect.top - 12) : Math.min(280, spaceBelow - 12),
     });
   }
@@ -55,7 +61,6 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
   useLayoutEffect(() => {
     if (!open) return undefined;
     measure();
-    listRef.current?.focus();
     setHighlighted(selectedIndex);
 
     function onScrollOrResize() {
@@ -71,16 +76,35 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
     }
     window.addEventListener("scroll", onScrollOrResize, true);
     window.addEventListener("resize", onScrollOrResize);
+    window.visualViewport?.addEventListener("resize", onScrollOrResize);
+    window.visualViewport?.addEventListener("scroll", onScrollOrResize);
     document.addEventListener("mousedown", onDocPointerDown);
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("scroll", onScrollOrResize, true);
       window.removeEventListener("resize", onScrollOrResize);
+      window.visualViewport?.removeEventListener("resize", onScrollOrResize);
+      window.visualViewport?.removeEventListener("scroll", onScrollOrResize);
       document.removeEventListener("mousedown", onDocPointerDown);
       window.removeEventListener("keydown", onKey);
+      hasFocusedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Separate from the effect above: that one fires the instant `open`
+  // flips true, before the re-render that actually mounts the portaled
+  // <ul> (coords is still null at that point), so a .focus() call there
+  // always lands on a stale null ref and keyboard nav gets no initial
+  // focus. This effect fires once coords is actually set - i.e. once the
+  // list exists in the DOM - and hasFocusedRef keeps it from re-stealing
+  // focus on every later scroll/resize-triggered coords update while
+  // the list is still open.
+  useLayoutEffect(() => {
+    if (!open || !coords || hasFocusedRef.current) return;
+    listRef.current?.focus();
+    hasFocusedRef.current = true;
+  }, [open, coords]);
 
   function commit(index) {
     const opt = options[index];

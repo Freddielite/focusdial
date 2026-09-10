@@ -34,13 +34,19 @@ function usePopover() {
     const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
+    // visualViewport reflects the actual visible area and shrinks when the
+    // on-screen keyboard opens; window.innerHeight doesn't reliably update
+    // for that on iOS Safari, so a panel positioned against it can end up
+    // placed behind/clipped by the keyboard instead of above it - matters
+    // here since Note sits right above these fields in ManualEntryForm.
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom;
     const flipUp = spaceBelow < panelHeight && rect.top > spaceBelow;
     setCoords({
       left: Math.min(rect.left, window.innerWidth - 300),
       minWidth: rect.width,
       top: flipUp ? undefined : rect.bottom + 6,
-      bottom: flipUp ? window.innerHeight - rect.top + 6 : undefined,
+      bottom: flipUp ? viewportHeight - rect.top + 6 : undefined,
     });
   }
 
@@ -60,11 +66,15 @@ function usePopover() {
     }
     window.addEventListener("scroll", onScrollOrResize, true);
     window.addEventListener("resize", onScrollOrResize);
+    window.visualViewport?.addEventListener("resize", onScrollOrResize);
+    window.visualViewport?.addEventListener("scroll", onScrollOrResize);
     document.addEventListener("mousedown", onDocPointerDown);
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("scroll", onScrollOrResize, true);
       window.removeEventListener("resize", onScrollOrResize);
+      window.visualViewport?.removeEventListener("resize", onScrollOrResize);
+      window.visualViewport?.removeEventListener("scroll", onScrollOrResize);
       document.removeEventListener("mousedown", onDocPointerDown);
       window.removeEventListener("keydown", onKey);
     };
