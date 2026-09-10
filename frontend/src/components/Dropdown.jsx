@@ -141,10 +141,19 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      <AnimatePresence>
-        {open &&
-          coords &&
-          createPortal(
+      {createPortal(
+        // AnimatePresence has to live INSIDE the portaled subtree, not
+        // wrapped around the createPortal(...) call. createPortal returns
+        // a ReactPortal, not a React element - React.isValidElement (which
+        // AnimatePresence uses internally to track its children) is false
+        // for it, so AnimatePresence silently drops it and nothing ever
+        // reaches document.body. The trigger's `open` state still flips
+        // (so the chevron rotates), but the list itself never mounts.
+        // Portaling an always-present <AnimatePresence> and putting the
+        // conditional inside it fixes that, since AnimatePresence now
+        // tracks the real motion.ul element rather than the portal call.
+        <AnimatePresence>
+          {open && coords && (
             <motion.ul
               className="fd-dropdown__list"
               role="listbox"
@@ -168,30 +177,31 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
               exit={{ opacity: 0, scale: 0.95, y: coords.bottom != null ? 4 : -4 }}
               transition={{ type: "spring", stiffness: 420, damping: 30 }}
             >
-            {options.map((opt, i) => (
-              <li
-                key={`${opt.value}-${i}`}
-                id={`${idRef.current}-${i}`}
-                role="option"
-                aria-selected={opt.value === value}
-                className={[
-                  "fd-dropdown__option",
-                  opt.value === value ? "fd-dropdown__option--selected" : "",
-                  i === highlighted ? "fd-dropdown__option--active" : "",
-                  opt.disabled ? "fd-dropdown__option--disabled" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onMouseEnter={() => setHighlighted(i)}
-                onClick={() => commit(i)}
-              >
-                {opt.label}
-              </li>
-            ))}
-          </motion.ul>,
-            document.body,
+              {options.map((opt, i) => (
+                <li
+                  key={`${opt.value}-${i}`}
+                  id={`${idRef.current}-${i}`}
+                  role="option"
+                  aria-selected={opt.value === value}
+                  className={[
+                    "fd-dropdown__option",
+                    opt.value === value ? "fd-dropdown__option--selected" : "",
+                    i === highlighted ? "fd-dropdown__option--active" : "",
+                    opt.disabled ? "fd-dropdown__option--disabled" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onMouseEnter={() => setHighlighted(i)}
+                  onClick={() => commit(i)}
+                >
+                  {opt.label}
+                </li>
+              ))}
+            </motion.ul>
           )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body,
+      )}
     </>
   );
 }

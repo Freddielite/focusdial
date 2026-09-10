@@ -82,25 +82,31 @@ function usePopover() {
 // Kept in one place rather than repeated three times so the three
 // pickers can't quietly drift out of sync with each other's motion feel.
 function PopoverPanel({ open, coords, panelRef, className, children }) {
-  return (
+  // AnimatePresence has to live INSIDE the portaled subtree, not wrapped
+  // around the createPortal(...) call - see the matching comment in
+  // Dropdown.jsx. createPortal returns a ReactPortal, which
+  // React.isValidElement (used internally by AnimatePresence to track
+  // its children) treats as false, so AnimatePresence silently drops it
+  // and nothing ever reaches document.body: the trigger's `open` state
+  // still flips (chevron rotates, aria-expanded updates) but the panel
+  // itself never mounts.
+  return createPortal(
     <AnimatePresence>
-      {open &&
-        coords &&
-        createPortal(
-          <motion.div
-            ref={panelRef}
-            className={className}
-            style={{ left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
-            initial={{ opacity: 0, scale: 0.92, y: coords.bottom != null ? 6 : -6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: coords.bottom != null ? 4 : -4 }}
-            transition={{ type: "spring", stiffness: 420, damping: 30 }}
-          >
-            {children}
-          </motion.div>,
-          document.body
-        )}
-    </AnimatePresence>
+      {open && coords && (
+        <motion.div
+          ref={panelRef}
+          className={className}
+          style={{ left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
+          initial={{ opacity: 0, scale: 0.92, y: coords.bottom != null ? 6 : -6 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: coords.bottom != null ? 4 : -4 }}
+          transition={{ type: "spring", stiffness: 420, damping: 30 }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body
   );
 }
 
