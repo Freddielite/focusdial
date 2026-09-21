@@ -17,7 +17,7 @@
 // cache name isn't required for this change alone (no existing cache
 // keys are invalidated), but keeping it in sync with the file avoids
 // confusion later.
-const CACHE_NAME = "focusdial-shell-v3";
+const CACHE_NAME = "focusdial-shell-v4";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {

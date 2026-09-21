@@ -135,41 +135,51 @@ function PopoverPanel({ open, coords, panelRef, className, onClose, children }) 
   // still flips (chevron rotates, aria-expanded updates) but the panel
   // itself never mounts.
   const isSheet = coords?.sheet;
+
+  const panel = (
+    <motion.div
+      ref={panelRef}
+      className={`${className} ${isSheet ? "fd-datefield__popover--sheet" : ""}`}
+      // Sheet mode centers via the backdrop's flexbox below, not CSS
+      // transform -- Framer Motion writes its own `transform` (scale/y)
+      // straight onto this same element's inline style every frame,
+      // which would silently clobber a CSS `transform: translateY(-50%)`
+      // centering trick placed here instead. Keeping the two mechanisms
+      // on separate elements is what actually makes centering stick.
+      style={isSheet ? undefined : { left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
+      onClick={isSheet ? (e) => e.stopPropagation() : undefined}
+      initial={{ opacity: 0, scale: 0.92, y: isSheet ? 0 : coords.bottom != null ? 6 : -6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: isSheet ? 0 : coords.bottom != null ? 4 : -4 }}
+      transition={{ type: "spring", stiffness: 420, damping: 30 }}
+    >
+      {children}
+    </motion.div>
+  );
+
   return createPortal(
     <AnimatePresence>
-      {open && coords && (
-        <>
-          {/* Mobile-only backdrop: without it, a scroll gesture that
-              runs out of room inside the time columns "chains" into
-              scrolling the page underneath (iOS's default overscroll
-              behavior), and any tap outside the panel falls straight
-              through to whatever's behind it. A full-screen fixed layer
-              intercepts both. Desktop keeps the lighter click-outside-
-              to-close behavior in usePopover instead, since a dimmed
-              backdrop over a whole desktop screen for a small dropdown
-              would be visually heavy-handed. */}
-          {isSheet && (
-            <motion.div
-              className="fd-datefield__backdrop"
-              onClick={onClose}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            />
-          )}
-          <motion.div
-            ref={panelRef}
-            className={`${className} ${isSheet ? "fd-datefield__popover--sheet" : ""}`}
-            style={isSheet ? undefined : { left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
-            initial={{ opacity: 0, scale: 0.92, y: isSheet ? 0 : coords.bottom != null ? 6 : -6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: isSheet ? 0 : coords.bottom != null ? 4 : -4 }}
-            transition={{ type: "spring", stiffness: 420, damping: 30 }}
-          >
-            {children}
-          </motion.div>
-        </>
+      {open && coords && isSheet && (
+        // Mobile: the backdrop doubles as the centering container (flex
+        // align/justify-center in CSS) so the panel needs no transform
+        // math of its own for position, only for its own enter/exit
+        // scale+fade. It also blocks scroll-chaining and outside taps
+        // from reaching the app behind it - see the earlier comment on
+        // .fd-datefield__backdrop in App.css for why that matters here.
+        // Desktop keeps the lighter click-outside-to-close behavior in
+        // usePopover instead of a full-screen dim, which would be
+        // visually heavy-handed for a small dropdown.
+        <motion.div
+          className="fd-datefield__backdrop"
+          onClick={onClose}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          {panel}
+        </motion.div>
       )}
+      {open && coords && !isSheet && panel}
     </AnimatePresence>,
     document.body
   );

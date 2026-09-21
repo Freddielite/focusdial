@@ -1424,15 +1424,16 @@ button {
   background: rgba(0, 0, 0, 0.5);
   z-index: 199;
   touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
 }
 
 .fd-datefield__popover--sheet {
-  position: fixed;
-  left: 16px;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: auto;
+  position: static;
+  width: 100%;
+  max-width: 360px;
   max-height: 80vh;
   overflow-y: auto;
   overscroll-behavior: contain;
