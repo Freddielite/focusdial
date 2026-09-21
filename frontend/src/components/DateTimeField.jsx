@@ -136,7 +136,7 @@ function PopoverPanel({ open, coords, panelRef, className, onClose, children }) 
   // itself never mounts.
   const isSheet = coords?.sheet;
 
-  const panel = (
+  const panel = open && coords ? (
     <motion.div
       ref={panelRef}
       className={`${className} ${isSheet ? "fd-datefield__popover--sheet" : ""}`}
@@ -155,7 +155,7 @@ function PopoverPanel({ open, coords, panelRef, className, onClose, children }) 
     >
       {children}
     </motion.div>
-  );
+  ) : null;
 
   return createPortal(
     <AnimatePresence>
