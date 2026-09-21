@@ -34,7 +34,7 @@ function sameDay(a, b) {
 // clipped off the bottom of the screen instead of flipping up. Once the
 // panel actually mounts, a second pass below re-measures its real
 // height and re-flips if the estimate was wrong.
-function usePopover(estimatedHeight = 360) {
+function usePopover(estimatedHeight = 360, forceSheet = false) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState(null);
   const triggerRef = useRef(null);
@@ -52,13 +52,15 @@ function usePopover(estimatedHeight = 360) {
     const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
     const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
     // Below ~480px wide there's rarely enough room in either direction to
-    // anchor a popover beside its trigger without it either overflowing
-    // the screen or landing so far from the field it looks unrelated to
-    // it -- exactly what the 580px-tall combined date+time popover was
-    // doing on phones, jammed against the top or bottom edge instead of
-    // near whatever field opened it. Below that width, skip the anchored
-    // math and present as a centered sheet with its own scroll instead.
-    if (viewportWidth <= 480) {
+    // anchor a popover beside its trigger without it overflowing the
+    // screen. DateTimePicker also forces this unconditionally (see its
+    // usePopover(580, true) call below) regardless of width, since its
+    // combined calendar+time-columns panel is tall enough (~580px) that
+    // trying to anchor it beside a trigger caused it to render off-screen
+    // or run below the fold on real devices even when the width check
+    // above should have caught it -- centering it outright removes the
+    // guesswork instead of chasing more breakpoint edge cases.
+    if (forceSheet || viewportWidth <= 480) {
       setCoords({ sheet: true });
       return;
     }
@@ -456,7 +458,7 @@ export function DateTimePicker({
   placeholder = "Select date & time",
   restrictFuture = false,
 }) {
-  const { open, setOpen, coords, triggerRef, panelRef } = usePopover(580);
+  const { open, setOpen, coords, triggerRef, panelRef } = usePopover(580, true);
   const [datePart, timePart] = value ? value.split("T") : [null, null];
   const selectedDate = parseDateValue(datePart);
   const t = parseTimeValue(timePart) || { hour24: 9, minute: 0 };
