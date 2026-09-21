@@ -56,9 +56,17 @@ export default function SessionEditModal({ session, tags, tasks, onCancel, onSav
     <motion.form
       className="fd-manual-form fd-inline-edit-form"
       onSubmit={handleSubmit}
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
+      layout
+      // No height animation here on purpose - Framer Motion can't
+      // interpolate straight to/from "auto", so it has to render the
+      // form at full height first just to measure it, and that
+      // measurement step is what showed up as a flash/snap on open and
+      // close. `layout` instead uses FLIP (measures before and after in
+      // the same frame, then animates the difference), so the row grows
+      // and shrinks smoothly with no separate measurement pass to flicker.
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
     >
       <div className="fd-manual-form__row">
