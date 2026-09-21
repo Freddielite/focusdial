@@ -1,0 +1,949 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import Splash from "./components/Splash.jsx";
+import TopLoadingBar from "./components/TopLoadingBar.jsx";
+import PullToRefresh from "./components/PullToRefresh.jsx";
+import TabNav from "./components/TabNav.jsx";
+import { useNotifications } from "./hooks/useNotifications.js";
+import ThemeToggle from "./components/ThemeToggle.jsx";
+import FocusMark from "./components/FocusMark.jsx";
+import NotificationBell from "./components/NotificationBell.jsx";
+import { useTheme } from "./hooks/useTheme.js";
+import { useToast } from "./components/Toast.jsx";
+import TodayView from "./components/TodayView.jsx";
+import InsightsView from "./components/InsightsView.jsx";
+import BudgetsView from "./components/BudgetsView.jsx";
+import DeadlinesView from "./components/DeadlinesView.jsx";
+import RemindersView from "./components/RemindersView.jsx";
+import SettingsView from "./components/SettingsView.jsx";
+import NamePromptModal from "./components/NamePromptModal.jsx";
+import DailyPlanModal from "./components/DailyPlanModal.jsx";
+import { maybePushEvent } from "./push.js";
+import { formatDuration, firstName } from "./format.js";
+import {
+  listTags,
+  getSessionHistory,
+  listBudgets,
+  listDeadlines,
+  listReminders,
+  listTasks,
+  listCompletedTasks,
+  getSettings,
+  updateSettings,
+  setSlowRequestHandler,
+  getTodayBusyBlocks,
+  createReminder,
+} from "./api.js";
+import { computeSummary, computeBudgetProgress, computeDeadlineProgress, computeInsightOfTheDay, computeRiskDigest, computeWeeklyReview, computeDeadlineTrackRecord, computeGoalProjection, computeOpenSlots, computeAutomationTriggers, buildTagVocabulary } from "./analytics.js";
+import { computePriorityRanking, computeUnscheduledSuggestion } from "./priorityEngine.js";
+import { useSuggestionDismissals } from "./hooks/useSuggestionDismissals.js";
+import { useDailyRitualSeen } from "./hooks/useDailyRitual.js";
+
+const DEFAULT_SETTINGS = {
+  push_enabled: true,
+  automation_reminders: true,
+  automation_deadline_pace: true,
+  automation_streak: true,
+  automation_runaway_timer: true,
+  automation_weekly_digest: true,
+  // Not previously in this fallback object even though the column has
+  // existed for a while (used elsewhere via `settings.automation_google_sync`) -
+  // left alone rather than "fixed" here, since that's a pre-existing gap
+  // unrelated to this session's task and only matters if getSettings()
+  // itself fails (the .catch below), which already falls back to
+  // this whole object rather than a live server value in that case.
+  automation_category_nudge: true,
+  automation_risk_reminders: true,
+  notify_session_completed: true,
+  notify_deadline_completed: true,
+  notify_budget_reached: true,
+  rest_day_of_week: null,
+  streak_recovery_grace_enabled: false,
+  daily_focus_goal_seconds: null,
+  weekly_digest_day_of_week: 0,
+  weekly_digest_hour: 19,
+};
+
+const WORSENING_PACE = new Set(["tight", "behind", "overdue"]);
+const PACE_COPY = {
+  tight: "Pace is getting tight, a bit more each day keeps this on track.",
+  behind: "You've fallen behind pace on this deadline.",
+  overdue: "This deadline is now overdue.",
+};
+
+const VALID_TABS = new Set(["today", "insights", "budgets", "deadlines", "reminders", "settings"]);
+
+export default function App({ user, onLogout, onUserUpdated }) {
+  // Every place this app addresses someone by name (greeting, weekly
+  // review title, streak message, push notifications) wants just the
+  // first word of whatever's in `displayName` - see firstName's own
+  // comment in format.js. Computed once here rather than at each call
+  // site so there's one place, not several, doing that reduction.
+  const userFirstName = user?.displayName ? firstName(user.displayName) : null;
+  const [showSplash, setShowSplash] = useState(true);
+  // Local-only, not persisted - "Skip for now" means "not this session,"
+  // not "never ask again." See NamePromptModal for why that's the
+  // deliberate choice rather than a stored dismissal flag.
+  const [namePromptDismissed, setNamePromptDismissed] = useState(false);
+  // Home-screen shortcuts (see manifest.webmanifest's `shortcuts`) deep
+  // link via ?tab=... - read once at mount rather than defaulting to
+  // "today" and switching in an effect, so there's no visible flash of
+  // the wrong tab before the switch happens.
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return VALID_TABS.has(tab) ? tab : "today";
+  });
+  // Set when a link elsewhere (e.g. Budgets tab's "Manage budgets")
+  // wants Settings to open scrolled to and highlighting a specific
+  // section, instead of just landing at the top. SettingsView consumes
+  // and clears it once it's scrolled there.
+  const [settingsScrollTarget, setSettingsScrollTarget] = useState(null);
+  // The page itself is the scroll container (.fd-main has no overflow
+  // of its own), and nothing else resets that scroll position on tab
+  // switches - so scrolling to the bottom of a long tab (Settings) and
+  // then clicking a shorter one (Today) left the window sitting at the
+  // same scrollY, which now lands somewhere in the middle or bottom of
+  // the new tab instead of its top.
+  //
+  // Skipped when landing on Settings with a pending scrollTarget (the
+  // Budgets tab's "Manage budgets" link) - see below.
+  //
+  // useLayoutEffect, not useEffect: plain useEffect fires after the
+  // browser has already painted, so for one frame the new tab's
+  // content would render at whatever scrollY the old tab was left at
+  // (cut off mid-content, or floating in blank space if the new tab is
+  // shorter) before snapping to top - a jump that was only visible
+  // when there was scroll to correct, which made switching tabs feel
+  // inconsistent depending on scroll position. useLayoutEffect runs
+  // synchronously before paint, so the reset lands in the same frame
+  // as the tab swap regardless of where you scrolled from.
+  //
+  // Deliberately keyed on activeTab alone, NOT settingsScrollTarget.
+  // React runs every layout effect in the tree, parent or child, before
+  // any passive effect runs - so on the commit where SettingsView
+  // mounts with a pending scrollTarget, this effect fires first (while
+  // it's still set) and correctly skips. But SettingsView's own
+  // scrollIntoView effect is a passive effect: it starts the smooth
+  // scroll and then immediately calls onScrollTargetConsumed to clear
+  // settingsScrollTarget, which used to be in this effect's dependency
+  // array. That clearing, on its own, re-ran this effect - now with the
+  // guard false - and fired an instant window.scrollTo(0) directly on
+  // top of the still-in-progress smooth scroll, snapping straight back
+  // to the top before the section it had just scrolled to was ever
+  // visible (the "Manage budgets" link looked like it did nothing but
+  // reopen Settings at the top). Depending on activeTab only means
+  // clearing settingsScrollTarget while staying on the same tab no
+  // longer re-triggers this effect at all - it now only ever fires on
+  // an actual tab change, still reading whatever settingsScrollTarget
+  // holds at that moment via closure.
+  useLayoutEffect(() => {
+    if (activeTab === "settings" && settingsScrollTarget) return;
+    window.scrollTo({ top: 0, behavior: "auto" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+  const [theme, setTheme] = useTheme();
+  const [nowTick, setNowTick] = useState(Date.now());
+  const toast = useToast();
+  const notifications = useNotifications();
+  // Every event that's worth a toast is also worth a line in the bell
+  // panel - one call keeps both in sync instead of duplicating the
+  // payload at each of the six call sites below.
+  const notify = useCallback(
+    (payload) => {
+      toast(payload);
+      notifications.push(payload);
+    },
+    [toast, notifications]
+  );
+
+  const [tags, setTags] = useState([]);
+  // Active + archived, fetched in parallel with the active-only `tags`
+  // above. Only threaded to SessionLog (see below) - the one place that
+  // needs to correctly display/edit a past session that already
+  // references a tag someone's since archived, without surfacing
+  // archived tags in every other "pick a tag" picker in the app.
+  const [allTags, setAllTags] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [deadlines, setDeadlines] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  // Real calendar events for the rest of today (see fetchTodaysBusyBlocks,
+  // backend lib/google.js) - only ever set from a successful loadAll,
+  // and only used to sharpen Open Slots' count; nothing downstream
+  // treats an empty array here as "definitely free," since it's just as
+  // likely to mean "not connected" as "no meetings today."
+  const [todayBusyBlocks, setTodayBusyBlocks] = useState([]);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  // Completed tasks with both a tag and an estimate, for the priority
+  // engine's estimate-learning feature (Feature 2) - see GET
+  // /tasks/completed for why this is fetched separately from the open
+  // `tasks` list above rather than one combined endpoint.
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  // Bumped whenever a session is started/stopped or manually added
+  // elsewhere on the Today tab (Timer, Manual entry) -- SessionLog fetches
+  // its own paginated data independently (see its own component), so
+  // this is the one signal it needs from outside itself: "something new
+  // landed, go back to page 1 and reload."
+  const [sessionsVersion, setSessionsVersion] = useState(0);
+
+  // The currently-running timer session (or null), reported up from
+  // TimerPanel via onRunningChange. Used below to build `liveSessions` -
+  // `history` with this session's live elapsed time appended as a
+  // virtual entry, so today's total/this week's bar/streak/heatmap
+  // reflect an active session instead of staying frozen until it's
+  // stopped and actually lands in `history`.
+  const [runningSession, setRunningSession] = useState(null);
+
+  const [waking, setWaking] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function loadAll() {
+    // Up to 3 attempts with a short, increasing delay - absorbs a
+    // transient blip (spotty wifi, a mobile network handoff) rather than
+    // showing an error banner for what's usually a half-second hiccup.
+    // apiFetch already retries a single request once internally (see its
+    // own comment), but that doesn't help here - a Promise.all of many
+    // requests only needs ONE unlucky one to fail the whole batch.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, completedTaskData, settingsData, busyData] =
+          await Promise.all([
+            listTags(),
+            listTags(true),
+            getSessionHistory(),
+            listBudgets(),
+            listDeadlines(),
+            listReminders(),
+            listTasks(),
+            listCompletedTasks(),
+            getSettings().catch(() => DEFAULT_SETTINGS),
+            // The route itself already degrades gracefully (returns
+            // connected:false or an empty blocks array rather than
+            // erroring) if Google isn't connected or is briefly
+            // unreachable - this catch is only for this one request
+            // failing to reach FocusDial's own backend at all, same as
+            // settings' catch just above.
+            getTodayBusyBlocks().catch(() => ({ connected: false, blocks: [] })),
+          ]);
+        setTags(tagData);
+        setAllTags(allTagData);
+        setHistory(hist);
+        setBudgets(budgetData);
+        setDeadlines(deadlineData);
+        setReminders(reminderData);
+        setTasks(taskData);
+        setCompletedTasks(completedTaskData);
+        if (settingsData) setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
+        setTodayBusyBlocks(busyData?.blocks || []);
+        setGoogleConnected(Boolean(busyData?.connected));
+        setError(null);
+        setLoaded(true);
+        return;
+      } catch (err) {
+        if (attempt === 2) {
+          setError(err.message);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+    }
+  }
+
+  // TagManager's create/delete/archive/unarchive only ever change the
+  // tags table - nothing about sessions, budgets, deadlines, reminders,
+  // tasks, or settings. Refetching all of those (loadAll's 7 parallel
+  // calls, including the full session history - potentially thousands
+  // of rows) just to reflect a tag edit was real, measurable overhead,
+  // not just a feeling: archiving a tag visibly took as long as the
+  // slowest of those 7 requests instead of the one PATCH it actually
+  // needed. This refetches only what TagManager can actually change.
+  async function refreshTags() {
+    const [tagData, allTagData] = await Promise.all([listTags(), listTags(true)]);
+    setTags(tagData);
+    setAllTags(allTagData);
+  }
+
+  // Same "just refetch the one thing that changed" reasoning as
+  // refreshTags above - the risk-reminder automation effect below only
+  // ever touches reminders, so a full loadAll() (9 parallel requests,
+  // including the whole session history) would be a lot of unrelated
+  // work just to show one new reminder.
+  async function refreshReminders() {
+    setReminders(await listReminders());
+  }
+
+  useEffect(() => {
+    setSlowRequestHandler(setWaking);
+    loadAll();
+
+    // Registers the browser's real UTC offset with the backend once per
+    // load, so the cron job (see backend/src/routes/cron.js) can
+    // approximate "what day/hour is it for this person" for streak and
+    // deadline checks made while the app itself is closed. Sign is
+    // flipped because JS's getTimezoneOffset() is backwards from the
+    // usual +N convention (returns -60 for UTC+1, not +60).
+    //
+    // Also registers the real IANA zone name (e.g. "Africa/Lagos") when
+    // the browser exposes one (universally supported in evergreen
+    // browsers at this point) -- cron.js prefers this over the raw
+    // offset, since a fixed offset alone can't account for DST
+    // transitions. Both are sent; the offset stays as a fallback for
+    // whatever cron.js can't resolve the zone name for.
+    let resolvedTimezone = null;
+    try {
+      resolvedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch {
+      // Intl unavailable/misconfigured -- offset-only fallback below.
+    }
+    updateSettings({
+      timezone_offset_minutes: -new Date().getTimezoneOffset(),
+      timezone: resolvedTimezone,
+    }).catch(() => {});
+
+    // Backend's OAuth callback (routes/googleAuth.js) redirects back
+    // here with this query param rather than the frontend polling for
+    // connection state - the handshake itself happens entirely on
+    // Google's + the backend's side, so this is just picking up the
+    // result. history.replaceState strips the param afterward so a
+    // refresh doesn't re-show the toast.
+    const params = new URLSearchParams(window.location.search);
+    const googleAuthResult = params.get("googleAuth");
+    const authResult = params.get("authResult");
+    if (googleAuthResult === "connected") {
+      toast({ title: "Google Calendar connected", body: "Deadlines and reminders will now sync." });
+    } else if (googleAuthResult === "error") {
+      toast({ title: "Couldn't connect Google Calendar", body: "Please try again.", tone: "danger" });
+    } else if (authResult === "success") {
+      // The failure case (authResult=error) is handled in AuthGate.jsx
+      // instead - a failed sign-in never reaches this component at all,
+      // since AuthRoot only renders App once there's an authenticated
+      // user.
+      toast({ title: "Signed in with Google" });
+    }
+    if (googleAuthResult) {
+      params.delete("googleAuth");
+    }
+    if (authResult) {
+      params.delete("authResult");
+    }
+    if (params.has("tab")) {
+      params.delete("tab");
+    }
+    if (googleAuthResult || authResult || window.location.search.includes("tab=")) {
+      const cleaned = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+      window.history.replaceState({}, "", cleaned);
+    }
+
+    // Drives the streak-at-risk check and the in-app reminder toasts
+    // without needing fresh server data - just re-evaluates the current
+    // time every minute.
+    const tickTimer = setInterval(() => setNowTick(Date.now()), 60000);
+
+    return () => {
+      setSlowRequestHandler(null);
+      clearInterval(tickTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Optimistic settings update: flip the toggle immediately, persist in
+  // the background, and roll back if the server rejects it. Keeps the
+  // Settings switches feeling instant while staying the single source of
+  // truth the notification logic below reads from.
+  async function updateSetting(key, value) {
+    const prev = settings;
+    setSettings((s) => ({ ...s, [key]: value }));
+    try {
+      await updateSettings({ [key]: value });
+    } catch (err) {
+      setSettings(prev);
+      toast({ title: "Couldn't save that setting", body: err.message, tone: "danger" });
+    }
+  }
+
+  // `history` plus the running session's live elapsed time, if one is
+  // active - clamped so the very first tick after starting a timer
+  // (before nowTick has caught up) can't produce a negative duration.
+  // Everything that should feel "live" (today's total, this week's/
+  // month's current bar, the heatmap's today cell, streak, deadline
+  // pace) is derived from this instead of raw `history`. Deliberately
+  // NOT used for the Session Log or the day-detail modal's session
+  // list - those are meant to show actual completed records, the same
+  // way they never showed an in-progress session before this existed.
+  const liveSessions = useMemo(() => {
+    if (!runningSession) return history;
+    const startedAtMs = new Date(runningSession.started_at).getTime();
+    const endedAt = new Date(Math.max(nowTick, startedAtMs));
+    return [...history, { ...runningSession, ended_at: endedAt.toISOString() }];
+  }, [history, runningSession, nowTick]);
+
+  const summary = useMemo(
+    () => computeSummary(liveSessions, settings.rest_day_of_week ?? null, settings.streak_recovery_grace_enabled ?? false),
+    [liveSessions, settings.rest_day_of_week, settings.streak_recovery_grace_enabled]
+  );
+  // Learned from completed history only, deliberately not liveSessions -
+  // the running session (if any) has no note/task yet to learn from, and
+  // even if it did, using words from the session you're *currently*
+  // trying to match against to also help decide its own match would be
+  // circular.
+  const tagVocabulary = useMemo(() => buildTagVocabulary(history), [history]);
+  const budgetsWithProgress = useMemo(
+    () => computeBudgetProgress(budgets, liveSessions),
+    [budgets, liveSessions]
+  );
+  const deadlinesWithProgress = useMemo(
+    () => computeDeadlineProgress(deadlines, liveSessions, summary.avgDailyFocusSeconds),
+    [deadlines, liveSessions, summary.avgDailyFocusSeconds]
+  );
+  const insightOfTheDay = useMemo(
+    () =>
+      computeInsightOfTheDay({
+        summary,
+        budgetsProgress: budgetsWithProgress,
+        deadlinesProgress: deadlinesWithProgress,
+        displayName: userFirstName,
+      }),
+    [summary, budgetsWithProgress, deadlinesWithProgress, userFirstName]
+  );
+  // Priority engine (Features 1-6, priorityEngine.js). `allTags` rather
+  // than the active-only `tags` - a session logged under a tag that's
+  // since been archived should still count toward that tag's historical
+  // share in computeCategoryBalance and its typical-length in
+  // computeTagTypicalSeconds, the same reason SessionLog below already
+  // needs allTags rather than tags for displaying past sessions
+  // correctly. Recomputed on nowTick like goalProjection above, so the
+  // ranking's urgency/staleness/energy-fit factors (all time-dependent)
+  // don't quietly go stale while the tab just sits open.
+  const priorityRanking = useMemo(
+    () => computePriorityRanking(tasks, history, completedTasks, allTags, new Date(nowTick)),
+    [tasks, history, completedTasks, allTags, nowTick]
+  );
+  const [suggestionDismissedAt, dismissSuggestion] = useSuggestionDismissals();
+  const suggestion = useMemo(
+    () =>
+      computeUnscheduledSuggestion({
+        categoryBalance: priorityRanking.categoryBalance,
+        typeHourStrength: priorityRanking.typeHourStrength,
+        tagTypicalSeconds: priorityRanking.tagTypicalSeconds,
+        hourlyTagSuggestions: summary.hourlyTagSuggestions,
+        topRankedScore: priorityRanking.ranked[0]?.score ?? null,
+        dismissedAt: suggestionDismissedAt,
+        now: new Date(nowTick),
+      }),
+    [priorityRanking, summary.hourlyTagSuggestions, suggestionDismissedAt, nowTick]
+  );
+  const riskDigest = useMemo(
+    () => computeRiskDigest({ budgetsProgress: budgetsWithProgress, deadlinesProgress: deadlinesWithProgress }),
+    [budgetsWithProgress, deadlinesWithProgress]
+  );
+  const weeklyReview = useMemo(
+    () => computeWeeklyReview({ sessions: liveSessions, deadlinesProgress: deadlinesWithProgress, reminders }),
+    [liveSessions, deadlinesWithProgress, reminders]
+  );
+  const deadlineTrackRecord = useMemo(
+    () => computeDeadlineTrackRecord(deadlinesWithProgress),
+    [deadlinesWithProgress]
+  );
+
+  // In-app version of the same "streak at risk" check the backend cron
+  // job does for push notifications - this one only needs to run while
+  // the app is actually open. A configured rest day is never "at risk"
+  // since it doesn't break the streak either way (see analytics.js).
+  // Same for a still-available recovery grace: if this week's one
+  // protected miss hasn't been spent yet, missing today would just
+  // consume it rather than actually break the streak, so it's not
+  // "at risk" in the sense this banner is warning about.
+  const streakAtRisk = useMemo(() => {
+    const nowDate = new Date(nowTick);
+    const hour = nowDate.getHours();
+    const isRestDay = settings.rest_day_of_week != null && nowDate.getDay() === settings.rest_day_of_week;
+    const graceCovers = settings.streak_recovery_grace_enabled && summary.streakGraceAvailable;
+    return hour >= 19 && summary.todaySeconds === 0 && summary.streakDays > 0 && !isRestDay && !graceCovers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    nowTick,
+    summary.todaySeconds,
+    summary.streakDays,
+    summary.streakGraceAvailable,
+    settings.rest_day_of_week,
+    settings.streak_recovery_grace_enabled,
+  ]);
+
+  // Same-pace "will I hit today's goal" projection, only worth surfacing
+  // once enough of the day has actually happened to extrapolate from
+  // (see computeGoalProjection) and only shown in the evening window - // an 11am reminder about tonight's goal is noise, not signal.
+  const goalProjection = useMemo(() => {
+    const nowDate = new Date(nowTick);
+    if (nowDate.getHours() < 18) return null;
+    return computeGoalProjection({
+      todaySeconds: summary.todaySeconds,
+      dailyGoalSeconds: settings.daily_focus_goal_seconds,
+      now: nowDate,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowTick, summary.todaySeconds, settings.daily_focus_goal_seconds]);
+
+  // Unlike goalProjection above, not gated to evening-only - "how many
+  // more sessions could still fit today" is useful all day, not just as
+  // an end-of-day check-in. Reuses priorityRanking's own
+  // tagTypicalSeconds (computePriorityRanking, priorityEngine.js) rather
+  // than recomputing typical session length a second way. busyBlocks is
+  // only ever non-empty when Google Calendar is connected (see loadAll)
+  // - computeOpenSlots itself treats an empty array exactly like "no
+  // calendar data at all," so this is a no-op enhancement for anyone
+  // who hasn't connected one.
+  const openSlots = useMemo(
+    () =>
+      computeOpenSlots({
+        todaySeconds: summary.todaySeconds,
+        dailyGoalSeconds: settings.daily_focus_goal_seconds,
+        tagTypicalSeconds: priorityRanking.tagTypicalSeconds,
+        busyBlocks: todayBusyBlocks,
+        now: new Date(nowTick),
+      }),
+    [
+      summary.todaySeconds,
+      settings.daily_focus_goal_seconds,
+      priorityRanking.tagTypicalSeconds,
+      todayBusyBlocks,
+      nowTick,
+    ]
+  );
+
+  // ---- Guided daily ritual ----------------------------------------
+  // A morning plan and an evening reflection - see DailyPlanModal.jsx -
+  // each shown automatically once per local day (useDailyRitualSeen,
+  // localStorage-backed) and reopenable any time via TodayView's
+  // "Plan my day"/"Reflect on today" links (see dailyRitualMode's setter
+  // being passed down there). EVENING_HOUR is the one cutoff deciding
+  // which of the two auto-shows first on a given day - deliberately not
+  // configurable in Settings for v1, since either can still be opened
+  // manually regardless of the time.
+  const EVENING_HOUR = 17;
+  const { morningSeenToday, eveningSeenToday, markMorningSeen, markEveningSeen } = useDailyRitualSeen();
+  const [dailyRitualMode, setDailyRitualMode] = useState(null);
+  useEffect(() => {
+    if (!loaded || dailyRitualMode) return;
+    const hour = new Date(nowTick).getHours();
+    if (hour < EVENING_HOUR && !morningSeenToday) setDailyRitualMode("morning");
+    else if (hour >= EVENING_HOUR && !eveningSeenToday) setDailyRitualMode("evening");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+  function closeDailyRitual() {
+    if (dailyRitualMode === "morning") markMorningSeen();
+    else if (dailyRitualMode === "evening") markEveningSeen();
+    setDailyRitualMode(null);
+  }
+  // Sunsama-style "how much did I actually get done today" - filters
+  // liveSessions (which already includes the in-progress session as a
+  // live-updating entry, see its own comment above) down to sessions
+  // that started on today's local calendar day.
+  const todaySessions = useMemo(() => {
+    const key = new Date(nowTick).toDateString();
+    return liveSessions.filter((s) => new Date(s.started_at).toDateString() === key);
+  }, [liveSessions, nowTick]);
+
+  // ---- Notification orchestration --------------------------------
+  // Every event shows an in-app toast. The three "in-app events"
+  // (session/deadline/budget) additionally fire a push, but only when
+  // the app is backgrounded (see maybePushEvent). The three cron-driven
+  // automations (reminders/pace/streak) already push from the server, so
+  // here they only surface a toast when the app is open. Each is gated
+  // by its own Settings toggle so a toggle silences both channels.
+  const paceStatusRef = useRef(new Map());
+  const budgetMetRef = useRef(new Set());
+  const toastedReminderRef = useRef(new Set());
+  const prevStreakRef = useRef(false);
+  // Feature 4's distinct "you've neglected X" notice - separate from the
+  // categoryBalance boost that already feeds into the priority score
+  // itself (categoryBalanceScore in priorityEngine.js). Same
+  // seed-on-load / notify-on-transition shape as paceStatusRef and
+  // budgetMetRef just above, so a category that's already been
+  // neglected since before this feature existed doesn't fire a notice
+  // the moment someone opens the app.
+  const neglectedTagsRef = useRef(new Set());
+  // "type:id" strings this session has already attempted an auto-reminder
+  // create for - see the automation effect below for why this matters:
+  // deadlinesWithProgress/budgetsWithProgress recompute every second
+  // while a timer's running (they derive from liveSessions, which ticks
+  // with the clock), so without this the effect would re-fire every
+  // second and race the backend's own dedup check (reminders won't have
+  // refetched yet by the next tick), spamming duplicate reminders. This
+  // ref makes each source a same-session one-shot regardless of how
+  // often the effect re-runs; the backend check (via computeAutomationTriggers
+  // reading `reminders`) is what protects across reloads instead.
+  const autoReminderFiredRef = useRef(new Set());
+  const initRef = useRef(false);
+
+  // Seed the "previous state" refs on the first populated load so we
+  // don't toast a backlog of already-true conditions on startup.
+  useEffect(() => {
+    if (!loaded || initRef.current) return;
+    for (const d of deadlinesWithProgress) paceStatusRef.current.set(d.id, d.status);
+    for (const b of budgetsWithProgress) if (b.pct >= 1) budgetMetRef.current.add(b.id);
+    for (const r of reminders) {
+      if (new Date(r.remind_at) <= new Date()) toastedReminderRef.current.add(r.id);
+    }
+    for (const info of priorityRanking.categoryBalance.values()) {
+      if (info.neglected) neglectedTagsRef.current.add(info.tagId);
+    }
+    prevStreakRef.current = streakAtRisk;
+    initRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  // Deadlines: completion + worsening pace.
+  useEffect(() => {
+    if (!initRef.current) return;
+    for (const d of deadlinesWithProgress) {
+      const prev = paceStatusRef.current.get(d.id);
+      if (prev === d.status) continue;
+
+      if (d.status === "done" && prev !== "done") {
+        if (settings.notify_deadline_completed) {
+          notify({ title: "Deadline complete", body: `“${d.title}” is done.`, tone: "success" });
+          maybePushEvent("deadline_completed", "Deadline complete", `“${d.title}” is done.`);
+        }
+      } else if (WORSENING_PACE.has(d.status) && !WORSENING_PACE.has(prev)) {
+        if (settings.automation_deadline_pace) {
+          notify({ title: `Pace change: ${d.title}`, body: PACE_COPY[d.status], tone: "warn" });
+        }
+      }
+      paceStatusRef.current.set(d.id, d.status);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deadlinesWithProgress]);
+
+  // Budgets: crossing the weekly target.
+  useEffect(() => {
+    if (!initRef.current) return;
+    for (const b of budgetsWithProgress) {
+      const wasMet = budgetMetRef.current.has(b.id);
+      if (b.pct >= 1 && !wasMet) {
+        budgetMetRef.current.add(b.id);
+        if (settings.notify_budget_reached) {
+          notify({ title: "Budget goal reached", body: `“${b.name}” hit its weekly target.`, tone: "success" });
+          maybePushEvent("budget_reached", "Budget goal reached", `“${b.name}” hit its weekly target.`);
+        }
+      } else if (b.pct < 1 && wasMet) {
+        // New week / target raised - allow it to fire again later.
+        budgetMetRef.current.delete(b.id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetsWithProgress]);
+
+  // Category balance (Feature 4): a category newly crossing into
+  // "neglected" gets its own distinct notice, separate from the
+  // priority-score boost the same data already feeds elsewhere. No
+  // maybePushEvent call here, unlike the deadline/budget notices above -
+  // this one has no closed-app cron counterpart (see
+  // automation_category_nudge's own comment in db.js), it's purely a
+  // foreground check like automation_streak's.
+  useEffect(() => {
+    if (!initRef.current) return;
+    for (const info of priorityRanking.categoryBalance.values()) {
+      const wasNeglected = neglectedTagsRef.current.has(info.tagId);
+      if (info.neglected && !wasNeglected) {
+        neglectedTagsRef.current.add(info.tagId);
+        if (settings.automation_category_nudge) {
+          notify({ title: "Category neglected", body: `You've neglected ${info.tagName} lately.`, tone: "warn" });
+        }
+      } else if (!info.neglected && wasNeglected) {
+        // Recovered since - allow the notice to fire again if it slips
+        // back into neglect later, same "allow it to fire again later"
+        // reasoning as the budget effect just above.
+        neglectedTagsRef.current.delete(info.tagId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priorityRanking.categoryBalance]);
+
+  // Rule-based automation (as distinct from every notify() above, which
+  // only ever fires a transient toast/push): creates a real, persistent
+  // Reminder when a deadline slips to behind/overdue or a budget falls
+  // behind late in the week. computeAutomationTriggers (analytics.js)
+  // checks `reminders` for an existing pending one on the same source,
+  // but that alone isn't enough here - see autoReminderFiredRef's own
+  // comment above for why this effect can re-run many times a second
+  // while a timer's running, faster than a create-then-refetch round
+  // trip can keep `reminders` current. The ref makes each source a
+  // same-session one-shot on top of that check, so the two together
+  // guard both within-session races and across-reload duplicates.
+  // Runs after `initRef.current` is set (same as the effects above) so
+  // it never fires retroactively for something that was already behind
+  // before this session opened the app; only genuine changes create a
+  // reminder.
+  useEffect(() => {
+    if (!initRef.current) return;
+    if (!settings.automation_risk_reminders) return;
+    const triggers = computeAutomationTriggers({
+      deadlinesProgress: deadlinesWithProgress,
+      budgetsProgress: budgetsWithProgress,
+      existingReminders: reminders,
+      now: new Date(),
+    });
+    for (const t of triggers) {
+      const key = `${t.auto_source_type}:${t.auto_source_id}`;
+      if (autoReminderFiredRef.current.has(key)) continue;
+      autoReminderFiredRef.current.add(key);
+      createReminder(t)
+        .then(() => {
+          // Clears the guard once `reminders` reflects the new row -
+          // from here on, computeAutomationTriggers' own check against
+          // real reminder state is what prevents a duplicate, so this
+          // key is free to re-arm. That matters if the person dismisses
+          // this reminder later while the deadline/budget is still
+          // behind - without clearing it, a second one could never be
+          // created for the rest of this session even though it should be.
+          return refreshReminders();
+        })
+        .then(() => autoReminderFiredRef.current.delete(key))
+        .catch(() => {
+          // Also clears on failure - let a future re-evaluation retry
+          // rather than getting permanently stuck on one failed attempt
+          // (e.g. a transient network error).
+          autoReminderFiredRef.current.delete(key);
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deadlinesWithProgress, budgetsWithProgress, settings.automation_risk_reminders]);
+
+  // Reminders coming due while the app is open.
+  useEffect(() => {
+    if (!initRef.current) return;
+    const now = new Date();
+    for (const r of reminders) {
+      if (r.status !== "pending") continue;
+      if (new Date(r.remind_at) <= now && !toastedReminderRef.current.has(r.id)) {
+        toastedReminderRef.current.add(r.id);
+        if (settings.automation_reminders) {
+          notify({ title: "Reminder", body: r.title, tone: "default" });
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reminders, nowTick]);
+
+  // Streak flipping into "at risk".
+  useEffect(() => {
+    if (!initRef.current) return;
+    if (streakAtRisk && !prevStreakRef.current && settings.automation_streak) {
+      notify({
+        title: "Streak at risk",
+        body: `Log a session before midnight to keep your ${summary.streakDays}-day streak.`,
+        tone: "warn",
+      });
+    }
+    prevStreakRef.current = streakAtRisk;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streakAtRisk]);
+
+  function handleSessionCompleted(completed) {
+    if (completed?.started_at && completed?.ended_at && settings.notify_session_completed) {
+      const secs = (new Date(completed.ended_at) - new Date(completed.started_at)) / 1000;
+      const body = `${formatDuration(secs)} logged.`;
+      notify({ title: "Session complete", body, tone: "success" });
+      maybePushEvent("session_completed", "Session complete", body);
+    }
+    loadAll();
+    setSessionsVersion((v) => v + 1);
+  }
+  function handleSessionCreated() {
+    loadAll();
+    setSessionsVersion((v) => v + 1);
+  }
+  // SessionLog owns its own paginated fetch of the raw session list now
+  // (see that component), so this only needs to keep the *analytics*
+  // copy (`history`, from GET /sessions/history) in sync -- everything
+  // derived from it (today's total, streaks, tag-linked deadline
+  // progress, etc.) would otherwise stay stale until the next full
+  // reload.
+  function handleSessionDeleted(id) {
+    setHistory((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  return (
+    <div className="fd-app">
+      <AnimatePresence>{showSplash && <Splash onComplete={() => setShowSplash(false)} />}</AnimatePresence>
+
+      {!showSplash && (
+        <motion.div
+          className="fd-shell"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          <TopLoadingBar active={!loaded || waking} />
+
+          <header className="fd-header">
+            <div className="fd-header__brand">
+              <FocusMark size={22} strokeWidth={2.1} className="fd-header__mark" />
+              FocusDial
+            </div>
+            <TabNav active={activeTab} onChange={setActiveTab} />
+            <div className="fd-header__actions">
+              <NotificationBell notifications={notifications} />
+              <ThemeToggle theme={theme} onChange={setTheme} />
+            </div>
+          </header>
+
+          <AnimatePresence>
+            {waking && (
+              <motion.div
+                className="fd-banner"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+              >
+                Loading. Please wait, this can take a moment.
+              </motion.div>
+            )}
+            {!waking && error && (
+              <motion.div
+                className="fd-banner fd-banner--error"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+              >
+                {error}
+              </motion.div>
+            )}
+            {!waking && !error && streakAtRisk && (
+              <motion.div
+                className="fd-banner fd-banner--streak"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+              >
+                Your {summary.streakDays}-day streak is at risk. Log a session before midnight to
+                keep it going.
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <main className="fd-main">
+            <PullToRefresh onRefresh={loadAll}>
+            {!loaded ? (
+              <div className="fd-loading">Loading your focus journal…</div>
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                {activeTab === "today" && (
+                  <TodayView
+                    key="today"
+                    tags={tags}
+                    allTags={allTags}
+                    summary={summary}
+                    streakAtRisk={streakAtRisk}
+                    sessionsVersion={sessionsVersion}
+                    tasks={tasks}
+                    insightOfTheDay={insightOfTheDay}
+                    dailyGoalSeconds={settings.daily_focus_goal_seconds}
+                    goalProjection={goalProjection}
+                    graceEnabled={settings.streak_recovery_grace_enabled}
+                    tagVocabulary={tagVocabulary}
+                    userName={userFirstName}
+                    priorityRanking={priorityRanking}
+                    openSlots={openSlots}
+                    onOpenDailyPlan={setDailyRitualMode}
+                    suggestion={suggestion}
+                    hasRunningSession={!!runningSession}
+                    onRunningChange={setRunningSession}
+                    onSessionCompleted={handleSessionCompleted}
+                    onSessionCreated={handleSessionCreated}
+                    onSessionStarted={handleSessionCreated}
+                    onDismissSuggestion={dismissSuggestion}
+                    onSessionDeleted={handleSessionDeleted}
+                    onDataChanged={loadAll}
+                  />
+                )}
+                {activeTab === "insights" && (
+                  <InsightsView
+                    key="insights"
+                    summary={summary}
+                    riskDigest={riskDigest}
+                    weeklyReview={weeklyReview}
+                    deadlineTrackRecord={deadlineTrackRecord}
+                    history={history}
+                    userName={userFirstName}
+                    tagEstimateStats={priorityRanking.tagEstimateStats}
+                    allTags={allTags}
+                  />
+                )}
+                {activeTab === "budgets" && (
+                  <BudgetsView
+                    key="budgets"
+                    budgets={budgetsWithProgress}
+                    onGoToSettings={() => {
+                      setSettingsScrollTarget("budgets");
+                      setActiveTab("settings");
+                    }}
+                  />
+                )}
+                {activeTab === "deadlines" && (
+                  <DeadlinesView
+                    key="deadlines"
+                    deadlines={deadlinesWithProgress}
+                    tags={tags}
+                    avgDailyFocusSeconds={summary.avgDailyFocusSeconds}
+                    avgDailyFocusWindowDays={summary.avgDailyFocusWindowDays}
+                    onDataChanged={loadAll}
+                  />
+                )}
+                {activeTab === "reminders" && (
+                  <RemindersView key="reminders" reminders={reminders} tags={tags} onDataChanged={loadAll} />
+                )}
+                {activeTab === "settings" && (
+                  <SettingsView
+                    key="settings"
+                    settings={settings}
+                    onUpdateSetting={updateSetting}
+                    theme={theme}
+                    onThemeChange={setTheme}
+                    tags={tags}
+                    budgets={budgetsWithProgress}
+                    onDataChanged={loadAll}
+                    onTagsRefresh={refreshTags}
+                    user={user}
+                    onUserUpdated={onUserUpdated}
+                    onLogout={onLogout}
+                    scrollTarget={settingsScrollTarget}
+                    onScrollTargetConsumed={() => setSettingsScrollTarget(null)}
+                  />
+                )}
+              </AnimatePresence>
+            )}
+            </PullToRefresh>
+          </main>
+        </motion.div>
+      )}
+
+      <AnimatePresence>
+        {!showSplash && loaded && !user?.displayName && !namePromptDismissed && (
+          <NamePromptModal onUserUpdated={onUserUpdated} onDismiss={() => setNamePromptDismissed(true)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {!showSplash && loaded && dailyRitualMode && (
+          <DailyPlanModal
+            mode={dailyRitualMode}
+            displayName={userFirstName}
+            onClose={closeDailyRitual}
+            dailyGoalSeconds={settings.daily_focus_goal_seconds}
+            todaySeconds={summary.todaySeconds}
+            todaySessions={todaySessions}
+            googleConnected={googleConnected}
+            busyBlocks={todayBusyBlocks}
+            openSlots={openSlots}
+            ranked={priorityRanking.ranked}
+            onSessionStarted={loadAll}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
