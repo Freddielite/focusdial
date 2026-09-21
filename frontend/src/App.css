@@ -1418,6 +1418,26 @@ button {
   align-items: stretch;
 }
 
+.fd-datefield__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 199;
+  touch-action: none;
+}
+
+.fd-datefield__popover--sheet {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto;
+  max-height: 80vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .fd-datefield__divider {
   height: 1px;
   background: var(--line);
@@ -1528,6 +1548,7 @@ button {
 .fd-datefield__time-col {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 2px;

@@ -49,7 +49,19 @@ function usePopover(estimatedHeight = 360) {
     // for that on iOS Safari, so a panel positioned against it can end up
     // placed behind/clipped by the keyboard instead of above it - matters
     // here since Note sits right above these fields in ManualEntryForm.
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
     const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    // Below ~480px wide there's rarely enough room in either direction to
+    // anchor a popover beside its trigger without it either overflowing
+    // the screen or landing so far from the field it looks unrelated to
+    // it -- exactly what the 580px-tall combined date+time popover was
+    // doing on phones, jammed against the top or bottom edge instead of
+    // near whatever field opened it. Below that width, skip the anchored
+    // math and present as a centered sheet with its own scroll instead.
+    if (viewportWidth <= 480) {
+      setCoords({ sheet: true });
+      return;
+    }
     const spaceBelow = viewportHeight - rect.bottom;
     const flipUp = spaceBelow < panelHeight && rect.top > spaceBelow;
     setCoords({
@@ -111,7 +123,7 @@ function usePopover(estimatedHeight = 360) {
 // NotificationBell's panel, which is where that style first came from.
 // Kept in one place rather than repeated three times so the three
 // pickers can't quietly drift out of sync with each other's motion feel.
-function PopoverPanel({ open, coords, panelRef, className, children }) {
+function PopoverPanel({ open, coords, panelRef, className, onClose, children }) {
   // AnimatePresence has to live INSIDE the portaled subtree, not wrapped
   // around the createPortal(...) call - see the matching comment in
   // Dropdown.jsx. createPortal returns a ReactPortal, which
@@ -120,20 +132,41 @@ function PopoverPanel({ open, coords, panelRef, className, children }) {
   // and nothing ever reaches document.body: the trigger's `open` state
   // still flips (chevron rotates, aria-expanded updates) but the panel
   // itself never mounts.
+  const isSheet = coords?.sheet;
   return createPortal(
     <AnimatePresence>
       {open && coords && (
-        <motion.div
-          ref={panelRef}
-          className={className}
-          style={{ left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
-          initial={{ opacity: 0, scale: 0.92, y: coords.bottom != null ? 6 : -6 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: coords.bottom != null ? 4 : -4 }}
-          transition={{ type: "spring", stiffness: 420, damping: 30 }}
-        >
-          {children}
-        </motion.div>
+        <>
+          {/* Mobile-only backdrop: without it, a scroll gesture that
+              runs out of room inside the time columns "chains" into
+              scrolling the page underneath (iOS's default overscroll
+              behavior), and any tap outside the panel falls straight
+              through to whatever's behind it. A full-screen fixed layer
+              intercepts both. Desktop keeps the lighter click-outside-
+              to-close behavior in usePopover instead, since a dimmed
+              backdrop over a whole desktop screen for a small dropdown
+              would be visually heavy-handed. */}
+          {isSheet && (
+            <motion.div
+              className="fd-datefield__backdrop"
+              onClick={onClose}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+          )}
+          <motion.div
+            ref={panelRef}
+            className={`${className} ${isSheet ? "fd-datefield__popover--sheet" : ""}`}
+            style={isSheet ? undefined : { left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
+            initial={{ opacity: 0, scale: 0.92, y: isSheet ? 0 : coords.bottom != null ? 6 : -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: isSheet ? 0 : coords.bottom != null ? 4 : -4 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+          >
+            {children}
+          </motion.div>
+        </>
       )}
     </AnimatePresence>,
     document.body
@@ -364,7 +397,7 @@ export function DatePicker({
         </span>
         <CalendarGlyph />
       </button>
-      <PopoverPanel open={open} coords={coords} panelRef={panelRef} className="fd-datefield__popover">
+      <PopoverPanel open={open} coords={coords} panelRef={panelRef} className="fd-datefield__popover" onClose={() => setOpen(false)}>
         <CalendarGrid selected={selected} onSelect={commit} maxDate={maxDate} />
       </PopoverPanel>
     </>
@@ -401,6 +434,7 @@ export function TimePicker({ value, onChange, className = "", placeholder = "Sel
         coords={coords}
         panelRef={panelRef}
         className="fd-datefield__popover fd-datefield__popover--time"
+        onClose={() => setOpen(false)}
       >
         <TimeColumns hour24={t.hour24} minute={t.minute} onChange={handleChange} />
         <button type="button" className="fd-btn fd-btn--start fd-datefield__done" onClick={() => setOpen(false)}>
@@ -482,6 +516,7 @@ export function DateTimePicker({
         coords={coords}
         panelRef={panelRef}
         className="fd-datefield__popover fd-datefield__popover--combo"
+        onClose={() => setOpen(false)}
       >
         <CalendarGrid selected={selectedDate} onSelect={handleDaySelect} maxDate={maxDate} />
         <div className="fd-datefield__divider" />
