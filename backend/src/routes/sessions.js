@@ -107,6 +107,17 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
 
 const QUALITY_VALUES = ["focused", "neutral", "distracted"];
 
+// A minute of slack for ordinary client/server clock drift -- generous
+// enough to absorb that, not so generous it defeats the point of the
+// check. Manual backfill and session-edit are the only two places a
+// timestamp comes from client input rather than the server's own now(),
+// so this only needs to guard those two routes.
+const FUTURE_TOLERANCE_MS = 60 * 1000;
+
+function isFuture(isoString) {
+  return new Date(isoString).getTime() > Date.now() + FUTURE_TOLERANCE_MS;
+}
+
 sessionsRouter.post("/sessions/:id/stop", async (req, res) => {
   const { note, quality } = req.body || {};
   if (quality && !QUALITY_VALUES.includes(quality)) {
@@ -141,6 +152,12 @@ sessionsRouter.post("/sessions", async (req, res) => {
   const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
   if (!started_at || !ended_at) {
     return res.status(400).json({ error: "started_at and ended_at are required" });
+  }
+  if (isFuture(started_at)) {
+    return res.status(400).json({ error: "started_at cannot be in the future" });
+  }
+  if (isFuture(ended_at)) {
+    return res.status(400).json({ error: "ended_at cannot be in the future" });
   }
   if (new Date(ended_at) <= new Date(started_at)) {
     return res.status(400).json({ error: "ended_at must be after started_at" });
@@ -441,6 +458,12 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
   const hasNoteField = Object.prototype.hasOwnProperty.call(req.body, "note");
   const hasQualityField = Object.prototype.hasOwnProperty.call(req.body, "quality");
   const hasTaskField = Object.prototype.hasOwnProperty.call(req.body, "task_id");
+  if (started_at && isFuture(started_at)) {
+    return res.status(400).json({ error: "started_at cannot be in the future" });
+  }
+  if (ended_at && isFuture(ended_at)) {
+    return res.status(400).json({ error: "ended_at cannot be in the future" });
+  }
   if (started_at && ended_at && new Date(ended_at) <= new Date(started_at)) {
     return res.status(400).json({ error: "ended_at must be after started_at" });
   }

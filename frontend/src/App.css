@@ -1494,6 +1494,20 @@ button {
   font-weight: 700;
 }
 
+.fd-datefield__day--disabled {
+  color: var(--parchment-dim);
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.fd-datefield__nav:disabled,
+.fd-datefield__time-opt:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .fd-datefield__day--selected {
   background: var(--grad-brass);
   color: #0b0b0d;
