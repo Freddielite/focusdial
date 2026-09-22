@@ -148,8 +148,17 @@ function PopoverPanel({ open, coords, panelRef, className, onClose, children }) 
       // on separate elements is what actually makes centering stick.
       style={isSheet ? undefined : { left: coords.left, minWidth: coords.minWidth, top: coords.top, bottom: coords.bottom }}
       onClick={isSheet ? (e) => e.stopPropagation() : undefined}
-      initial={{ opacity: 0, scale: 0.92, y: isSheet ? 0 : coords.bottom != null ? 6 : -6 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
+      // No opacity fade on this panel - it has a solid background, so
+      // fading it in from 0 makes it translucent for a couple of frames,
+      // during which its own text visibly overlaps whatever's behind it.
+      // Not an issue in sheet mode (the backdrop already dims everything
+      // behind it before the panel's content is legible), but very
+      // visible for the anchored (non-sheet) case where it pops in
+      // directly over other on-screen text/buttons with nothing behind
+      // it to mask the overlap. Scale + position alone still pops in
+      // clearly without ever being see-through.
+      initial={{ scale: 0.92, y: isSheet ? 0 : coords.bottom != null ? 6 : -6 }}
+      animate={{ scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: isSheet ? 0 : coords.bottom != null ? 4 : -4 }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
     >

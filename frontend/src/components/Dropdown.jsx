@@ -196,8 +196,15 @@ export default function Dropdown({ className = "", value, onChange, disabled = f
               // Same popover feel as NotificationBell's panel - grows from
               // the trigger rather than just appearing, spring instead of
               // a linear fade so it matches that same snappy weight.
-              initial={{ opacity: 0, scale: 0.92, y: coords.bottom != null ? 6 : -6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
+              // No opacity fade: this list has a solid background, so
+              // fading it in from 0 makes it translucent mid-animation -
+              // for a couple of frames its own text visibly overlaps
+              // whatever's underneath it (e.g. a button right below the
+              // trigger), which reads as a flicker. Scale + position
+              // alone still reads clearly as "popping in" without ever
+              // being see-through.
+              initial={{ scale: 0.92, y: coords.bottom != null ? 6 : -6 }}
+              animate={{ scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: coords.bottom != null ? 4 : -4 }}
               transition={{ type: "spring", stiffness: 420, damping: 30 }}
             >

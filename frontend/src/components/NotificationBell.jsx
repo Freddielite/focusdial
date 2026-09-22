@@ -109,8 +109,12 @@ export default function NotificationBell({ notifications }) {
             aria-modal="true"
             aria-label="Notifications"
             style={{ top: pos.top, left: pos.left, width: pos.width, transformOrigin: `${pos.originX}px top` }}
-            initial={{ opacity: 0, scale: 0.85, y: -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+            // No opacity fade - solid-background panel, so fading it in
+            // from 0 makes it translucent for a couple of frames and its
+            // text visibly overlaps whatever's behind it. Scale + position
+            // alone still pops in clearly without being see-through.
+            initial={{ scale: 0.85, y: -8 }}
+            animate={{ scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: -6 }}
             transition={{ type: "spring", stiffness: 420, damping: 30 }}
           >

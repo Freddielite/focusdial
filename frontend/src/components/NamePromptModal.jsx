@@ -46,8 +46,12 @@ export default function NamePromptModal({ onUserUpdated, onDismiss }) {
       <motion.div
         className="fd-panel fd-modal-panel fd-confirm-panel"
         onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.95, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
+        // No opacity fade on the panel itself - it has a solid
+        // background, so fading it in over the (also still-fading)
+        // backdrop briefly shows its text through both layers.
+        // Scale + position alone still reads as popping in.
+        initial={{ scale: 0.95, y: 8 }}
+        animate={{ scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 6 }}
         transition={{ duration: 0.2 }}
       >
