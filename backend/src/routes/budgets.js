@@ -28,8 +28,15 @@ budgetsRouter.get("/budgets", async (req, res) => {
 
 budgetsRouter.post("/budgets", async (req, res) => {
   const { name, weekly_target_hours, color } = req.body;
-  if (!name || !name.trim() || !weekly_target_hours) {
-    return res.status(400).json({ error: "name and weekly_target_hours are required" });
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "name is required" });
+  }
+  // A falsy check alone (!weekly_target_hours) lets a negative number
+  // through - it's truthy, so -5 would pass, then Math.round(-5*3600)
+  // inserts a negative weekly_target_seconds. Matches the explicit
+  // typeof+range check tasks.js already uses for estimate_minutes.
+  if (typeof weekly_target_hours !== "number" || weekly_target_hours <= 0) {
+    return res.status(400).json({ error: "weekly_target_hours must be a positive number" });
   }
   try {
     const { rows } = await pool.query(
@@ -48,6 +55,17 @@ budgetsRouter.post("/budgets", async (req, res) => {
 
 budgetsRouter.patch("/budgets/:id", async (req, res) => {
   const { name, weekly_target_hours, color } = req.body;
+  // Same gap as POST /budgets above: a plain truthy check on
+  // weekly_target_hours lets a negative number through unnoticed since
+  // it's non-zero. Only validate when the field was actually sent -
+  // omitting it entirely is the normal "don't touch this field" PATCH
+  // shape and must stay allowed.
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, "weekly_target_hours") &&
+    (typeof weekly_target_hours !== "number" || weekly_target_hours <= 0)
+  ) {
+    return res.status(400).json({ error: "weekly_target_hours must be a positive number" });
+  }
   try {
     const { rows } = await pool.query(
       `UPDATE budgets SET

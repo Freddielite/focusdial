@@ -81,8 +81,15 @@ deadlinesRouter.get("/deadlines", async (req, res) => {
 
 deadlinesRouter.post("/deadlines", async (req, res) => {
   const { title, tag_id, due_date, due_time, estimated_hours, add_as_task, recurrence } = req.body;
-  if (!title || !title.trim() || !due_date || !estimated_hours) {
-    return res.status(400).json({ error: "title, due_date, and estimated_hours are required" });
+  if (!title || !title.trim() || !due_date) {
+    return res.status(400).json({ error: "title and due_date are required" });
+  }
+  // A falsy check alone (!estimated_hours) lets a negative number
+  // through - it's truthy, so -5 would pass straight into the column.
+  // Matches the explicit typeof+range check tasks.js already uses for
+  // estimate_minutes.
+  if (typeof estimated_hours !== "number" || estimated_hours <= 0) {
+    return res.status(400).json({ error: "estimated_hours must be a positive number" });
   }
   try {
     const { rows } = await pool.query(
@@ -112,6 +119,16 @@ deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
   // the time back to "just a date" can send due_time: null and have it
   // stick, instead of COALESCE silently keeping the old value.
   const hasDueTimeField = Object.prototype.hasOwnProperty.call(req.body, "due_time");
+  // Same gap as POST /deadlines above, and same "only when the field
+  // was actually sent" treatment as tag_id/due_time - omitting
+  // estimated_hours entirely is the normal "don't touch this field"
+  // PATCH shape and must stay allowed.
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, "estimated_hours") &&
+    (typeof estimated_hours !== "number" || estimated_hours <= 0)
+  ) {
+    return res.status(400).json({ error: "estimated_hours must be a positive number" });
+  }
   try {
     const { rows } = await pool.query(
       `UPDATE deadlines SET

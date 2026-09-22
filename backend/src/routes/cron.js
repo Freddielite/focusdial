@@ -600,30 +600,46 @@ async function handleTick(req, res) {
       const userId = settings.user_id;
       const tz = { timezone: settings.timezone, offsetMinutes: settings.timezone_offset_minutes };
 
-      // Each automation can be turned off independently from the
-      // Settings tab. A disabled check is skipped entirely here rather
-      // than relying on the push master switch downstream, so no work
-      // (or state mutation like last_notified_status) happens for
-      // something the user has opted out of. `push_enabled` is still
-      // enforced separately in lib/push.js as the catch-all master mute.
-      const remindersFired = settings.automation_reminders ? await checkDueReminders(userId, settings.display_name) : 0;
-      const paceChanges = settings.automation_deadline_pace
-        ? await checkDeadlinePaceChanges(userId, tz, settings.display_name)
-        : 0;
-      const streakNudged = settings.automation_streak
-        ? await checkStreakAtRisk(userId, tz, settings)
-        : false;
-      const runawayNudged = settings.automation_runaway_timer
-        ? await checkRunawayTimer(userId, settings.display_name)
-        : false;
-      const digestSent = settings.automation_weekly_digest
-        ? await checkWeeklyDigest(userId, tz, settings)
-        : false;
-      const googleSync = settings.automation_google_sync
-        ? await checkGoogleCalendarSync(userId)
-        : { skipped: "disabled" };
+      // Each user's checks run in their own try/catch so one person's
+      // bad data (a malformed timezone, an unexpected Google API error
+      // not already handled inside checkGoogleCalendarSync, etc.)
+      // can't take down the whole tick. Before this, the entire loop
+      // shared one try/catch around the whole function - one user
+      // throwing meant every user after them in allSettings that tick
+      // silently got skipped, with no reminders/nudges/digests sent to
+      // any of them, and the only trace was a single generic 500 with
+      // no indication which user or which check caused it.
+      try {
+        // Each automation can be turned off independently from the
+        // Settings tab. A disabled check is skipped entirely here rather
+        // than relying on the push master switch downstream, so no work
+        // (or state mutation like last_notified_status) happens for
+        // something the user has opted out of. `push_enabled` is still
+        // enforced separately in lib/push.js as the catch-all master mute.
+        const remindersFired = settings.automation_reminders
+          ? await checkDueReminders(userId, settings.display_name)
+          : 0;
+        const paceChanges = settings.automation_deadline_pace
+          ? await checkDeadlinePaceChanges(userId, tz, settings.display_name)
+          : 0;
+        const streakNudged = settings.automation_streak
+          ? await checkStreakAtRisk(userId, tz, settings)
+          : false;
+        const runawayNudged = settings.automation_runaway_timer
+          ? await checkRunawayTimer(userId, settings.display_name)
+          : false;
+        const digestSent = settings.automation_weekly_digest
+          ? await checkWeeklyDigest(userId, tz, settings)
+          : false;
+        const googleSync = settings.automation_google_sync
+          ? await checkGoogleCalendarSync(userId)
+          : { skipped: "disabled" };
 
-      perUser.push({ userId, remindersFired, paceChanges, streakNudged, runawayNudged, digestSent, googleSync });
+        perUser.push({ userId, remindersFired, paceChanges, streakNudged, runawayNudged, digestSent, googleSync });
+      } catch (err) {
+        console.error(`cron tick failed for user ${userId}:`, err);
+        perUser.push({ userId, error: err.message || "unknown error" });
+      }
     }
 
     res.json({ ok: true, usersChecked: perUser.length, results: perUser });
