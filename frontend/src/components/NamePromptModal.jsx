@@ -36,7 +36,7 @@ export default function NamePromptModal({ onUserUpdated, onDismiss }) {
 
   return (
     <motion.div
-      className="fd-modal-overlay"
+      className="fd-modal-overlay fd-modal-overlay--sheet"
       onClick={onDismiss}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -44,17 +44,19 @@ export default function NamePromptModal({ onUserUpdated, onDismiss }) {
       transition={{ duration: 0.15 }}
     >
       <motion.div
-        className="fd-panel fd-modal-panel fd-confirm-panel"
+        className="fd-panel fd-modal-panel fd-modal-panel--sheet fd-confirm-panel"
         onClick={(e) => e.stopPropagation()}
+        // Slides up from the bottom edge rather than popping in from the
+        // center - see the App.css comment on .fd-modal-panel--sheet.
         // No opacity fade on the panel itself - it has a solid
         // background, so fading it in over the (also still-fading)
         // backdrop briefly shows its text through both layers.
-        // Scale + position alone still reads as popping in.
-        initial={{ scale: 0.95, y: 8 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 6 }}
-        transition={{ duration: 0.2 }}
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 380, damping: 34 }}
       >
+        <div className="fd-modal-panel--sheet__handle" />
         <div className="fd-panel__label">What should we call you?</div>
         <div className="fd-confirm-body">
           Used to personalize greetings, your weekly review, and notifications - not shown to anyone else.

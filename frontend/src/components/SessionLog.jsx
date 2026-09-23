@@ -7,6 +7,21 @@ import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
 import SessionEditModal from "./SessionEditModal.jsx";
 import Dropdown from "./Dropdown.jsx";
 import { DatePicker } from "./DateTimeField.jsx";
+import SwipeableRow from "./SwipeableRow.jsx";
+
+// Revealed behind a session row while swiping left - see SwipeableRow
+// and TasksWidget's matching icons. No right-swipe action here: unlike
+// a task, a logged session has no sensible "complete" action to swipe
+// toward - it's already a historical record.
+function SwipeTrashIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16" />
+      <path d="M9 7V4h6v3" />
+      <path d="M6 7l1 13h10l1-13" />
+    </svg>
+  );
+}
 
 // Same clock glyph as the Today tab icon - each row tints it with the
 // session's tag color when one is set, falling back to the session
@@ -292,6 +307,11 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
             (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
           return (
             <div key={s.id} className="fd-log-row-wrap">
+              <SwipeableRow
+                disabled={editingId === s.id}
+                onSwipeLeft={() => handleDelete(s)}
+                leftAction={{ icon: <SwipeTrashIcon />, color: "var(--rust, #a33f2e)" }}
+              >
               <div className="fd-log-row fd-check-card" style={{ "--check-accent": s.tag_color || "var(--accent-session)" }}>
                 <span className="fd-check-card__icon">
                   <ClockIcon />
@@ -334,6 +354,7 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
                   ✕
                 </button>
               </div>
+              </SwipeableRow>
               <AnimatePresence initial={false}>
                 {editingId === s.id && (
                   <SessionEditModal

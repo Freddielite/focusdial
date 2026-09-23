@@ -2,7 +2,9 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createTask, updateTask, deleteTask, bumpTask } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
+import { useToast } from "./Toast.jsx";
 import { useUndoableDelete } from "../hooks/useUndoableDelete.js";
+import SwipeableRow from "./SwipeableRow.jsx";
 import { DatePicker, CalendarGlyph } from "./DateTimeField.jsx";
 import Dropdown from "./Dropdown.jsx";
 import TaskEditForm from "./TaskEditForm.jsx";
@@ -17,6 +19,28 @@ function FlagIcon() {
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 3v18" />
       <path d="M6 4h11l-2 3 2 3H6" />
+    </svg>
+  );
+}
+
+// Revealed behind a task row while swiping right (see SwipeableRow) -
+// matches the app's existing hand-drawn stroke-icon style (FlagIcon,
+// TagGlyph below) rather than pulling in an icon library for two glyphs.
+function SwipeCheckIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12l5 5L20 6" />
+    </svg>
+  );
+}
+
+// Revealed behind a task row while swiping left (see SwipeableRow).
+function SwipeTrashIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16" />
+      <path d="M9 7V4h6v3" />
+      <path d="M6 7l1 13h10l1-13" />
     </svg>
   );
 }
@@ -91,15 +115,24 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
   const [recurrence, setRecurrence] = useState("none");
   const [busy, setBusy] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  // Task ids marked done optimistically, ahead of the server confirming
+  // it - so the checkbox tap feels instant instead of waiting on a
+  // network round-trip (updateTask) plus the full onDataChanged refetch
+  // (10 parallel requests - see App.jsx's loadAll) before anything on
+  // screen changes. Rolled back on failure; cleared on the next
+  // successful onDataChanged either way, since the real task list will
+  // already reflect "done" by then.
+  const [optimisticDoneIds, setOptimisticDoneIds] = useState(() => new Set());
   // Which task row (by id) has its edit form expanded, or null - same
   // single-row-at-a-time toggle shape as SessionLog's editingId, so
   // only one task can be mid-edit at once.
   const [editingId, setEditingId] = useState(null);
   const confirm = useConfirm();
+  const toast = useToast();
   const requestDelete = useUndoableDelete();
   const now = new Date();
 
-  const visibleTasks = tasks.filter((t) => !pendingIds.has(t.id));
+  const visibleTasks = tasks.filter((t) => !pendingIds.has(t.id) && !optimisticDoneIds.has(t.id));
 
   // Feature 2's "based on your history, this usually takes ~X" hint -
   // purely informational, never overwrites what was typed (see
@@ -128,8 +161,23 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
   }
 
   async function handleToggle(task) {
-    await updateTask(task.id, { status: "done" });
-    onDataChanged();
+    // Optimistic: hide the row immediately, before the request even
+    // goes out, so completing a task feels instant rather than waiting
+    // on the network. Only rolled back if the request actually fails -
+    // on success we leave it hidden and let onDataChanged's refetch
+    // bring in the real, server-confirmed state.
+    setOptimisticDoneIds((prev) => new Set(prev).add(task.id));
+    try {
+      await updateTask(task.id, { status: "done" });
+      onDataChanged();
+    } catch (err) {
+      setOptimisticDoneIds((prev) => {
+        const next = new Set(prev);
+        next.delete(task.id);
+        return next;
+      });
+      toast({ title: "Couldn't mark task done", body: err.message, tone: "danger" });
+    }
   }
 
   async function handleBump(task) {
@@ -281,12 +329,19 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
                 exit={{ opacity: 0, x: 20 }}
                 className="fd-task-row-wrap"
               >
-                <div
-                  className={`fd-task-row fd-check-card${t.deadline_id ? " fd-task-row--deadline" : ""}${
-                    overdue ? " fd-task-row--overdue" : ""
-                  }`}
-                  style={{ "--check-accent": t.tag_color || "var(--accent-session)" }}
+                <SwipeableRow
+                  disabled={editingId === t.id}
+                  onSwipeRight={() => handleToggle(t)}
+                  rightAction={{ icon: <SwipeCheckIcon />, color: "var(--focus-green, #2e7d4f)" }}
+                  onSwipeLeft={() => handleDelete(t)}
+                  leftAction={{ icon: <SwipeTrashIcon />, color: "var(--rust, #a33f2e)" }}
                 >
+                  <div
+                    className={`fd-task-row fd-check-card${t.deadline_id ? " fd-task-row--deadline" : ""}${
+                      overdue ? " fd-task-row--overdue" : ""
+                    }`}
+                    style={{ "--check-accent": t.tag_color || "var(--accent-session)" }}
+                  >
                   <button className="fd-task-checkbox" onClick={() => handleToggle(t)} aria-label="Mark done" />
                   <div className="fd-check-card__body">
                     <span className="fd-check-card__title fd-task-row__title-line">
@@ -345,7 +400,8 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
                   <button className="fd-icon-btn" onClick={() => handleDelete(t)} aria-label="Delete task">
                     ✕
                   </button>
-                </div>
+                  </div>
+                </SwipeableRow>
                 <AnimatePresence initial={false}>
                   {editingId === t.id && (
                     <TaskEditForm

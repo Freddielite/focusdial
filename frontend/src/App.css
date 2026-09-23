@@ -774,10 +774,46 @@ button {
   overflow-y: visible;
 }
 
-.fd-loading {
-  margin: auto;
-  font-family: var(--font-mono);
-  color: var(--parchment-dim);
+.fd-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--glass-bg) 40%,
+    color-mix(in srgb, var(--parchment-dim) 14%, var(--glass-bg)) 50%,
+    var(--glass-bg) 60%
+  );
+  background-size: 200% 100%;
+  animation: fd-skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes fd-skeleton-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+
+/* Same accessibility practice as the ambient color-transition rule
+   above: anyone with reduced-motion set gets a static tinted block
+   instead of a moving shimmer, rather than this being the one animation
+   in the app that ignores that preference. */
+@media (prefers-reduced-motion: reduce) {
+  .fd-skeleton {
+    animation: none;
+    background: color-mix(in srgb, var(--parchment-dim) 10%, var(--glass-bg));
+  }
+}
+
+.fd-skeleton-today {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.fd-skeleton-today__row {
+  display: flex;
+  gap: 10px;
 }
 
 .fd-loadbar {
@@ -1901,6 +1937,35 @@ button {
   max-height: calc(100vh - 40px);
   overflow-y: auto;
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.6);
+}
+
+/* Bottom sheet variant - native apps present confirmations, prompts and
+   plan/reflection modals as a sheet anchored to the bottom edge rather
+   than a card floating in the middle of the screen. The overlay just
+   changes its flex alignment to push the panel down; the panel itself
+   only rounds its top corners (it's flush against the bottom edge, not
+   floating), adds a drag-handle bar for the visual affordance, and pads
+   its bottom for the home-indicator safe area on notched phones. */
+.fd-modal-overlay--sheet {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.fd-modal-panel--sheet {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  border-radius: 20px 20px 0 0;
+  max-height: 85vh;
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+}
+
+.fd-modal-panel--sheet__handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: 0 auto 14px;
 }
 
 .fd-confirm-panel {
@@ -3091,6 +3156,39 @@ button {
    inline edit form too, same reasoning as .fd-log-row-wrap. */
 .fd-task-row-wrap {
   border-bottom: 1px solid var(--line);
+}
+
+.fd-swipe-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.fd-swipe-row__action {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  color: #fff;
+}
+
+.fd-swipe-row__action-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fd-swipe-row__content {
+  position: relative;
+  z-index: 1;
+  /* Lets vertical list-scrolling gestures pass through untouched and
+     only intercepts horizontal ones for the swipe drag - without this,
+     the drag gesture fights with the page's own vertical scroll on
+     touch devices. No background set here on purpose: the wrapped row
+     (.fd-task-row, .fd-log-row, etc.) already supplies its own opaque
+     background, which is what actually needs to cover the reveal
+     underneath as it slides. */
+  touch-action: pan-y;
 }
 
 .fd-task-row-wrap:last-child {

@@ -11,6 +11,7 @@ import NotificationBell from "./components/NotificationBell.jsx";
 import { useTheme } from "./hooks/useTheme.js";
 import { useToast } from "./components/Toast.jsx";
 import TodayView from "./components/TodayView.jsx";
+import TodaySkeleton from "./components/TodaySkeleton.jsx";
 import InsightsView from "./components/InsightsView.jsx";
 import BudgetsView from "./components/BudgetsView.jsx";
 import DeadlinesView from "./components/DeadlinesView.jsx";
@@ -828,7 +829,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
           <main className="fd-main">
             <PullToRefresh onRefresh={loadAll}>
             {!loaded ? (
-              <div className="fd-loading">Loading your focus journal…</div>
+              <TodaySkeleton />
             ) : (
               <AnimatePresence mode="wait" initial={false}>
                 {activeTab === "today" && (
