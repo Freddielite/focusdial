@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { motion, useAnimationControls } from "framer-motion";
 
 // How far (px) a drag has to travel - or how fast it has to be flung -
 // before release counts as a deliberate swipe rather than a nudge that
@@ -24,9 +24,30 @@ const MAX_DRAG_PX = 120;
 // sensible to "complete", so it only gets leftAction/onSwipeLeft.
 export default function SwipeableRow({ children, onSwipeRight, onSwipeLeft, rightAction, leftAction, disabled = false }) {
   const [dragX, setDragX] = useState(0);
+  // A static animate={{x: 0}} target doesn't reliably re-trigger once a
+  // drag gesture has taken ownership of the element's position - since
+  // the object's *values* never change between renders, nothing tells
+  // Framer Motion "go back to 0" again after the first time. That's
+  // exactly why cancelling a swipe (not dragging far/fast enough to
+  // commit) could leave the row stuck wherever the finger let go instead
+  // of springing back. Explicit animation controls sidestep that: every
+  // drag end calls controls.start(...) directly, so the reset always
+  // actually fires, whether the swipe committed or not.
+  const controls = useAnimationControls();
 
   const canRight = Boolean(onSwipeRight && rightAction);
   const canLeft = Boolean(onSwipeLeft && leftAction);
+
+  // If a row gets disabled mid-drag (e.g. tapping into edit before
+  // lifting the finger), make sure it also snaps back rather than
+  // staying stuck wherever it was - same reset, just triggered by a
+  // prop change instead of a drag ending.
+  useEffect(() => {
+    if (disabled) {
+      controls.start({ x: 0, transition: { type: "spring", stiffness: 500, damping: 40 } });
+      setDragX(0);
+    }
+  }, [disabled, controls]);
 
   // Nothing to swipe to - skip the wrapper markup and drag machinery
   // entirely rather than rendering an inert one.
@@ -35,9 +56,10 @@ export default function SwipeableRow({ children, onSwipeRight, onSwipeLeft, righ
   function handleDragEnd(_, info) {
     const { offset, velocity } = info;
     const committed = Math.abs(offset.x) > SWIPE_THRESHOLD_PX || Math.abs(velocity.x) > SWIPE_THRESHOLD_VELOCITY;
+    controls.start({ x: 0, transition: { type: "spring", stiffness: 500, damping: 40 } });
+    setDragX(0);
     if (committed && offset.x > 0 && canRight) onSwipeRight();
     else if (committed && offset.x < 0 && canLeft) onSwipeLeft();
-    setDragX(0);
   }
 
   const showRight = dragX > 8 && canRight;
@@ -73,8 +95,7 @@ export default function SwipeableRow({ children, onSwipeRight, onSwipeLeft, righ
         dragElastic={0.15}
         onDrag={(_, info) => setDragX(info.offset.x)}
         onDragEnd={handleDragEnd}
-        animate={{ x: 0 }}
-        transition={{ type: "spring", stiffness: 500, damping: 40 }}
+        animate={controls}
       >
         {children}
       </motion.div>
