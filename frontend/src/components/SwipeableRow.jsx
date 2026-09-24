@@ -93,6 +93,16 @@ export default function SwipeableRow({ children, onSwipeRight, onSwipeLeft, righ
         drag={disabled ? false : "x"}
         dragConstraints={{ left: canLeft ? -MAX_DRAG_PX : 0, right: canRight ? MAX_DRAG_PX : 0 }}
         dragElastic={0.15}
+        // Without this, Framer Motion runs its own built-in "spring back
+        // within constraints" animation on release, in parallel with the
+        // explicit controls.start(...) reset below - two animations
+        // fighting over the same element. Barely noticeable for a small
+        // cancelled drag, but at the extreme end (where the built-in
+        // correction has the most distance to cover and the most
+        // momentum behind it) it could win the fight and leave the row
+        // stuck wherever that left off. Disabling momentum makes the
+        // explicit reset the only thing driving the animation.
+        dragMomentum={false}
         onDrag={(_, info) => setDragX(info.offset.x)}
         onDragEnd={handleDragEnd}
         animate={controls}
