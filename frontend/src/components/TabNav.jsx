@@ -75,16 +75,22 @@ export default function TabNav({ active, onChange }) {
   return (
     <nav className="fd-tabnav" aria-label="Sections" ref={navRef}>
       {TABS.map((tab) => (
-        <button
+        <motion.button
           key={tab.id}
           ref={(el) => (btnRefs.current[tab.id] = el)}
           className={`fd-tabnav__btn ${active === tab.id ? "fd-tabnav__btn--active" : ""}`}
           onClick={() => onChange(tab.id)}
           aria-current={active === tab.id ? "page" : undefined}
+          // The classic native tab-bar press: scale down slightly on
+          // tap, spring back up on release, instead of the tab just
+          // swapping color instantly. whileTap handles both the press
+          // and the release-bounce on its own - no extra state needed.
+          whileTap={{ scale: 0.88 }}
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
         >
           <span className="fd-tabnav__icon"><TabIcon id={tab.id} /></span>
           <span className="fd-tabnav__label">{tab.label}</span>
-        </button>
+        </motion.button>
       ))}
       {indicator && (
         <motion.div
