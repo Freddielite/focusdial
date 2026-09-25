@@ -1984,6 +1984,12 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  /* Breathing room from whatever content sits above it - without this,
+     the primary action (e.g. DailyPlanModal's "Let's go") could end up
+     crowded right against the last line of content, especially in a
+     modal like the daily-plan sheet where that's a whole recommendations
+     list rather than a couple of short lines like ConfirmDialog's. */
+  margin-top: 20px;
 }
 
 .fd-daily-ritual-cards {
@@ -2093,6 +2099,23 @@ button {
 
 .fd-daily-plan-modal__event .fd-link-btn {
   flex-shrink: 0;
+  /* Scoped to just this one spot rather than changing the base
+     .fd-link-btn used everywhere else (Cancel, Clear, etc., which are
+     meant to stay minimal) - this is the one place a link-styled button
+     is someone's PRIMARY way to act on a recommended task, and bare text
+     with 4px of padding doesn't read as a real tap target at that size.
+     A visible pill boundary plus a real touch-friendly hit area fixes
+     that without making it compete with "Let's go" for attention - still
+     smaller and lighter-weight, just no longer invisible-until-tapped. */
+  padding: 6px 12px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  min-height: 32px;
+}
+
+.fd-daily-plan-modal__event .fd-link-btn:hover:not(:disabled) {
+  border-color: rgba(224, 169, 61, 0.4);
 }
 
 .fd-day-detail-panel {
