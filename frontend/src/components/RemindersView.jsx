@@ -109,7 +109,7 @@ function ConvertPanel({ reminder, tags, onDone, onDelete, onEdit }) {
         <div className="fd-manual-form__row">
           <label>
             Due date (optional)
-            <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <DatePicker className="fd-select" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           </label>
         </div>
         {error && <div className="fd-inline-error">{error}</div>}
@@ -130,7 +130,7 @@ function ConvertPanel({ reminder, tags, onDone, onDelete, onEdit }) {
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Due date
-          <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+          <DatePicker className="fd-select" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
         </label>
         <label>
           Estimated hours
@@ -220,7 +220,7 @@ function ReminderEditForm({ reminder, onCancel, onSaved }) {
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Remind me at
-          <DateTimePicker value={remindAt} onChange={(e) => setRemindAt(e.target.value)} required />
+          <DateTimePicker className="fd-select" value={remindAt} onChange={(e) => setRemindAt(e.target.value)} required />
         </label>
         <label>
           Repeat
@@ -348,7 +348,7 @@ export default function RemindersView({ reminders, tags, onDataChanged }) {
             <div className="fd-manual-form__row fd-manual-form__row--dates">
               <label>
                 Remind me at
-                <DateTimePicker value={remindAt} onChange={(e) => setRemindAt(e.target.value)} required />
+                <DateTimePicker className="fd-select" value={remindAt} onChange={(e) => setRemindAt(e.target.value)} required />
               </label>
               <label>
                 Repeat

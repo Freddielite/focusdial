@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { formatDuration } from "../format.js";
 import { deleteSession, listRecentSessions } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
@@ -306,7 +306,7 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
           const seconds =
             (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
           return (
-            <div key={s.id} className="fd-log-row-wrap">
+            <motion.div key={s.id} layout className="fd-log-row-wrap">
               <SwipeableRow
                 disabled={editingId === s.id}
                 onSwipeLeft={() => handleDelete(s)}
@@ -369,7 +369,7 @@ export default function SessionLog({ sessionsVersion, tags, tasks, onSessionDele
                   />
                 )}
               </AnimatePresence>
-            </div>
+            </motion.div>
           );
         })}
       </div>

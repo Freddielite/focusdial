@@ -2739,6 +2739,21 @@ button {
   color: var(--brass);
 }
 
+/* .fd-icon-btn:hover (one class + one pseudo-class) and
+   .fd-icon-btn--active (one class) are unequal specificity - hover
+   wins whenever both apply, which happens on any touch device where
+   :hover sticks after a tap instead of clearing (there's no mouse to
+   "leave"). That silently painted an active/set icon button (tag set,
+   estimate set, due date set) in the rust "hover" tint instead of the
+   intended brass "this is active" tint - looks like an error state on
+   a button that's actually just correctly toggled on. Matching
+   specificity (two classes) plus later source order makes the active
+   state win instead, on both touch and real mouse hover. */
+.fd-icon-btn.fd-icon-btn--active,
+.fd-icon-btn.fd-icon-btn--active:hover {
+  color: var(--brass);
+}
+
 /* ---------- Tag manager ---------- */
 
 .fd-tag-manager {

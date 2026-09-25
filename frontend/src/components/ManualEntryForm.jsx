@@ -127,11 +127,11 @@ export default function ManualEntryForm({ tags, tasks, onSessionCreated, onDataC
         <div className="fd-manual-form__row fd-manual-form__row--dates">
           <label>
             Start
-            <DateTimePicker value={start} onChange={(e) => setStart(e.target.value)} required restrictFuture />
+            <DateTimePicker className="fd-select" value={start} onChange={(e) => setStart(e.target.value)} required restrictFuture />
           </label>
           <label>
             End
-            <DateTimePicker value={end} onChange={(e) => setEnd(e.target.value)} required restrictFuture />
+            <DateTimePicker className="fd-select" value={end} onChange={(e) => setEnd(e.target.value)} required restrictFuture />
           </label>
         </div>
         <div className="fd-manual-form__row">

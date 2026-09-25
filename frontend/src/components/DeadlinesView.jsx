@@ -294,7 +294,7 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Due date
-          <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+          <DatePicker className="fd-select" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
         </label>
         <label>
           Due time (optional)
@@ -534,7 +534,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
             <div className="fd-manual-form__row fd-manual-form__row--dates">
               <label>
                 Due date
-                <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+                <DatePicker className="fd-select" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
               </label>
               <label>
                 Due time (optional)

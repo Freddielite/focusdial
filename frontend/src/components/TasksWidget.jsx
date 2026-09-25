@@ -291,7 +291,7 @@ export default function TasksWidget({ tasks, tags, tagEstimateStats, onDataChang
       )}
       {showDueDate && (
         <div className="fd-quick-task-due">
-          <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <DatePicker className="fd-select fd-select--sm" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           {dueDate && (
             <>
               <Dropdown className="fd-select fd-select--sm" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>

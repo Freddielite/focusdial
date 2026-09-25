@@ -101,7 +101,7 @@ export default function TaskEditForm({ task, tags, onCancel, onSaved }) {
       <div className="fd-manual-form__row fd-manual-form__row--dates">
         <label>
           Due date
-          <DatePicker value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <DatePicker className="fd-select" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </label>
         {dueDate && (
           <label>
