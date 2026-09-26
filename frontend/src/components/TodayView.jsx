@@ -9,7 +9,6 @@ import TasksWidget from "./TasksWidget.jsx";
 import PriorityCard from "./PriorityCard.jsx";
 import SuggestionCard from "./SuggestionCard.jsx";
 import OpenSlotsCard from "./OpenSlotsCard.jsx";
-import DueTodayBanner from "./DueTodayBanner.jsx";
 
 // Same hand-drawn feather-style icon convention as NotificationBell.jsx/
 // InsightCard.jsx (stroke=currentColor, no fill) rather than an icon
@@ -77,7 +76,35 @@ export default function TodayView({
         startTimeAnomaly={summary.startTimeAnomaly}
         graceEnabled={graceEnabled}
         userName={userName}
+        reminders={reminders}
+        deadlines={deadlines}
+        onNavigateTab={onNavigateTab}
       />
+
+      {/* Starting a session is the core action of a focus-timer app -
+          it used to sit 8th on this screen, below Hero, the daily-ritual
+          buttons, the insight card, the priority/suggestion cards, and
+          open slots. Moved up to be the second thing on the screen,
+          right after Hero, instead of buried under six other cards. */}
+      <div className="fd-main__top">
+        <div className="fd-main__timer-col">
+          <TimerPanel
+            tags={tags}
+            tasks={tasks}
+            hourlyTagSuggestions={summary.hourlyTagSuggestions}
+            tagVocabulary={tagVocabulary}
+            onSessionCompleted={onSessionCompleted}
+            onDataChanged={onDataChanged}
+            onRunningChange={onRunningChange}
+          />
+          <ManualEntryForm tags={tags} tasks={tasks} onSessionCreated={onSessionCreated} onDataChanged={onDataChanged} />
+        </div>
+        <div className="fd-main__side-col">
+          <StatsStrip summary={summary} />
+          <TasksWidget tasks={tasks} tags={tags} tagEstimateStats={priorityRanking.tagEstimateStats} onDataChanged={onDataChanged} />
+        </div>
+      </div>
+
       {onOpenDailyPlan && (
         <div className="fd-daily-ritual-cards">
           <button type="button" className="fd-daily-ritual-card" onClick={() => onOpenDailyPlan("morning")}>
@@ -94,7 +121,6 @@ export default function TodayView({
           </button>
         </div>
       )}
-      <DueTodayBanner reminders={reminders} deadlines={deadlines} onNavigateTab={onNavigateTab} />
       <InsightCard insight={insightOfTheDay} />
 
       {/* Feature 1 + Feature 6 of the priority engine. Sit above the
@@ -132,24 +158,6 @@ export default function TodayView({
         onSessionStarted={onSessionStarted}
       />
 
-      <div className="fd-main__top">
-        <div className="fd-main__timer-col">
-          <TimerPanel
-            tags={tags}
-            tasks={tasks}
-            hourlyTagSuggestions={summary.hourlyTagSuggestions}
-            tagVocabulary={tagVocabulary}
-            onSessionCompleted={onSessionCompleted}
-            onDataChanged={onDataChanged}
-            onRunningChange={onRunningChange}
-          />
-          <ManualEntryForm tags={tags} tasks={tasks} onSessionCreated={onSessionCreated} onDataChanged={onDataChanged} />
-        </div>
-        <div className="fd-main__side-col">
-          <StatsStrip summary={summary} />
-          <TasksWidget tasks={tasks} tags={tags} tagEstimateStats={priorityRanking.tagEstimateStats} onDataChanged={onDataChanged} />
-        </div>
-      </div>
       <SessionLog
         sessionsVersion={sessionsVersion}
         tags={allTags}

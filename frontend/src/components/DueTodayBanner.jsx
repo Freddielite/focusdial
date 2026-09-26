@@ -3,12 +3,17 @@
 // something already reminded them to. This surfaces the same "due"
 // concept - reusing the exact same rules those tabs already use, not a
 // third slightly-different definition - right on the Today screen,
-// which people actually open. Tapping a row jumps to the real tab to
-// act on it (dismiss, complete, etc.) rather than re-implementing those
-// actions a second time here.
+// which people actually open.
+//
+// Rendered as a compact strip of chips inside HeroCard rather than its
+// own separate card - Today was stacking up to 7 cards before the
+// timer even showed up, and a whole extra bordered panel just for this
+// made that worse, not better. A chip row costs one line, not a card.
+// Tapping a chip jumps to the real tab to act on it (dismiss, complete,
+// etc.) rather than re-implementing those actions a second time here.
 function BellIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     </svg>
@@ -19,7 +24,7 @@ function BellIcon() {
 // so the two read as the same kind of thing here too.
 function FlagIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 3v18" />
       <path d="M6 4h11l-2 3 2 3H6" />
     </svg>
@@ -51,22 +56,18 @@ export default function DueTodayBanner({ reminders, deadlines, onNavigateTab }) 
   ].sort((a, b) => a.sortAt - b.sortAt);
 
   return (
-    <div className="fd-panel fd-due-banner">
-      <div className="fd-panel__label">Due now</div>
-      <div className="fd-due-banner__list">
-        {items.map((item) => (
-          <button
-            key={`${item.kind}-${item.id}`}
-            type="button"
-            className={`fd-due-banner__row fd-due-banner__row--${item.kind}`}
-            onClick={() => onNavigateTab(item.kind === "reminder" ? "reminders" : "deadlines")}
-          >
-            <span className="fd-due-banner__icon">{item.kind === "reminder" ? <BellIcon /> : <FlagIcon />}</span>
-            <span className="fd-due-banner__title">{item.title}</span>
-            <span className="fd-due-banner__tag">{item.kind === "reminder" ? "Reminder" : "Deadline"}</span>
-          </button>
-        ))}
-      </div>
+    <div className="fd-hero__due-strip">
+      {items.map((item) => (
+        <button
+          key={`${item.kind}-${item.id}`}
+          type="button"
+          className={`fd-hero__due-chip fd-hero__due-chip--${item.kind}`}
+          onClick={() => onNavigateTab(item.kind === "reminder" ? "reminders" : "deadlines")}
+        >
+          {item.kind === "reminder" ? <BellIcon /> : <FlagIcon />}
+          <span className="fd-hero__due-chip-title">{item.title}</span>
+        </button>
+      ))}
     </div>
   );
 }

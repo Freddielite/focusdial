@@ -1,5 +1,6 @@
 import { formatDuration } from "../format.js";
 import FocusMark from "./FocusMark.jsx";
+import DueTodayBanner from "./DueTodayBanner.jsx";
 
 // The Today hero - FocusDial's take on the ledger app's balance card.
 // Instead of a money balance it leads with today's focus time (the one
@@ -50,6 +51,9 @@ export default function HeroCard({
   startTimeAnomaly,
   graceEnabled,
   userName,
+  reminders,
+  deadlines,
+  onNavigateTab,
 }) {
   const hasGoal = dailyGoalSeconds != null && dailyGoalSeconds > 0;
   const goalPct = hasGoal ? Math.min(1, summary.todaySeconds / dailyGoalSeconds) : 0;
@@ -79,6 +83,10 @@ export default function HeroCard({
             vs your typical {Math.round(startTimeAnomaly.avgStartMinute / 60)}h
             {String(Math.round(startTimeAnomaly.avgStartMinute) % 60).padStart(2, "0")}.
           </div>
+        )}
+
+        {reminders && deadlines && onNavigateTab && (
+          <DueTodayBanner reminders={reminders} deadlines={deadlines} onNavigateTab={onNavigateTab} />
         )}
 
         <div className="fd-hero__value">{formatDuration(summary.todaySeconds)}</div>
