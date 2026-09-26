@@ -851,6 +851,9 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     openSlots={openSlots}
                     onOpenDailyPlan={setDailyRitualMode}
                     suggestion={suggestion}
+                    reminders={reminders}
+                    deadlines={deadlinesWithProgress}
+                    onNavigateTab={setActiveTab}
                     hasRunningSession={!!runningSession}
                     onRunningChange={setRunningSession}
                     onSessionCompleted={handleSessionCompleted}

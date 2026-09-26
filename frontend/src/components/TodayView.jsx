@@ -9,6 +9,7 @@ import TasksWidget from "./TasksWidget.jsx";
 import PriorityCard from "./PriorityCard.jsx";
 import SuggestionCard from "./SuggestionCard.jsx";
 import OpenSlotsCard from "./OpenSlotsCard.jsx";
+import DueTodayBanner from "./DueTodayBanner.jsx";
 
 // Same hand-drawn feather-style icon convention as NotificationBell.jsx/
 // InsightCard.jsx (stroke=currentColor, no fill) rather than an icon
@@ -47,6 +48,9 @@ export default function TodayView({
   priorityRanking,
   suggestion,
   openSlots,
+  reminders,
+  deadlines,
+  onNavigateTab,
   onOpenDailyPlan,
   hasRunningSession,
   onRunningChange,
@@ -90,6 +94,7 @@ export default function TodayView({
           </button>
         </div>
       )}
+      <DueTodayBanner reminders={reminders} deadlines={deadlines} onNavigateTab={onNavigateTab} />
       <InsightCard insight={insightOfTheDay} />
 
       {/* Feature 1 + Feature 6 of the priority engine. Sit above the

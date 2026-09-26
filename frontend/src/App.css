@@ -1146,6 +1146,59 @@ button {
   margin-bottom: 14px;
 }
 
+.fd-due-banner {
+  border-color: color-mix(in srgb, var(--rust) 35%, var(--glass-border));
+}
+
+.fd-due-banner__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fd-due-banner__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--grad-input);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+}
+
+.fd-due-banner__row--reminder .fd-due-banner__icon {
+  color: var(--brass);
+}
+
+.fd-due-banner__row--deadline .fd-due-banner__icon {
+  color: var(--rust);
+}
+
+.fd-due-banner__icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.fd-due-banner__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.fd-due-banner__tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--parchment-dim);
+}
+
 .fd-empty {
   font-family: var(--font-mono);
   font-size: 13px;
