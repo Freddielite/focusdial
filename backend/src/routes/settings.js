@@ -106,6 +106,21 @@ settingsRouter.put("/settings", async (req, res) => {
     values.push(v === null ? null : Math.round(v));
   }
 
+  // How often the frontend re-shows the due-reminder/deadline toast
+  // (see the db.js column comment). Not nullable: there's no meaningful
+  // "off" state here - turning the toasts off entirely is what
+  // automation_reminders is for - so this only rejects genuinely
+  // invalid input. Capped at one week so a fat-fingered extra zero
+  // can't silently mean "never remind me again" for practical purposes.
+  if ("due_toast_interval_minutes" in req.body) {
+    const v = req.body.due_toast_interval_minutes;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 1 || v > 10080) {
+      return res.status(400).json({ error: "due_toast_interval_minutes must be an integer between 1 and 10080" });
+    }
+    updates.push(`due_toast_interval_minutes = $${i++}`);
+    values.push(v);
+  }
+
   if ("weekly_digest_day_of_week" in req.body) {
     const v = req.body.weekly_digest_day_of_week;
     if (typeof v !== "number" || v < 0 || v > 6 || !Number.isInteger(v)) {

@@ -1146,42 +1146,6 @@ button {
   margin-bottom: 14px;
 }
 
-.fd-hero__due-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.fd-hero__due-chip {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 160px;
-  padding: 4px 9px;
-  background: var(--grad-input);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--parchment);
-}
-
-.fd-hero__due-chip--reminder {
-  color: var(--brass);
-}
-
-.fd-hero__due-chip--deadline {
-  color: var(--rust);
-}
-
-.fd-hero__due-chip-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--parchment);
-}
-
 .fd-empty {
   font-family: var(--font-mono);
   font-size: 13px;

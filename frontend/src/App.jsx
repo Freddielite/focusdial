@@ -63,6 +63,7 @@ const DEFAULT_SETTINGS = {
   daily_focus_goal_seconds: null,
   weekly_digest_day_of_week: 0,
   weekly_digest_hour: 19,
+  due_toast_interval_minutes: 60,
 };
 
 const WORSENING_PACE = new Set(["tight", "behind", "overdue"]);
@@ -556,7 +557,10 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // by its own Settings toggle so a toggle silences both channels.
   const paceStatusRef = useRef(new Map());
   const budgetMetRef = useRef(new Set());
-  const toastedReminderRef = useRef(new Set());
+  // "reminder:<id>" / "deadline:<id>" -> epoch ms of the last time this
+  // item's due toast was shown. Drives the repeating "still due" nag
+  // below - see that effect for why this replaced the old one-shot set.
+  const dueToastLastRef = useRef(new Map());
   const prevStreakRef = useRef(false);
   // Feature 4's distinct "you've neglected X" notice - separate from the
   // categoryBalance boost that already feeds into the priority score
@@ -585,9 +589,6 @@ export default function App({ user, onLogout, onUserUpdated }) {
     if (!loaded || initRef.current) return;
     for (const d of deadlinesWithProgress) paceStatusRef.current.set(d.id, d.status);
     for (const b of budgetsWithProgress) if (b.pct >= 1) budgetMetRef.current.add(b.id);
-    for (const r of reminders) {
-      if (new Date(r.remind_at) <= new Date()) toastedReminderRef.current.add(r.id);
-    }
     for (const info of priorityRanking.categoryBalance.values()) {
       if (info.neglected) neglectedTagsRef.current.add(info.tagId);
     }
@@ -713,21 +714,115 @@ export default function App({ user, onLogout, onUserUpdated }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deadlinesWithProgress, budgetsWithProgress, settings.automation_risk_reminders]);
 
-  // Reminders coming due while the app is open.
+  // Due reminders and due-today/overdue deadlines toast when the app
+  // opens with them already due, and again every
+  // settings.due_toast_interval_minutes for as long as they stay due.
+  // This used to be a one-shot: a reminder toasted once when it flipped
+  // to due, and anything already due at load was deliberately seeded as
+  // "already toasted" - so if you weren't looking at that exact moment,
+  // or the reminder came due while the app was closed, nothing on
+  // screen ever told you it was there (it just sat on the Reminders
+  // tab). A repeat is the fix for that, and dueToastLastRef is what
+  // keeps this effect - which re-runs every minute, and every second
+  // while a timer is running - from firing more than once per interval.
+  //
+  // The first show for an item goes through notify() (toast + a line
+  // in the bell panel); repeats are toast-only so the bell doesn't pile
+  // up an identical entry every hour.
   useEffect(() => {
-    if (!initRef.current) return;
-    const now = new Date();
-    for (const r of reminders) {
-      if (r.status !== "pending") continue;
-      if (new Date(r.remind_at) <= now && !toastedReminderRef.current.has(r.id)) {
-        toastedReminderRef.current.add(r.id);
-        if (settings.automation_reminders) {
-          notify({ title: "Reminder", body: r.title, tone: "default" });
+    if (!loaded) return;
+    const nowMs = Date.now();
+    const intervalMs = Math.max(1, settings.due_toast_interval_minutes || 60) * 60000;
+    const endOfToday = new Date(nowMs);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const due = [];
+    if (settings.automation_reminders) {
+      for (const r of reminders) {
+        if (r.status === "pending" && new Date(r.remind_at).getTime() <= nowMs) {
+          due.push({
+            key: `reminder:${r.id}`,
+            title: "Reminder",
+            body: r.title,
+            tone: "default",
+            tab: "reminders",
+          });
         }
       }
     }
+    if (settings.automation_deadline_pace) {
+      for (const d of deadlinesWithProgress) {
+        if (d.status === "done" || d.status === "archived") continue;
+        if (d.dueAt <= endOfToday) {
+          const overdue = d.dueAt.getTime() < nowMs;
+          due.push({
+            key: `deadline:${d.id}`,
+            title: overdue ? "Deadline overdue" : "Deadline due today",
+            body: d.title,
+            tone: "warn",
+            tab: "deadlines",
+          });
+        }
+      }
+    }
+
+    const stillDue = new Set(due.map((item) => item.key));
+    // Forget anything no longer due (dismissed, completed, rescheduled),
+    // so if it comes due again later it starts a fresh cycle instead of
+    // inheriting a stale "last shown" time.
+    for (const key of dueToastLastRef.current.keys()) {
+      if (!stillDue.has(key)) dueToastLastRef.current.delete(key);
+    }
+
+    const toFire = [];
+    for (const item of due) {
+      const last = dueToastLastRef.current.get(item.key);
+      if (last != null && nowMs - last < intervalMs) continue;
+      dueToastLastRef.current.set(item.key, nowMs);
+      toFire.push({ ...item, isRepeat: last != null });
+    }
+    if (toFire.length === 0) return;
+
+    // A handful of separate toasts is fine; a pile (say, opening the app
+    // after a few days away with a stack of overdue items) would cover
+    // the screen, so past this many they collapse into one summary that
+    // still jumps to the right tab.
+    const MAX_SEPARATE_TOASTS = 3;
+    if (toFire.length > MAX_SEPARATE_TOASTS) {
+      const names = toFire.slice(0, 2).map((item) => item.body).join(", ");
+      const payload = {
+        title: `${toFire.length} items need attention`,
+        body: `${names} and ${toFire.length - 2} more`,
+        tone: "warn",
+        actionLabel: "View",
+        onAction: () => setActiveTab(toFire[0].tab),
+      };
+      if (toFire.every((item) => item.isRepeat)) toast(payload);
+      else notify(payload);
+      return;
+    }
+
+    for (const item of toFire) {
+      const payload = {
+        title: item.title,
+        body: item.body,
+        tone: item.tone,
+        actionLabel: "View",
+        onAction: () => setActiveTab(item.tab),
+      };
+      if (item.isRepeat) toast(payload);
+      else notify(payload);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reminders, nowTick]);
+  }, [
+    loaded,
+    reminders,
+    deadlinesWithProgress,
+    nowTick,
+    settings.due_toast_interval_minutes,
+    settings.automation_reminders,
+    settings.automation_deadline_pace,
+  ]);
 
   // Streak flipping into "at risk".
   useEffect(() => {
@@ -851,9 +946,6 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     openSlots={openSlots}
                     onOpenDailyPlan={setDailyRitualMode}
                     suggestion={suggestion}
-                    reminders={reminders}
-                    deadlines={deadlinesWithProgress}
-                    onNavigateTab={setActiveTab}
                     hasRunningSession={!!runningSession}
                     onRunningChange={setRunningSession}
                     onSessionCompleted={handleSessionCompleted}

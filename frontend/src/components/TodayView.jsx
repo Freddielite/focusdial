@@ -47,9 +47,6 @@ export default function TodayView({
   priorityRanking,
   suggestion,
   openSlots,
-  reminders,
-  deadlines,
-  onNavigateTab,
   onOpenDailyPlan,
   hasRunningSession,
   onRunningChange,
@@ -76,9 +73,6 @@ export default function TodayView({
         startTimeAnomaly={summary.startTimeAnomaly}
         graceEnabled={graceEnabled}
         userName={userName}
-        reminders={reminders}
-        deadlines={deadlines}
-        onNavigateTab={onNavigateTab}
       />
 
       {/* Starting a session is the core action of a focus-timer app -

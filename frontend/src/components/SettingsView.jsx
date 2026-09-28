@@ -43,6 +43,21 @@ function Row({ title, desc, muted, children }) {
   );
 }
 
+// Presets for how often a still-due reminder/deadline toast repeats
+// (see the repeating-toast effect in App.jsx). A dropdown rather than a
+// free-typed number, same reasoning as the digest timing pickers below:
+// nothing here needs a value in between these, and it can update on
+// every change instead of needing a commit-on-blur buffer.
+const DUE_TOAST_INTERVAL_OPTIONS = [
+  { value: 15, label: "Every 15 minutes" },
+  { value: 30, label: "Every 30 minutes" },
+  { value: 60, label: "Every hour" },
+  { value: 120, label: "Every 2 hours" },
+  { value: 240, label: "Every 4 hours" },
+  { value: 480, label: "Every 8 hours" },
+  { value: 1440, label: "Once a day" },
+];
+
 // A single "aim for N hours today" number, separate from weekly Budgets
 // (tag-scoped, week-long) -- this is unscoped and shown on the Today
 // tab's hero card (see HeroCard.jsx). Local `hours` state buffers the
@@ -602,6 +617,34 @@ export default function SettingsView({
                 disabled={!pushOn}
               />
             </Row>
+            {r.key === "automation_reminders" &&
+              (settings?.automation_reminders !== false || settings?.automation_deadline_pace !== false) && (
+                // Deliberately NOT muted/disabled by pushOn like its
+                // neighbors: these are in-app toasts, which show
+                // whether or not OS push notifications are enabled.
+                <Row
+                  title="Repeat due alerts"
+                  desc="While a reminder or a deadline due today is still waiting, show its toast again this often."
+                >
+                  <Dropdown
+                    className="fd-select fd-select--inline"
+                    value={String(settings?.due_toast_interval_minutes ?? 60)}
+                    onChange={(e) => onUpdateSetting("due_toast_interval_minutes", Number(e.target.value))}
+                  >
+                    {[
+                      ...(DUE_TOAST_INTERVAL_OPTIONS.some((o) => o.value === settings?.due_toast_interval_minutes) ||
+                      settings?.due_toast_interval_minutes == null
+                        ? []
+                        : [{ value: settings.due_toast_interval_minutes, label: `Every ${settings.due_toast_interval_minutes} min` }]),
+                      ...DUE_TOAST_INTERVAL_OPTIONS,
+                    ].map((o) => (
+                      <option key={o.value} value={String(o.value)}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </Row>
+              )}
             {r.key === "automation_weekly_digest" && settings?.automation_weekly_digest !== false && (
               <Row title="Digest timing" desc="Which day and hour it fires, in your local time." muted={!pushOn}>
                 <div className="fd-digest-timing">

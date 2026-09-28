@@ -352,6 +352,16 @@ export async function initSchema() {
     -- riding on that existing one.
     ALTER TABLE settings ADD COLUMN IF NOT EXISTS automation_risk_reminders BOOLEAN NOT NULL DEFAULT true;
 
+    -- How often (minutes) the frontend re-shows a toast for a reminder
+    -- or deadline that's still due/overdue and hasn't been acted on.
+    -- Replaces the old always-visible chip strip on the Today screen -
+    -- see DueTodayBanner.jsx and the useDueToasts hook in App.jsx. A
+    -- CHECK here (rather than only in routes/settings.js) means a
+    -- corrupt/zero value can never make it into the column even via a
+    -- direct DB write, which would otherwise turn into a toast spam
+    -- loop re-firing every render.
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS due_toast_interval_minutes INTEGER NOT NULL DEFAULT 60 CHECK (due_toast_interval_minutes > 0);
+
     CREATE TABLE IF NOT EXISTS tasks (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title       TEXT NOT NULL,
