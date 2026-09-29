@@ -25,7 +25,15 @@ function calendarDaysUntil(target, now) {
 }
 
 function formatDaysUntil(days) {
-  if (days <= 0) return "today";
+  // Negative days used to be impossible here - the analytics.js filter
+  // excluded anything already due/overdue entirely. Now that overdue
+  // items are deliberately included (see the comment on
+  // upcomingDeadlines/upcomingReminders in computeWeeklyReview), this
+  // needs its own case: `days <= 0` alone would mislabel "3 days
+  // overdue" as "today", which is actively misleading rather than just
+  // imprecise.
+  if (days < 0) return `overdue by ${Math.abs(days)}d`;
+  if (days === 0) return "today";
   if (days === 1) return "tomorrow";
   return `in ${days}d`;
 }

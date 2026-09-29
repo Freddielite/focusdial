@@ -1485,15 +1485,19 @@ export function computeWeeklyReview({ sessions, deadlinesProgress = [], reminder
   const weekQuality = qualityRate(thisWeekSessions);
 
   const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  // No lower bound on dueAt/remindAt here on purpose - this used to
+  // require dueAt >= now / remindAt >= now, which meant the moment
+  // something actually became due it vanished from "Coming up" instead
+  // of showing as overdue. That's exactly backwards for a "what's on my
+  // plate" list: the things you most need to see are the ones already
+  // due, not just the ones still ahead. formatDueIn/formatRemindIn in
+  // WeeklyReviewCard.jsx handle the negative (overdue) case explicitly.
   const upcomingDeadlines = deadlinesProgress
-    .filter((d) => d.status !== "done" && d.status !== "archived" && d.dueAt >= now && d.dueAt <= weekFromNow)
+    .filter((d) => d.status !== "done" && d.status !== "archived" && d.dueAt <= weekFromNow)
     .sort((a, b) => a.dueAt - b.dueAt)
     .slice(0, 5);
   const upcomingReminders = reminders
-    .filter((r) => {
-      const remindAt = new Date(r.remind_at);
-      return remindAt >= now && remindAt <= weekFromNow;
-    })
+    .filter((r) => new Date(r.remind_at) <= weekFromNow)
     .sort((a, b) => new Date(a.remind_at) - new Date(b.remind_at))
     .slice(0, 5);
 
