@@ -87,9 +87,19 @@ export function ToastProvider({ children }) {
               key={t.id}
               layout
               className={`fd-toast fd-toast--${t.tone}`}
-              initial={{ opacity: 0, y: 16, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 40, scale: 0.96 }}
+              // No opacity anywhere here on purpose - this panel has a
+              // solid background (var(--glass-bg)), so fading its
+              // opacity (on either entrance or exit) makes it
+              // translucent for a few frames, during which its own text
+              // visibly blends with whatever's behind/around it. Same
+              // fix as every other solid-background popover/modal this
+              // session (Dropdown, DateTimeField, NotificationBell, the
+              // three modals) - scale + position alone still reads
+              // clearly as popping in / sliding away, just never
+              // see-through.
+              initial={{ y: 16, scale: 0.96 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ x: 40, scale: 0.96 }}
               transition={{ type: "spring", stiffness: 380, damping: 30 }}
             >
               <span className="fd-toast__icon"><ToneIcon tone={t.tone} /></span>
