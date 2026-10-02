@@ -66,7 +66,7 @@ export default function MilestonesCard({ milestones }) {
             <div className="fd-milestones-card__meta">
               {longestStreak.isCurrent
                 ? "That's your current streak, still running."
-                : `Ended ${formatDayLabel(longestStreak.endDateKey)}`}
+                : `Ended ${formatDayLabel(longestStreak.endDate)}`}
             </div>
           </div>
         )}
