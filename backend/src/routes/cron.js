@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { pool } from "../db.js";
 import { sendPushToUser } from "../lib/push.js";
 import { googleConfigured, getAuthedClient, getCalendarClient, fetchSyncTokenBaseline } from "../lib/google.js";
+import { trainQualityModel } from "../lib/qualityModel.js";
 
 export const cronRouter = Router();
 
@@ -357,6 +358,43 @@ function localMondayKey(localDate) {
   return localDateISO(monday);
 }
 
+// Refits this user's session-quality model (see lib/qualityModel.js)
+// against their full session history, once every 7 days - not tied to
+// a specific weekday/hour the way checkWeeklyDigest is, since there's
+// no user-facing moment this needs to land on; it just needs to happen
+// roughly weekly and self-correct if a tick gets missed, rather than
+// depend on the cron firing during one specific hour-long window.
+// Silent: unlike every other check in this file, nothing here sends a
+// push or toast - it only updates quality_models, which
+// priorityEngine.js's predictedQualityScore reads from on the
+// frontend. No automation_* settings toggle for this one: there's
+// nothing to opt out of being notified about, since it never notifies.
+async function checkQualityModelTraining(userId) {
+  const { rows: existing } = await pool.query(`SELECT trained_at FROM quality_models WHERE user_id = $1`, [userId]);
+  if (existing.length && new Date(existing[0].trained_at).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000) {
+    return false; // retrained within the last week already
+  }
+
+  const { rows: sessions } = await pool.query(
+    `SELECT id, tag_id, task_id, started_at, ended_at, quality FROM sessions
+     WHERE user_id = $1 AND ended_at IS NOT NULL`,
+    [userId]
+  );
+
+  const model = trainQualityModel(sessions);
+  // Not enough (or not balanced enough) labeled data yet - leave
+  // whatever model (if any) is already stored untouched rather than
+  // overwriting a working model with nothing, or erroring.
+  if (!model) return false;
+
+  await pool.query(
+    `INSERT INTO quality_models (user_id, model, trained_at) VALUES ($1, $2, now())
+     ON CONFLICT (user_id) DO UPDATE SET model = $2, trained_at = now()`,
+    [userId, JSON.stringify(model)]
+  );
+  return true;
+}
+
 // Configurable "here's your week" push (day/hour come from Settings - // see the db.js column comments on weekly_digest_day_of_week/hour - // defaulting to Sunday evening for anyone who hasn't touched the
 // setting) - reuses the same push infrastructure as the other
 // automations, just on a weekly cadence instead of reacting to an event.
@@ -634,8 +672,20 @@ async function handleTick(req, res) {
         const googleSync = settings.automation_google_sync
           ? await checkGoogleCalendarSync(userId)
           : { skipped: "disabled" };
+        // Always runs, no settings gate - see checkQualityModelTraining's
+        // own comment for why (nothing to opt out of; it never notifies).
+        const qualityModelRetrained = await checkQualityModelTraining(userId);
 
-        perUser.push({ userId, remindersFired, paceChanges, streakNudged, runawayNudged, digestSent, googleSync });
+        perUser.push({
+          userId,
+          remindersFired,
+          paceChanges,
+          streakNudged,
+          runawayNudged,
+          digestSent,
+          googleSync,
+          qualityModelRetrained,
+        });
       } catch (err) {
         console.error(`cron tick failed for user ${userId}:`, err);
         perUser.push({ userId, error: err.message || "unknown error" });

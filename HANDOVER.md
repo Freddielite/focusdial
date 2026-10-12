@@ -3576,3 +3576,84 @@ react-hooks` v5 probe from prior sessions re-run - `InsightsView.jsx`
 clean, `App.jsx`/`analytics.js` only show the same pre-existing,
 unrelated findings from Sessions 50-53 (nothing new, nothing left
 behind by the removal).
+
+## Session 55 — session-quality prediction (real ML, not another heuristic)
+
+Asked for genuine machine learning, not another hand-tuned threshold
+like everything else in `priorityEngine.js`. Scoped deliberately small:
+single-user data on this app is thin, so a logistic regression over a
+handful of interpretable features is the right complexity level here -
+a neural net or gradient-boosted anything would overfit a few hundred
+labeled sessions and lose the ability to explain a prediction, which
+matters since this is meant to feed a one-line "why" reason, not just a
+score.
+
+**What it predicts:** P(this session will be rated "focused") if
+started right now, learned per-user from their own `sessions.quality`
+history. Deliberately framed as a *quality* signal, complementing
+rather than replacing the existing `energyFitScore` *volume* signal
+(see priorityWeights.js's comment on why energyFit's weight was halved
+to make room for it rather than handing predictedQuality a bigger slice
+unearned - the two can and do disagree: grinding out the most hours
+somewhere you consistently rate "distracted" is exactly the case this
+exists to catch).
+
+**Split across the stack it actually touches:**
+- `backend/src/lib/qualityModel.js` - feature extraction, standardization,
+  batch gradient descent with L2 (bias term excluded from the penalty),
+  sigmoid clamped against overflow. Guards against training on too little
+  data (`MIN_LABELED_SESSIONS = 40`) or too lopsided a class split
+  (`MIN_MINORITY_CLASS_FRACTION = 0.1`) - returns `null` rather than a
+  confident-looking model fit on noise.
+- `quality_models` table (db.js) - one JSONB row per user (weights +
+  standardization mean/std + feature names), upserted, never appended.
+- `routes/cron.js`'s `checkQualityModelTraining` - refits weekly per
+  user, gated by `trained_at` age rather than a specific weekday/hour
+  (self-corrects if a tick gets missed, unlike the day-of-week-gated
+  checks elsewhere in this file). Runs unconditionally, no
+  `automation_*` settings toggle - nothing here ever sends a push or
+  toast, so there's nothing to opt out of being notified about.
+- `routes/qualityModel.js` - read-only `GET /quality-model`. Returns
+  `{model: null}` for a new/under-labeled account, not a 404 - that's
+  the normal state, not an error.
+- `frontend/src/priorityEngine.js`'s `predictedQualityScore` - the
+  inference half. **Has to exactly mirror** the backend's feature
+  vector (order, count, the `classifyDeepWork`/`classifyTagType`
+  threshold) or a trained model scores against a differently-shaped
+  vector than it was fit on - this is the one real risk in the whole
+  feature, called out explicitly in both files' comments since nothing
+  in JS enforces it across a Node-backend/browser-frontend split. A
+  weights-length mismatch (model trained before a feature-vector change)
+  degrades to "no prediction" rather than silently misscoring.
+
+**One real bug caught before it shipped:** `classifyDeepWork` initially
+compared a tag's median session length against the *cross-tag* median
+computed within qualityModel.js itself - plausible-looking, but not
+what `classifyTagType` in priorityEngine.js actually does (a fixed
+25-minute threshold, `DEEP_WORK_MIN_MEDIAN_MINUTES`). Caught by
+re-reading the frontend function being referenced instead of trusting
+a comment that assumed they matched. Would have trained a feature that
+meant something different from the one the frontend's existing
+`classifyTagType` encodes, without erroring anywhere - just quietly
+scoring wrong forever.
+
+**Verified with a standalone synthetic-data test**, same discipline as
+Sessions 52-53: generated 300 sessions with a known ground-truth split
+(morning sessions "focused" 85% of the time, evening 15%, every other
+feature randomized independent of the outcome) and confirmed the
+trained model recovered it - P(focused) at 9am = 0.888, at 9pm = 0.143,
+with the hour features getting the dominant weight and the noise
+features staying near zero. Separately confirmed both guards reject
+appropriately: too few labeled sessions and all-one-class data both
+correctly return `null` rather than a bogus model.
+
+`npm run build` clean, `node --check` on every touched backend file
+clean.
+
+**Not verified this session:** no real account's labeled-session count
+to confirm `MIN_LABELED_SESSIONS = 40` is a sensible real-world bar
+rather than a guess (it's a guess - revisit once there's a real
+distribution to look at); no browser here to confirm `predictedQuality`
+surfacing in a card's "why" text reads well in practice; the weekly
+cron retrain itself hasn't run against a live Postgres instance, only
+`trainQualityModel` in isolation.

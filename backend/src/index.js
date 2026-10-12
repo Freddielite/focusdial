@@ -19,6 +19,7 @@ import { cronRouter } from "./routes/cron.js";
 import { notifyRouter } from "./routes/notify.js";
 import { dataRouter } from "./routes/data.js";
 import { googleAuthRouter } from "./routes/googleAuth.js";
+import { qualityModelRouter } from "./routes/qualityModel.js";
 
 if (!process.env.SESSION_SECRET) {
   throw new Error(
@@ -120,6 +121,7 @@ app.use("/api", requireAuth, tasksRouter);
 app.use("/api", requireAuth, settingsRouter);
 app.use("/api", requireAuth, notifyRouter);
 app.use("/api", requireAuth, dataRouter);
+app.use("/api", requireAuth, qualityModelRouter);
 // Calendar *linking* (as opposed to /auth/google/login/* in authRouter
 // above, which is how you sign in at all) still requires an existing
 // FocusDial session - you have to already be logged in to connect a

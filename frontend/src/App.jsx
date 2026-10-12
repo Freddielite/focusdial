@@ -30,6 +30,7 @@ import {
   listTasks,
   listCompletedTasks,
   getSettings,
+  getQualityModel,
   updateSettings,
   setSlowRequestHandler,
   getTodayBusyBlocks,
@@ -183,6 +184,11 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // `tasks` list above rather than one combined endpoint.
   const [completedTasks, setCompletedTasks] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  // Null until enough labeled sessions exist to have trained one (see
+  // routes/cron.js's checkQualityModelTraining) - priorityEngine.js's
+  // predictedQualityScore already treats null as "no prediction, fall
+  // back to the existing energy-fit heuristic alone."
+  const [qualityModel, setQualityModel] = useState(null);
   // Bumped whenever a session is started/stopped or manually added
   // elsewhere on the Today tab (Timer, Manual entry) -- SessionLog fetches
   // its own paginated data independently (see its own component), so
@@ -211,25 +217,40 @@ export default function App({ user, onLogout, onUserUpdated }) {
     // requests only needs ONE unlucky one to fail the whole batch.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const [tagData, allTagData, hist, budgetData, deadlineData, reminderData, taskData, completedTaskData, settingsData, busyData] =
-          await Promise.all([
-            listTags(),
-            listTags(true),
-            getSessionHistory(),
-            listBudgets(),
-            listDeadlines(),
-            listReminders(),
-            listTasks(),
-            listCompletedTasks(),
-            getSettings().catch(() => DEFAULT_SETTINGS),
-            // The route itself already degrades gracefully (returns
-            // connected:false or an empty blocks array rather than
-            // erroring) if Google isn't connected or is briefly
-            // unreachable - this catch is only for this one request
-            // failing to reach FocusDial's own backend at all, same as
-            // settings' catch just above.
-            getTodayBusyBlocks().catch(() => ({ connected: false, blocks: [] })),
-          ]);
+        const [
+          tagData,
+          allTagData,
+          hist,
+          budgetData,
+          deadlineData,
+          reminderData,
+          taskData,
+          completedTaskData,
+          settingsData,
+          busyData,
+          qualityModelData,
+        ] = await Promise.all([
+          listTags(),
+          listTags(true),
+          getSessionHistory(),
+          listBudgets(),
+          listDeadlines(),
+          listReminders(),
+          listTasks(),
+          listCompletedTasks(),
+          getSettings().catch(() => DEFAULT_SETTINGS),
+          // The route itself already degrades gracefully (returns
+          // connected:false or an empty blocks array rather than
+          // erroring) if Google isn't connected or is briefly
+          // unreachable - this catch is only for this one request
+          // failing to reach FocusDial's own backend at all, same as
+          // settings' catch just above.
+          getTodayBusyBlocks().catch(() => ({ connected: false, blocks: [] })),
+          // Same reasoning as settings/busy-blocks above - a failed
+          // fetch here degrades to "no prediction," never blocks the
+          // rest of the screen from loading.
+          getQualityModel().catch(() => ({ model: null })),
+        ]);
         setTags(tagData);
         setAllTags(allTagData);
         setHistory(hist);
@@ -241,6 +262,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
         if (settingsData) setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
         setTodayBusyBlocks(busyData?.blocks || []);
         setGoogleConnected(Boolean(busyData?.connected));
+        setQualityModel(qualityModelData?.model || null);
         setError(null);
         setLoaded(true);
         return;
@@ -420,8 +442,8 @@ export default function App({ user, onLogout, onUserUpdated }) {
   // ranking's urgency/staleness/energy-fit factors (all time-dependent)
   // don't quietly go stale while the tab just sits open.
   const priorityRanking = useMemo(
-    () => computePriorityRanking(tasks, history, completedTasks, allTags, new Date(nowTick)),
-    [tasks, history, completedTasks, allTags, nowTick]
+    () => computePriorityRanking(tasks, history, completedTasks, allTags, new Date(nowTick), qualityModel),
+    [tasks, history, completedTasks, allTags, nowTick, qualityModel]
   );
   const [suggestionDismissedAt, dismissSuggestion] = useSuggestionDismissals();
   const suggestion = useMemo(

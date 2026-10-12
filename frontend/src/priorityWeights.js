@@ -16,12 +16,25 @@
 // say, 0.8 has an intuitive weight in the final number) - the scoring
 // code itself doesn't require that, so this can be edited freely as
 // long as no weight goes negative.
+// energyFit's weight was halved (0.1 -> 0.05) to make room for
+// predictedQuality rather than taking from urgency/effortFit/
+// categoryBalance/staleness - the two are cousins (both about timing),
+// and predictedQuality is the more informed version of a similar idea
+// (quality-weighted per-user model vs a volume-weighted fixed
+// threshold - see energyFitScore's and predictedQualityScore's own
+// comments), so it's the one existing factor it makes sense to borrow
+// room from. Split evenly rather than handing predictedQuality more
+// than energyFit keeps it starting from equal footing rather than
+// immediately out-weighing the heuristic it's meant to complement -
+// worth revisiting once there's real usage data to see whether the
+// learned signal earns more weight than that.
 export const PRIORITY_WEIGHTS = {
   urgency: 0.35,
   effortFit: 0.15,
   categoryBalance: 0.2,
   staleness: 0.2,
-  energyFit: 0.1,
+  energyFit: 0.05,
+  predictedQuality: 0.05,
 };
 
 // Urgency (deadline-driven). A task with no due date at all gets this

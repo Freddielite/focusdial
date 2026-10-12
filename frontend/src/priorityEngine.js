@@ -302,6 +302,81 @@ function energyFitScore(task, tagTypicalSeconds, typeHourStrength, now) {
   return typeHourStrength[type].has(now.getHours()) ? 1 : 0.2;
 }
 
+// energyFit above asks "when do you log the most TIME on this kind of
+// work" (a volume signal, hand-tuned thresholds). This asks "when were
+// your sessions actually rated good" (a quality signal, weights fit
+// per-user from their own labeled history) - see
+// backend/src/lib/qualityModel.js for where that fitting happens and
+// why the two are deliberately kept as separate factors rather than
+// one replacing the other. The feature vector, standardization, and
+// sigmoid below MUST exactly match that file's extractFeatureVector/
+// predictQuality - this is the unavoidable duplication of training
+// (Node backend, run by cron) and inference (this frontend bundle);
+// if one changes, the other has to change with it, or a trained
+// model's weights would be scored against a differently-shaped vector
+// than the one they were fit on.
+function sigmoid(z) {
+  if (z >= 0) {
+    const e = Math.exp(-Math.min(z, 500));
+    return 1 / (1 + e);
+  }
+  const e = Math.exp(Math.max(z, -500));
+  return e / (1 + e);
+}
+
+function predictedQualityScore(task, qualityModel, tagTypicalSeconds, sessions, now) {
+  if (!qualityModel) return NEUTRAL_FACTOR_SCORE;
+
+  const hour = now.getHours() + now.getMinutes() / 60;
+  const angle = (hour / 24) * 2 * Math.PI;
+  const dayOfWeek = now.getDay();
+
+  // A session on this task, if started right now, would run for its
+  // own estimate if it has one; otherwise the tag's own typical
+  // length (same fallback effortFitScore already uses elsewhere in
+  // this file), or a flat default if neither is known yet.
+  const tagInfo = task.tag_id ? tagTypicalSeconds.get(task.tag_id) : null;
+  const sessionMinutes = task.estimate_minutes || (tagInfo ? tagInfo.medianSeconds / 60 : 30);
+
+  const todayStart = startOfLocalDay(now);
+  let minutesLoggedTodayBefore = 0;
+  let lastEnd = null;
+  for (const s of sessions) {
+    const started = new Date(s.started_at);
+    const ended = new Date(s.ended_at);
+    if (ended > now) continue; // ignore a session still running right now
+    if (started >= todayStart && started <= now) minutesLoggedTodayBefore += durationSeconds(s) / 60;
+    if (!lastEnd || ended > lastEnd) lastEnd = ended;
+  }
+  const hoursSinceLastSession = lastEnd ? Math.min((now.getTime() - lastEnd.getTime()) / 3600000, 24) : 24;
+
+  const type = task.tag_id ? classifyTagType(task.tag_id, tagTypicalSeconds) : null;
+
+  const raw = [
+    1, // bias
+    Math.sin(angle),
+    Math.cos(angle),
+    dayOfWeek === 0 || dayOfWeek === 6 ? 1 : 0,
+    sessionMinutes,
+    1, // has_task - this scoring path only ever runs for a real task
+    minutesLoggedTodayBefore,
+    hoursSinceLastSession,
+    type === "deep-work" ? 1 : 0,
+  ];
+
+  const { weights, mean, std } = qualityModel;
+  // A model trained before this file's feature order or count last
+  // changed would silently score against the wrong columns - treat a
+  // length mismatch as "no usable model" rather than producing a
+  // confident-looking but meaningless number. Expect this to clear on
+  // its own at next week's retrain.
+  if (!Array.isArray(weights) || weights.length !== raw.length) return NEUTRAL_FACTOR_SCORE;
+
+  const standardized = raw.map((v, j) => (j === 0 ? v : (v - mean[j]) / (std[j] || 1)));
+  const z = standardized.reduce((sum, x, j) => sum + x * weights[j], 0);
+  return sigmoid(z);
+}
+
 function daysUntil(dueDate, now) {
   return Math.ceil((taskDueAt(dueDate).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
 }
@@ -331,6 +406,15 @@ function buildReason(task, scores, now) {
   if (scores.energyFit >= REASON_BAR) {
     clauses.push("matches your focus window right now");
   }
+  // Worded distinctly from energyFit's clause just above even though
+  // both are "good timing" reasons - this one comes from an actual
+  // fitted probability (see predictedQualityScore), not a volume
+  // threshold, so it's a different (if related) claim: not just "you
+  // often work on this kind of thing now" but "sessions like this one
+  // tend to go well for you at this time."
+  if (scores.predictedQuality >= REASON_BAR) {
+    clauses.push("your focus tends to be strong at this time for this kind of work");
+  }
   if (scores.effortFit >= REASON_BAR && task.estimate_minutes) {
     clauses.push("fits the time this usually takes");
   }
@@ -351,7 +435,7 @@ function capitalize(s) {
  * the category-neglect notice, the unscheduled suggestion) need the same
  * underlying computations and shouldn't redo them separately.
  */
-export function computePriorityRanking(tasks, sessions, completedTasks, tags, now = new Date()) {
+export function computePriorityRanking(tasks, sessions, completedTasks, tags, now = new Date(), qualityModel = null) {
   const tagTypicalSeconds = computeTagTypicalSeconds(sessions);
   const tagEstimateStats = computeTagEstimateStats(completedTasks, sessions);
   const categoryBalance = computeCategoryBalance(sessions, tags, now);
@@ -368,13 +452,15 @@ export function computePriorityRanking(tasks, sessions, completedTasks, tags, no
         categoryBalance: categoryBalanceScore(task, categoryBalance),
         staleness: stalenessScore(task, now),
         energyFit: energyFitScore(task, tagTypicalSeconds, typeHourStrength, now),
+        predictedQuality: predictedQualityScore(task, qualityModel, tagTypicalSeconds, sessions, now),
       };
       const score =
         scores.urgency * PRIORITY_WEIGHTS.urgency +
         scores.effortFit * PRIORITY_WEIGHTS.effortFit +
         scores.categoryBalance * PRIORITY_WEIGHTS.categoryBalance +
         scores.staleness * PRIORITY_WEIGHTS.staleness +
-        scores.energyFit * PRIORITY_WEIGHTS.energyFit;
+        scores.energyFit * PRIORITY_WEIGHTS.energyFit +
+        scores.predictedQuality * PRIORITY_WEIGHTS.predictedQuality;
       return { task, scores, score, reason: buildReason(withTagName, scores, now) };
     })
     .sort((a, b) => b.score - a.score);

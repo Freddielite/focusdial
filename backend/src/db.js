@@ -528,5 +528,23 @@ export async function initSchema() {
       PRIMARY KEY (item_type, item_id),
       UNIQUE (google_event_id)
     );
+
+    -- One fitted session-quality model per user - see
+    -- lib/qualityModel.js for what it predicts and why, and
+    -- routes/cron.js's trainQualityModels for what refits it weekly.
+    -- user_id is the primary key rather than a separate id column:
+    -- there is exactly one current model per user, and retraining is
+    -- an upsert (replace the old one), not an append.
+    -- The model column holds the fitted weights plus the
+    -- standardization mean/std and feature names needed to reuse them
+    -- at inference time (see predictQuality) - JSONB rather than
+    -- separate columns since its shape belongs entirely to
+    -- qualityModel.js and has no reason to be queried or indexed on
+    -- individual fields.
+    CREATE TABLE IF NOT EXISTS quality_models (
+      user_id    UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      model      JSONB NOT NULL,
+      trained_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }

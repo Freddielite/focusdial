@@ -255,6 +255,10 @@ export const bumpTask = (id) =>
   apiFetch(`/tasks/${id}/bump`, { method: "POST" });
 
 export const getSettings = () => apiFetch("/settings");
+// Returns { model: null, trainedAt: null } for a new account or one
+// without enough labeled sessions yet - see routes/qualityModel.js.
+// Not an error case the caller needs to handle specially.
+export const getQualityModel = () => apiFetch("/quality-model");
 export const updateSettings = (payload) =>
   apiFetch("/settings", { method: "PUT", body: JSON.stringify(payload) });
 
