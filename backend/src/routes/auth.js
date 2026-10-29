@@ -178,6 +178,32 @@ authRouter.patch("/auth/me", async (req, res) => {
 });
 
 // --- Password reset -------------------------------------------------
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function resetEmailText(link) {
+  return `Someone (hopefully you) asked to reset the password for this FocusDial account.
+
+Reset it here. The link works once and expires in 30 minutes:
+${link}
+
+If this wasn't you, ignore this email. Your password hasn't changed.`;
+}
+
+function resetEmailHtml(link) {
+  const href = escapeHtml(link);
+  return `<!doctype html><html><body style="margin:0;padding:24px;background:#f6f5f2;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1d1c1a">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:8px;padding:28px">
+<tr><td style="font-size:18px;font-weight:700;padding-bottom:12px">Reset your FocusDial password</td></tr>
+<tr><td style="font-size:15px;line-height:1.5;padding-bottom:20px">Someone (hopefully you) asked to reset the password for this FocusDial account. The link works once and expires in 30 minutes.</td></tr>
+<tr><td style="padding-bottom:20px"><a href="${href}" style="display:inline-block;background:#1d1c1a;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600">Reset password</a></td></tr>
+<tr><td style="font-size:13px;line-height:1.5;color:#6b6862;padding-bottom:12px">If the button doesn't work, copy this link into your browser:<br><a href="${href}" style="color:#6b6862;word-break:break-all">${href}</a></td></tr>
+<tr><td style="font-size:13px;line-height:1.5;color:#6b6862">If this wasn't you, ignore this email. Your password hasn't changed.</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
 // Always answers the same way whether or not the email has an account,
 // so it can't be used to discover who's registered.
 authRouter.post("/auth/password-reset/request", resetRateLimit, async (req, res) => {
@@ -198,11 +224,18 @@ authRouter.post("/auth/password-reset/request", resetRateLimit, async (req, res)
   ]);
   const frontendUrl = (process.env.FRONTEND_URL || "").replace(/\/$/, "");
   const link = `${frontendUrl}/?resetToken=${encodeURIComponent(token)}`;
-  await sendMail({
+  // Sent in the background, after the response: the answer must look the
+  // same (and take the same time) whether or not the account exists, and
+  // the mail service may be cold-starting. Failures are logged by the
+  // mailer. The idempotency key is tied to this token, so mailer retries
+  // can never deliver the same link twice.
+  sendMail({
     to: user.email,
     subject: "Reset your FocusDial password",
-    text: `Someone (hopefully you) asked to reset the password for this FocusDial account.\n\nReset it here (the link works once and expires in 30 minutes):\n${link}\n\nIf this wasn't you, ignore this email - your password hasn't changed.`,
-  });
+    text: resetEmailText(link),
+    html: resetEmailHtml(link),
+    idempotencyKey: `fd-reset-${hashToken(token).slice(0, 40)}`,
+  }).catch(() => {});
   await audit(req, user.id, "password_reset_requested");
   res.json(generic);
 });

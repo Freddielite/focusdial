@@ -3772,7 +3772,7 @@ frontend (`vercel.json` - the offline page's inline script moved to
 Vite 7.3.7).
 
 ### New features
-Password reset (Resend), TOTP two-step verification with recovery codes,
+Password reset (email via Wynmail), TOTP two-step verification with recovery codes,
 change password, sign out other devices / everywhere, security activity,
 full account export, account deletion - all in Settings → Account &
 security (`AccountSecurity.jsx`) and `routes/account.js`.
@@ -3786,8 +3786,21 @@ runbooks, "things only a person can do"), SECURITY.md.
 
 ### Not done / needs a person
 Provider setup (Supabase backups + PITR + a restore drill, uptime and
-error monitoring, cost alerts, Resend domain DNS, Google OAuth
+error monitoring, cost alerts, Wynmail sending domain, Google OAuth
 verification), terms + privacy policy, moving accounts into a company
 name. All listed in OPERATIONS.md. App.jsx (1,100 lines) and analytics.js
 (1,700) are still unsplit - worth doing with frontend tests in place
 first. Rate limits are in-memory (fine for one instance).
+
+### Email: Wynmail instead of Resend
+`lib/mailer.js` now calls Wynmail's `POST /v1/emails` with
+`WYNMAIL_URL` + `WYNMAIL_API_KEY` (no Resend SDK or key in FocusDial).
+Each reset email carries an `Idempotency-Key` derived from its reset
+token, so the mailer's retries (5xx, timeouts, 409 "still processing":
+2 retries, 60s timeout for a cold Wynmail) can't deliver a link twice;
+422/429/400/401 aren't retried. The reset request answers immediately
+and sends in the background, so response time doesn't reveal whether
+an account exists. Verified end to end against a local copy of Wynmail
+(console provider): delivered, idempotency key recorded, suppressed
+address refused once with a logged 422. `test/mailer.test.js` covers it
+against a fake Wynmail.

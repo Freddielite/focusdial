@@ -10,7 +10,9 @@ React PWA on Vercel → Express API on Render (one instance) → Postgres on
 Supabase. An external scheduler (cron-job.org) calls `/api/cron/tick`
 every few minutes for reminders, automations and Google Calendar sync.
 Push goes out through Web Push (VAPID); password-reset email through
-Resend. Google OAuth for "Sign in with Google" and calendar sync.
+Wynmail's API (`POST /v1/emails`), which hands it to whichever provider
+the Wynmail workspace uses. Google OAuth for "Sign in with Google" and
+calendar sync.
 
 ## Deploying
 
@@ -68,7 +70,8 @@ never in the repo, never pasted into an AI chat.
 | `TOKEN_ENCRYPTION_KEY` | Not rotatable in place yet - changing it means users reconnect Google and re-enrol MFA. Don't lose it. | — |
 | VAPID keys | Generate new pair; every device must re-enable push | — |
 | Google client secret | Google Cloud Console → Credentials → reset | — |
-| `RESEND_API_KEY`, DB password | Provider dashboard → new key → update env → revoke old | — |
+| `WYNMAIL_API_KEY` | Wynmail → API page → create a new key → update Render → revoke the old key | — |
+| DB password | Supabase → reset → update `DATABASE_URL` | Brief reconnect |
 
 Rotate everything immediately if any secret was ever committed, pasted
 into a chat or a ticket, or was on a lost device. Then check
@@ -110,8 +113,8 @@ Restore drill log:
   on new error types.
 - **Cron:** cron-job.org → notify on failure. A tick returns
   `results[]` per user - look for `error` entries.
-- **Cost:** set spend alerts in Render, Supabase, Vercel, Resend and
-  Google Cloud at a level that would surprise you.
+- **Cost:** set spend alerts in Render, Supabase, Vercel, Google Cloud
+  and whatever provider Wynmail sends through, at a level that would surprise you.
 
 ## Runbooks
 
@@ -126,6 +129,15 @@ Restore drill log:
 202 "previous tick still running" = ticks overlapping, lengthen the
 interval). Check VAPID keys are set.
 
+**Password reset emails not arriving** → FocusDial's logs: `mail sent`
+(with a Wynmail id) means Wynmail accepted it - look it up in Wynmail.
+`mail send failed` gives the reason: 422 the address is suppressed (it
+bounced or reported spam before), 429 the workspace's daily cap,
+400 sender not approved in Wynmail, 401 bad/revoked API key, 5xx/0
+Wynmail down or asleep (retried twice, then given up). If Wynmail is on
+a free Render instance, its cold start can take most of a minute; the
+mailer waits up to 60s per attempt.
+
 **"Too many attempts" complaints** → rate limits are in-memory per
 instance and reset on restart; a legitimate user can always use
 "Forgot password?", which has its own budget.
@@ -136,7 +148,7 @@ check `SELECT * FROM audit_log WHERE user_id = '<id>' ORDER BY created_at DESC`.
 
 **Lost/stolen laptop with production access** → from another device:
 rotate the DB password, `SESSION_SECRET` (without keeping the old one -
-signs everyone out), `CRON_SECRET`, Google client secret, Resend key;
+signs everyone out), `CRON_SECRET`, Google client secret, the Wynmail API key;
 revoke the laptop's GitHub/Render/Vercel/Supabase sessions and tokens;
 review the audit log and Render/Supabase access logs for the window.
 
@@ -176,21 +188,25 @@ in `docs/postmortems/` and link it here.
 ## Things only a person can do (checklist)
 
 - [ ] Accounts in the company's name, not a personal one: GitHub org,
-      Render, Vercel, Supabase, Google Cloud, Resend, domain registrar,
+      Render, Vercel, Supabase, Google Cloud, Wynmail, domain registrar,
       cron-job.org. At least two people with owner access to each
       (bus factor > 1), with MFA on.
 - [ ] Branch protection on `main`: PR required, CI required, code-owner
       review (`.github/CODEOWNERS`), no force-push.
 - [ ] Supabase backups confirmed + PITR on + first restore drill logged.
 - [ ] Uptime checks, error alerts, cost alerts (above).
-- [ ] Resend domain with SPF, DKIM and DMARC; bounce/complaint webhooks
-      watched in the Resend dashboard.
+- [ ] A Wynmail workspace for FocusDial with an approved sending domain
+      (SPF, DKIM and DMARC passing - Wynmail's domain check shows this),
+      a From address on that domain, and its bounce/complaint webhooks
+      connected so bad addresses get suppressed. Send yourself a reset
+      email and check it lands in the inbox, not spam.
 - [ ] Google OAuth consent screen published and verified before real
       users connect calendars ("Testing" mode: 100 listed users, refresh
       tokens expire after 7 days).
 - [ ] Terms of service and a privacy policy that match what the code
       does (what's stored, Google data use, deletion, backups, sub-
-      processors: Render, Vercel, Supabase, Resend, Google). Link both
+      processors: Render, Vercel, Supabase, Google, and the email provider
+      behind Wynmail). Link both
       from the sign-up screen.
 - [ ] Replace the placeholder contact in SECURITY.md.
 - [ ] Render paid instance once people depend on it: the free tier
