@@ -38,7 +38,7 @@ test("sends to Wynmail's /v1/emails with the API key and an idempotency key", as
 
 test("retries 5xx and 'still processing' with the same idempotency key", async () => {
   calls.length = 0;
-  script = [[502, { error: "Delivery failed" }], [409, { error: "still processing" }], [200, { id: 7 }]];
+  script = [[502, { error: "Delivery failed" }], [409, { error: "still processing" }], [200, { id: 7, status: "sent" }]];
   const r = await mailer.sendMail({ to: "a@example.com", subject: "S", text: "t", idempotencyKey: "fd-reset-retry0001" });
   assert.equal(r.sent, true);
   assert.equal(calls.length, 3);
@@ -61,4 +61,13 @@ test("gives up after the retry budget and reports failure instead of throwing", 
   const r = await mailer.sendMail({ to: "a@example.com", subject: "S", text: "t" });
   assert.equal(r.sent, false);
   assert.equal(calls.length, 3);
+});
+
+test("a 200 that isn't the Wynmail API (e.g. the dashboard's index.html) is a failure", async () => {
+  calls.length = 0;
+  script = [[200, {}]];
+  const r = await mailer.sendMail({ to: "a@example.com", subject: "S", text: "t" });
+  assert.equal(r.sent, false);
+  assert.equal(r.reason, "not_wynmail_api");
+  assert.equal(calls.length, 1);
 });

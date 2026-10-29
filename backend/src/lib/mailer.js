@@ -80,7 +80,15 @@ export async function sendMail({ to, subject, text, html, idempotencyKey }) {
     }
     const { status, data } = outcome;
     if (status >= 200 && status < 300) {
-      log.info("mail sent", { subject, wynmailId: data.id ?? null, replayed: false });
+      // A 200 that isn't Wynmail's {"status":"sent"} JSON means the URL
+      // points somewhere else - typically the Wynmail *dashboard*
+      // (wynmail.vercel.app), whose catch-all rewrite answers every path
+      // with index.html. Counting that as sent would silently drop mail.
+      if (data?.status !== "sent") {
+        log.error("mail send failed: WYNMAIL_URL didn't answer like the Wynmail API - use the API's URL (the Render service), not the dashboard", { subject, status });
+        return { sent: false, reason: "not_wynmail_api" };
+      }
+      log.info("mail sent", { subject, wynmailId: data.id ?? null });
       return { sent: true, id: data.id };
     }
     // 409: an earlier attempt with this key is still in flight on
