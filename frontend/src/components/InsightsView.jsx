@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import HourDial from "./HourDial.jsx";
 import CalendarHeatmap from "./CalendarHeatmap.jsx";
 import TagBreakdown from "./TagBreakdown.jsx";
@@ -24,13 +23,7 @@ export default function InsightsView({
   allTags,
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
-      className="fd-view"
-    >
+    <div className="fd-view">
       <WeeklyReviewCard review={weeklyReview} userName={userName} />
       <div className="fd-main__insights">
         <HourDial hourly={summary.hourly} bestHour={summary.bestHour} />
@@ -51,6 +44,6 @@ export default function InsightsView({
         weekOverWeek={summary.weekOverWeek}
         history={history}
       />
-    </motion.div>
+    </div>
   );
 }

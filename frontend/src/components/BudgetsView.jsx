@@ -28,13 +28,7 @@ function WalletIcon() {
 // week is going.
 export default function BudgetsView({ budgets, onGoToSettings }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
-      className="fd-view"
-    >
+    <div className="fd-view">
       <div className="fd-view__head">
         <div className="fd-panel__label" style={{ marginBottom: 0 }}>
           Weekly time budgets
@@ -124,6 +118,6 @@ export default function BudgetsView({ budgets, onGoToSettings }) {
           })}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </div>
   );
 }

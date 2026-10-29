@@ -197,15 +197,22 @@ const STATUS_COPY = {
 function LogProgressInline({ deadline, onLogged }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
   async function submit(e) {
     e.preventDefault();
     const hours = Number(value);
     if (!hours || hours <= 0 || busy) return;
     setBusy(true);
+    setError(null);
     try {
       await logDeadlineProgress(deadline.id, hours);
       setValue("");
       onLogged();
+    } catch (err) {
+      // Previously try/finally with no catch: a failed request left the
+      // typed hours in place with no message at all (just an unhandled
+      // rejection in the console), so it looked like Log did nothing.
+      setError(err.message || "Couldn't log that. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -224,6 +231,11 @@ function LogProgressInline({ deadline, onLogged }) {
       <button type="submit" className="fd-link-btn" disabled={busy}>
         {busy ? "Logging…" : "Log"}
       </button>
+      {error && (
+        <span className="fd-inline-error" role="alert" style={{ marginTop: 0 }}>
+          {error}
+        </span>
+      )}
     </form>
   );
 }
@@ -298,7 +310,7 @@ function DeadlineEditForm({ deadline, tags, onCancel, onSaved }) {
         </label>
         <label>
           Due time (optional)
-          <TimePicker value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+          <TimePicker className="fd-select" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
         </label>
         <label>
           Estimated time needed
@@ -493,13 +505,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
-      className="fd-view"
-    >
+    <div className="fd-view">
       <div className="fd-view__head">
         <div className="fd-panel__label" style={{ marginBottom: 0 }}>
           Deadline Planner
@@ -510,9 +516,19 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
       </div>
 
       <div className="fd-pace-note">
-        Your real average: <strong>{formatDuration(avgDailyFocusSeconds)}/day</strong> over the last{" "}
-        {avgDailyFocusWindowDays} day{avgDailyFocusWindowDays === 1 ? "" : "s"}, used below to judge whether each
-        plan is realistic.
+        {/* The average only counts completed days (through yesterday), so
+            a brand-new account - or one whose only sessions are from
+            today - has a 0-day window. That used to read "0m/day over the
+            last 0 days". */}
+        {avgDailyFocusWindowDays > 0 ? (
+          <>
+            Your real average: <strong>{formatDuration(avgDailyFocusSeconds)}/day</strong> over the last{" "}
+            {avgDailyFocusWindowDays} day{avgDailyFocusWindowDays === 1 ? "" : "s"}, used below to judge whether each
+            plan is realistic.
+          </>
+        ) : (
+          <>Your daily average will appear here after your first full day of logged sessions, and is used to judge whether each plan is realistic.</>
+        )}
       </div>
 
       <AnimatePresence>
@@ -538,7 +554,7 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
               </label>
               <label>
                 Due time (optional)
-                <TimePicker value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+                <TimePicker className="fd-select" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
               </label>
               <label>
                 Estimated time needed
@@ -864,6 +880,6 @@ export default function DeadlinesView({ deadlines, tags, avgDailyFocusSeconds, a
           </AnimatePresence>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

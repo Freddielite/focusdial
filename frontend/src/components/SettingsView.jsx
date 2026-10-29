@@ -573,13 +573,7 @@ export default function SettingsView({
   }, [scrollTarget, onScrollTargetConsumed]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
-      className="fd-view fd-settings"
-    >
+    <div className="fd-view fd-settings">
       <section className="fd-panel fd-set-card">
         <div className="fd-set-card__head">Account</div>
         <AccountName user={user} onUserUpdated={onUserUpdated} />
@@ -772,6 +766,6 @@ export default function SettingsView({
         </div>
         <ResetSection onDataChanged={onDataChanged} />
       </section>
-    </motion.div>
+    </div>
   );
 }

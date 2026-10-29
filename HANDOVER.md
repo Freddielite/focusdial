@@ -3657,3 +3657,67 @@ distribution to look at); no browser here to confirm `predictedQuality`
 surfacing in a card's "why" text reads well in practice; the weekly
 cron retrain itself hasn't run against a live Postgres instance, only
 `trainQualityModel` in isolation.
+
+## Session 56 — bug audit: blank screen on tab switch, new-user crash, cross-account references
+
+Audit run end to end against a real local Postgres + the production
+build in headless Chromium (tab-switch stress runs, scripted UI flows,
+a two-account access test, a bad-input fuzz, and an analytics edge-case
+harness). Fixes, most important first:
+
+**Blank screen when switching tabs.** The tab area was
+`AnimatePresence mode="wait"`, which only mounts the next tab once the
+old tab's exit animation reports finished. When the browser freezes
+animations (iOS / installed PWAs under throttling), that never happens:
+reproduced by freezing animations via the DevTools protocol - tapping a
+tab did nothing, the old view stayed mounted forever (on a real phone
+the freeze tends to land mid-fade, i.e. an empty screen). Now tabs swap
+in the same commit inside `TabPanel` (App.jsx), keyed by tab. The fade
+is a CSS class (`.fd-tab-panel--entering`) removed by a plain 250ms
+timer - NOT left to the animation to finish, because a frozen CSS fade
+also sits at opacity 0 (a first attempt that relied on "no fill-mode"
+was still blank under frozen animations). The six views' root
+`motion.div` fade wrappers became plain `div`s. Don't reintroduce
+`mode="wait"` (or any "wait for exit" logic) around the tabs. Side
+effect: the scroll-to-top layout effect now runs in the same commit
+the new tab mounts, as its comment always intended. Also: re-tapping
+the active tab scrolls to top.
+
+**New users crashed on their first timer.** `computeMilestones` with
+only a zero-length session (the live session at the instant it starts)
+left `earliestDay` null; the streak loop then ran with `cursor = null`
+because `null <= Date` is true in JS. Guarded with an early return.
+
+**Cross-account references (backend).** Ownership of the row being
+edited was always checked, but not of rows a request *points at* - a
+request could attach a session/task/deadline to another account's tag
+or task, or a tag to another account's budget, and the response joins
+then returned that account's tag name/task title. New
+`lib/ownership.js` (`requireOwnedReferences`) checks any `tag_id`,
+`task_id`, `budget_id` in a POST/PATCH/PUT body, mounted once ahead of
+all authenticated routers in index.js so new routes are covered
+automatically.
+
+**Bad input returned 500s.** New `lib/validate.js` (`validateInput`,
+same mount point): malformed ids in the URL -> 404; invalid
+started_at/ended_at/remind_at, due_date, due_time, recurrence, color,
+over-80-char tag/budget names, invalid IANA timezone, and bad
+`from`/`to` filters -> 400 with a specific message. All were previously
+Postgres errors surfacing as generic "failed to ..." 500s.
+
+**Smaller:** the Deadlines form's two `TimePicker`s were missing
+`className="fd-select"` (rendered as an unstyled native button next to
+the styled date field); the deadline "Log" hours form had try/finally
+with no catch (a failed request did nothing visible) - now shows the
+error; the pace banner read "0m/day over the last 0 days" for accounts
+with no completed day yet - now explains when it'll appear.
+
+**Checked, not changed:** past-due reminders under "Coming up" are
+intentional (see computeWeeklyReview's comment); tag/budget name
+uniqueness is already per-user; DELETE of another account's id returns
+204 but deletes nothing (scoped WHERE) - harmless, left alone.
+
+`npm run build` clean, `node --check` clean on all backend files.
+**Not verified:** a real iPhone (the freeze reproduction is the closest
+available stand-in); Google Calendar and push flows (no credentials in
+the test environment).

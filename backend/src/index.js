@@ -6,6 +6,8 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { initSchema, pool } from "./db.js";
 import { requireAuth } from "./lib/auth.js";
+import { requireOwnedReferences } from "./lib/ownership.js";
+import { validateInput } from "./lib/validate.js";
 import { authRouter } from "./routes/auth.js";
 import { tagsRouter } from "./routes/tags.js";
 import { sessionsRouter } from "./routes/sessions.js";
@@ -111,6 +113,10 @@ app.use("/api", authRouter);
 app.use("/api", cronRouter);
 
 // Every other data route requires a signed-in user from here down.
+// validateInput + requireOwnedReferences run once for the whole block
+// (after requireAuth has set req.userId) - see lib/validate.js and
+// lib/ownership.js.
+app.use("/api", requireAuth, validateInput, requireOwnedReferences);
 app.use("/api", requireAuth, tagsRouter);
 app.use("/api", requireAuth, sessionsRouter);
 app.use("/api", requireAuth, budgetsRouter);

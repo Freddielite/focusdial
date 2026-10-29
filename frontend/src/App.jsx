@@ -76,6 +76,20 @@ const PACE_COPY = {
 
 const VALID_TABS = new Set(["today", "insights", "budgets", "deadlines", "reminders", "settings"]);
 
+// Wraps the active tab's view; keyed by tab in App's render so it
+// remounts on every switch. Plays a short CSS fade-in, then drops the
+// class on a plain timer - see .fd-tab-panel--entering in App.css for
+// why the timer, not the animation, decides when the fade is over.
+const TAB_FADE_MS = 250;
+function TabPanel({ children }) {
+  const [entering, setEntering] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setEntering(false), TAB_FADE_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return <div className={entering ? "fd-tab-panel fd-tab-panel--entering" : "fd-tab-panel"}>{children}</div>;
+}
+
 export default function App({ user, onLogout, onUserUpdated }) {
   // Every place this app addresses someone by name (greeting, weekly
   // review title, streak message, push notifications) wants just the
@@ -902,7 +916,15 @@ export default function App({ user, onLogout, onUserUpdated }) {
               <FocusMark size={22} strokeWidth={2.1} className="fd-header__mark" />
               FocusDial
             </div>
-            <TabNav active={activeTab} onChange={setActiveTab} />
+            <TabNav
+              active={activeTab}
+              onChange={(id) => {
+                // Re-tapping the tab you're already on scrolls back to the
+                // top (standard tab-bar behaviour) instead of doing nothing.
+                if (id === activeTab) window.scrollTo({ top: 0, behavior: "smooth" });
+                else setActiveTab(id);
+              }}
+            />
             <div className="fd-header__actions">
               <NotificationBell notifications={notifications} />
               <ThemeToggle theme={theme} onChange={setTheme} />
@@ -948,7 +970,15 @@ export default function App({ user, onLogout, onUserUpdated }) {
             {!loaded ? (
               <TodaySkeleton />
             ) : (
-              <AnimatePresence mode="wait" initial={false}>
+              // No AnimatePresence here on purpose. It used to be
+              // mode="wait", which only mounts the next tab once the old
+              // tab's exit animation reports finished - on iOS/installed
+              // PWAs that signal can stall when the browser throttles
+              // animations, leaving the old tab invisible and the new
+              // one never mounted (the blank-screen-on-tab-switch bug).
+              // Tabs now swap in the same commit; TabPanel's fade-in gives
+              // the transition without anything having to "finish" first.
+              <TabPanel key={activeTab}>
                 {activeTab === "today" && (
                   <TodayView
                     key="today"
@@ -1032,7 +1062,7 @@ export default function App({ user, onLogout, onUserUpdated }) {
                     onScrollTargetConsumed={() => setSettingsScrollTarget(null)}
                   />
                 )}
-              </AnimatePresence>
+              </TabPanel>
             )}
             </PullToRefresh>
           </main>

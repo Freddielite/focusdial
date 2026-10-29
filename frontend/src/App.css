@@ -3619,6 +3619,33 @@ button {
   gap: 20px;
 }
 
+/* Tab-switch fade-in. Applied by TabPanel (App.jsx) and removed again by
+   a timer after 250ms - deliberately not left to the animation itself to
+   finish. When a browser freezes animations (iOS/installed PWAs do this
+   under throttling), a paused fade sits on its first frame, opacity 0,
+   indefinitely; dropping the class unconditionally guarantees the tab
+   ends up fully visible either way. */
+.fd-tab-panel--entering {
+  animation: fd-view-in 160ms ease-out;
+}
+
+@keyframes fd-view-in {
+  /* Opacity only - a transform here would briefly make the panel the
+     containing block for any position:fixed modal opened inside it. */
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fd-tab-panel--entering {
+    animation: none;
+  }
+}
+
 .fd-view__head {
   display: flex;
   align-items: center;

@@ -903,6 +903,18 @@ export function computeMilestones(sessions, restDayOfWeek = null, graceEnabled =
       if (!earliestDay || dayStart < earliestDay) earliestDay = dayStart;
     }
   }
+  // Every session so far is zero-length - in practice, a brand-new
+  // account's very first timer at the instant it starts (the live,
+  // just-started session App.jsx appends to history). No day has any
+  // time yet, so there's no best day or streak to report. Without this,
+  // earliestDay stays null and the streak walk below starts at
+  // `cursor = null` - `null <= walkEnd` is true in JS (null coerces to
+  // 0), so localDayKey(null) threw and crashed the whole app the moment
+  // a new user pressed Start.
+  if (!earliestDay) {
+    return { longestSession, bestDay: null, longestStreak: null };
+  }
+
   let bestDay = null;
   for (const [, info] of dayTotals) {
     if (!bestDay || info.seconds > bestDay.seconds) {
