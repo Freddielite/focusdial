@@ -1,3 +1,4 @@
+import AccountSecurity from "./AccountSecurity.jsx";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import TagManager from "./TagManager.jsx";
@@ -534,6 +535,7 @@ export default function SettingsView({
   user,
   onUserUpdated,
   onLogout,
+  onSignedOut,
   scrollTarget,
   onScrollTargetConsumed,
 }) {
@@ -582,6 +584,11 @@ export default function SettingsView({
             Sign out
           </button>
         </Row>
+      </section>
+
+      <section className="fd-panel fd-set-card">
+        <div className="fd-set-card__head">Account &amp; security</div>
+        <AccountSecurity user={user} onSignedOut={onSignedOut || onLogout} />
       </section>
 
       <section className="fd-panel fd-set-card">

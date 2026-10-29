@@ -1,7 +1,7 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 
-export const budgetsRouter = Router();
+export const budgetsRouter = asyncRouter();
 
 // Includes the list of tag ids/names currently assigned to each budget,
 // so the frontend doesn't need a second round trip to show "this budget
@@ -27,8 +27,8 @@ budgetsRouter.get("/budgets", async (req, res) => {
 });
 
 budgetsRouter.post("/budgets", async (req, res) => {
-  const { name, weekly_target_hours, color } = req.body;
-  if (!name || !name.trim()) {
+  const { name, weekly_target_hours, color } = req.body || {};
+  if (typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ error: "name is required" });
   }
   // A falsy check alone (!weekly_target_hours) lets a negative number
@@ -41,7 +41,7 @@ budgetsRouter.post("/budgets", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `INSERT INTO budgets (name, weekly_target_seconds, color, user_id) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name.trim(), Math.round(weekly_target_hours * 3600), color || "#C9962C", req.userId]
+      [name.trim(), Math.max(1, Math.round(weekly_target_hours * 3600)), color || "#C9962C", req.userId]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -54,7 +54,7 @@ budgetsRouter.post("/budgets", async (req, res) => {
 });
 
 budgetsRouter.patch("/budgets/:id", async (req, res) => {
-  const { name, weekly_target_hours, color } = req.body;
+  const { name, weekly_target_hours, color } = req.body || {};
   // Same gap as POST /budgets above: a plain truthy check on
   // weekly_target_hours lets a negative number through unnoticed since
   // it's non-zero. Only validate when the field was actually sent -
@@ -66,6 +66,9 @@ budgetsRouter.patch("/budgets/:id", async (req, res) => {
   ) {
     return res.status(400).json({ error: "weekly_target_hours must be a positive number" });
   }
+  if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+    return res.status(400).json({ error: "name can't be empty" });
+  }
   try {
     const { rows } = await pool.query(
       `UPDATE budgets SET
@@ -76,14 +79,15 @@ budgetsRouter.patch("/budgets/:id", async (req, res) => {
       [
         req.params.id,
         req.userId,
-        name,
-        weekly_target_hours ? Math.round(weekly_target_hours * 3600) : null,
+        name === undefined ? null : name.trim(),
+        weekly_target_hours ? Math.max(1, Math.round(weekly_target_hours * 3600)) : null,
         color,
       ]
     );
     if (rows.length === 0) return res.status(404).json({ error: "budget not found" });
     res.json(rows[0]);
   } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "a budget with that name already exists" });
     console.error(err);
     res.status(500).json({ error: "failed to update budget" });
   }

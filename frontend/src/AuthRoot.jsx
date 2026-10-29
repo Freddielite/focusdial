@@ -3,6 +3,31 @@ import { AnimatePresence, motion } from "framer-motion";
 import App from "./App.jsx";
 import AuthGate from "./components/AuthGate.jsx";
 import { getMe, logout, setUnauthorizedHandler } from "./api.js";
+import { disablePush, isPushSupported } from "./push.js";
+
+// Per-person data kept in this browser. Cleared on sign-out so the next
+// person to use a shared device doesn't see the previous one's
+// notification history or dismissed suggestions. Theme and device name
+// describe the device, not the person, so they stay.
+const PERSONAL_STORAGE_KEYS = ["fd-notifications", "focusdial-daily-ritual-seen", "focusdial-suggestion-dismissals"];
+
+export function clearPersonalDeviceData() {
+  for (const key of PERSONAL_STORAGE_KEYS) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // storage unavailable - nothing to clear
+    }
+  }
+}
+
+// Unsubscribes this browser from push (server + browser) before signing
+// out. Without this the subscription stayed tied to the old account and
+// their reminder titles kept appearing on this device's lock screen.
+async function unsubscribeThisDevice() {
+  if (!isPushSupported()) return;
+  await Promise.race([disablePush(), new Promise((resolve) => setTimeout(resolve, 3000))]);
+}
 
 // Small full-screen spinner shown for the gap between clicking "Sign
 // out" and the server actually clearing the session - logout() is a
@@ -50,6 +75,7 @@ export default function AuthRoot() {
     // back to the login screen instead of every affected component
     // separately showing its own confusing "failed to load" error.
     setUnauthorizedHandler(() => {
+      clearPersonalDeviceData();
       setUser(null);
       setStatus("anon");
     });
@@ -64,6 +90,12 @@ export default function AuthRoot() {
   async function handleLogout() {
     setStatus("loggingOut");
     const startedAt = Date.now();
+    try {
+      await unsubscribeThisDevice();
+    } catch (err) {
+      console.error("push unsubscribe on logout failed:", err);
+    }
+    clearPersonalDeviceData();
     try {
       await logout();
     } catch (err) {

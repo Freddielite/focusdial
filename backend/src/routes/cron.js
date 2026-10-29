@@ -1,11 +1,13 @@
-import { Router } from "express";
-import crypto from "node:crypto";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 import { sendPushToUser } from "../lib/push.js";
 import { googleConfigured, getAuthedClient, getCalendarClient, fetchSyncTokenBaseline } from "../lib/google.js";
 import { trainQualityModel } from "../lib/qualityModel.js";
+import { shiftToLocal, localDateISO, localHour, localWeekKey, nextOccurrenceLocal } from "../lib/time.js";
+import { safeEqual } from "../lib/crypto.js";
+import { log } from "../lib/log.js";
 
-export const cronRouter = Router();
+export const cronRouter = asyncRouter();
 
 // Prefixes a push body with the person's name when they've set one -
 // "Wyntek — you haven't logged a session today" reads as written for
@@ -38,106 +40,43 @@ function greet(displayName, body) {
   return name ? `${name} — ${body}` : body;
 }
 
-// --- Local-time helpers ----------------------------------------------
-// Historically the backend only had a fixed UTC offset the browser
-// reported once via PUT /api/settings -- shifting a timestamp by that
-// offset and reading its UTC-calendar fields back off approximates
-// local wall-clock time, but doesn't account for DST transitions, so it
-// could be an hour off for ~2 weeks twice a year in DST-observing
-// regions. Now that the browser also registers a real IANA zone name
-// (settings.timezone, e.g. "Africa/Lagos"), this prefers using that via
-// Node's built-in Intl API -- which is fully DST-aware with no extra
-// dependency -- and only falls back to the raw offset for a settings
-// row that predates the zone name being registered (or if the stored
-// name is somehow invalid/unrecognized).
-function shiftToLocal(date, tz) {
-  const timezone = tz?.timezone;
-  const offsetMinutes = tz?.offsetMinutes ?? 0;
-  if (timezone) {
-    try {
-      const parts = new Intl.DateTimeFormat("en-US", {
-        timeZone: timezone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).formatToParts(date);
-      const map = {};
-      for (const p of parts) map[p.type] = p.value;
-      let hour = Number(map.hour);
-      if (hour === 24) hour = 0; // midnight can format as "24" with hour12:false in some engines
-      return new Date(
-        Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day), hour, Number(map.minute), Number(map.second))
-      );
-    } catch {
-      // Unrecognized/invalid zone name -- fall through to the offset
-      // rather than failing the whole check over one bad stored value.
-    }
-  }
-  return new Date(date.getTime() + offsetMinutes * 60000);
-}
-// Zero-padded ISO date (YYYY-MM-DD) from an already-shifted "local" Date,
-// reading its UTC-calendar fields (since shiftToLocal baked the offset
-// into the timestamp itself - see the module comment above). Used both
-// for same-day comparisons between sessions and for the plain-text
-// last_streak_nudge_date column, so it needs to be exactly this format
-// everywhere it's used, not just internally consistent.
-function localDateISO(localDate) {
-  const y = localDate.getUTCFullYear();
-  const m = String(localDate.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(localDate.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-function localHour(localDate) {
-  return localDate.getUTCHours();
-}
-// Monday-start week key (YYYY-MM-DD of that week's Monday) for an
-// already-shifted "local" Date, same convention as the frontend's
-// mondayOf()/localDayKey() in analytics.js - used only by the streak
-// recovery-grace check below, to tell "which week is this miss in."
-function localWeekKey(localDate) {
-  const day = localDate.getUTCDay(); // 0 = Sunday ... 6 = Saturday
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(localDate.getTime() + diff * 24 * 60 * 60 * 1000);
-  return localDateISO(monday);
-}
-
-function nextOccurrence(date, recurrence) {
-  const d = new Date(date);
-  if (recurrence === "daily") d.setUTCDate(d.getUTCDate() + 1);
-  else if (recurrence === "weekly") d.setUTCDate(d.getUTCDate() + 7);
-  else if (recurrence === "monthly") d.setUTCMonth(d.getUTCMonth() + 1);
-  return d;
-}
-
-async function checkDueReminders(userId, displayName) {
+async function checkDueReminders(userId, displayName, tz) {
   const { rows: due } = await pool.query(
     `SELECT * FROM reminders
      WHERE user_id = $1 AND status = 'pending' AND remind_at <= now()
        AND (last_fired_at IS NULL OR last_fired_at < remind_at)`,
     [userId]
   );
+  let fired = 0;
   for (const r of due) {
+    // Claim first, send second. The UPDATE is conditional on remind_at
+    // still being the value just read, so if two ticks overlap only one
+    // of them wins the row and sends - the other's UPDATE matches nothing.
+    // (Before, both could read the row, both push, then both update.)
+    let next = null;
+    if (r.recurrence !== "none") {
+      // Stepped in the user's local calendar (stays at 9am across DST),
+      // and skipped forward past now() so a cron outage doesn't release a
+      // burst of catch-up notifications on the next tick.
+      next = nextOccurrenceLocal(new Date(r.remind_at), r.recurrence, tz);
+      let guard = 0;
+      while (next <= new Date() && guard++ < 1000) next = nextOccurrenceLocal(next, r.recurrence, tz);
+    }
+    const { rowCount } = await pool.query(
+      `UPDATE reminders SET last_fired_at = remind_at, remind_at = COALESCE($3, remind_at), updated_at = now()
+       WHERE id = $1 AND remind_at = $2 AND status = 'pending'`,
+      [r.id, r.remind_at, next ? next.toISOString() : null]
+    );
+    if (rowCount === 0) continue;
     await sendPushToUser(userId, {
       title: "Reminder",
       body: greet(displayName, r.title),
       tag: `reminder-${r.id}`,
       url: "/",
     });
-    if (r.recurrence === "none") {
-      await pool.query(`UPDATE reminders SET last_fired_at = remind_at WHERE id = $1`, [r.id]);
-    } else {
-      const next = nextOccurrence(new Date(r.remind_at), r.recurrence);
-      await pool.query(
-        `UPDATE reminders SET last_fired_at = remind_at, remind_at = $2, updated_at = now() WHERE id = $1`,
-        [r.id, next.toISOString()]
-      );
-    }
+    fired += 1;
   }
-  return due.length;
+  return fired;
 }
 
 // Duplicates a slimmed-down version of the frontend's deadline pace
@@ -152,9 +91,15 @@ async function checkDeadlinePaceChanges(userId, tz, displayName) {
   ]);
   if (deadlines.length === 0) return 0;
 
+  // Only the sessions this check can use: the last 31 days (for the
+  // average) or anything since the oldest active deadline was created (for
+  // tag-linked progress). It used to load the user's entire history on
+  // every tick.
+  const oldestCreated = deadlines.reduce((min, d) => (new Date(d.created_at) < min ? new Date(d.created_at) : min), new Date());
+  const since = new Date(Math.min(oldestCreated.getTime(), Date.now() - 31 * 24 * 60 * 60 * 1000));
   const { rows: sessions } = await pool.query(
-    `SELECT tag_id, started_at, ended_at FROM sessions WHERE user_id = $1 AND ended_at IS NOT NULL`,
-    [userId]
+    `SELECT tag_id, started_at, ended_at FROM sessions WHERE user_id = $1 AND ended_at IS NOT NULL AND started_at >= $2`,
+    [userId, since]
   );
 
   const nowLocal = shiftToLocal(new Date(), tz);
@@ -375,9 +320,17 @@ async function checkQualityModelTraining(userId) {
     return false; // retrained within the last week already
   }
 
+  // Users without a model yet (too few labeled sessions) are retried at
+  // most once a day, instead of reloading their whole history every tick.
+  const { rows: attemptRows } = await pool.query(`SELECT quality_model_attempted_at FROM settings WHERE user_id = $1`, [userId]);
+  const attempted = attemptRows[0]?.quality_model_attempted_at;
+  if (!existing.length && attempted && new Date(attempted).getTime() > Date.now() - 24 * 60 * 60 * 1000) return false;
+  await pool.query(`UPDATE settings SET quality_model_attempted_at = now() WHERE user_id = $1`, [userId]);
+
   const { rows: sessions } = await pool.query(
     `SELECT id, tag_id, task_id, started_at, ended_at, quality FROM sessions
-     WHERE user_id = $1 AND ended_at IS NOT NULL`,
+     WHERE user_id = $1 AND ended_at IS NOT NULL
+     ORDER BY started_at DESC LIMIT 20000`,
     [userId]
   );
 
@@ -495,7 +448,7 @@ async function checkGoogleCalendarSync(userId) {
         userId,
       ]);
     } catch (err) {
-      console.error("failed to establish google sync token baseline:", err.message);
+      log.error("failed to establish google sync token baseline", { message: err.message });
       return { skipped: "baseline_failed" };
     }
     return { skipped: "baseline_established" }; // nothing to diff yet - next tick does real work
@@ -517,7 +470,7 @@ async function checkGoogleCalendarSync(userId) {
       // drop it and re-baseline. Changes made on Google's side between
       // now and the next successful poll are missed - a full historical
       // diff isn't attempted, out of scope for a periodic personal sync.
-      console.warn("google sync token expired (410) - re-establishing baseline");
+      log.warn("google sync token expired (410) - re-establishing baseline");
       try {
         const freshToken = await fetchSyncTokenBaseline(calendar, calendarId);
         await pool.query(`UPDATE google_account SET sync_token = $1, updated_at = now() WHERE user_id = $2`, [
@@ -525,11 +478,11 @@ async function checkGoogleCalendarSync(userId) {
           userId,
         ]);
       } catch (err2) {
-        console.error("failed to re-establish google sync token after 410:", err2.message);
+        log.error("failed to re-establish google sync token after 410", { message: err2.message });
       }
       return { skipped: "resynced_after_410" };
     }
-    console.error("google calendar poll failed:", err.message);
+    log.error("google calendar poll failed", { message: err.message });
     return { skipped: "poll_failed" };
   }
 
@@ -546,11 +499,19 @@ async function checkGoogleCalendarSync(userId) {
     const link = linkRows[0];
 
     if (event.status === "cancelled") {
+      // Archived, not deleted: removing the calendar event shouldn't
+      // destroy the deadline's logged progress. It can be restored from
+      // the Deadlines tab. Every write is scoped to this user's own rows
+      // as defense in depth, in case an event id is ever linked wrongly.
       if (link.item_type === "deadline") {
-        await pool.query(`DELETE FROM deadlines WHERE id = $1`, [link.item_id]);
-      } else {
-        await pool.query(`UPDATE reminders SET status = 'dismissed', updated_at = now() WHERE id = $1`, [
+        await pool.query(`UPDATE deadlines SET status = 'archived', updated_at = now() WHERE id = $1 AND user_id = $2`, [
           link.item_id,
+          userId,
+        ]);
+      } else {
+        await pool.query(`UPDATE reminders SET status = 'dismissed', updated_at = now() WHERE id = $1 AND user_id = $2`, [
+          link.item_id,
+          userId,
         ]);
       }
       await pool.query(`DELETE FROM google_event_links WHERE item_type = $1 AND item_id = $2`, [
@@ -569,10 +530,11 @@ async function checkGoogleCalendarSync(userId) {
     if (link.item_type === "deadline") {
       const dueDate = event.start?.date; // all-day event
       if (dueDate) {
-        await pool.query(`UPDATE deadlines SET title = $2, due_date = $3, updated_at = now() WHERE id = $1`, [
+        await pool.query(`UPDATE deadlines SET title = $2, due_date = $3, updated_at = now() WHERE id = $1 AND user_id = $4`, [
           link.item_id,
-          event.summary || "Untitled",
+          (event.summary || "Untitled").slice(0, 200),
           dueDate,
+          userId,
         ]);
       }
     } else {
@@ -581,8 +543,8 @@ async function checkGoogleCalendarSync(userId) {
       const remindAt = event.start?.dateTime;
       if (remindAt) {
         await pool.query(
-          `UPDATE reminders SET title = $2, note = $3, remind_at = $4, updated_at = now() WHERE id = $1`,
-          [link.item_id, event.summary || "Untitled", event.description || null, remindAt]
+          `UPDATE reminders SET title = $2, note = $3, remind_at = $4, updated_at = now() WHERE id = $1 AND user_id = $5`,
+          [link.item_id, (event.summary || "Untitled").slice(0, 200), event.description ? event.description.slice(0, 2000) : null, remindAt, userId]
         );
       }
     }
@@ -601,26 +563,48 @@ async function checkGoogleCalendarSync(userId) {
   return { synced: applied, total: events.length };
 }
 
-// Plain `!==` on a secret leaks timing information proportional to how
-// many leading bytes match, which is (in principle) usable to recover
-// the secret byte-by-byte. crypto.timingSafeEqual compares in constant
-// time - but it throws on mismatched buffer lengths, so the length is
-// checked separately (comparing against a fixed-length hash of both
-// sides, rather than the raw values, sidesteps that without leaking the
-// real secret's length through a thrown/caught exception timing gap).
-function secretsMatch(provided, expected) {
-  if (typeof provided !== "string" || typeof expected !== "string") return false;
-  const a = crypto.createHash("sha256").update(provided).digest();
-  const b = crypto.createHash("sha256").update(expected).digest();
-  return crypto.timingSafeEqual(a, b);
+const CRON_LOCK_ID = 727274002;
+
+// Housekeeping that has to happen somewhere: retention for short-lived
+// security rows. Sessions are pruned by connect-pg-simple itself.
+async function pruneExpired() {
+  await pool.query(`DELETE FROM idempotency_keys WHERE created_at < now() - interval '24 hours'`);
+  await pool.query(`DELETE FROM password_reset_tokens WHERE expires_at < now() - interval '1 day'`);
+  await pool.query(`DELETE FROM audit_log WHERE created_at < now() - interval '365 days'`);
 }
 
 async function handleTick(req, res) {
-  const secret = req.header("x-cron-secret") || req.query.secret;
-  if (!process.env.CRON_SECRET || !secretsMatch(secret, process.env.CRON_SECRET)) {
+  // Prefer the x-cron-secret header: a secret in the query string ends up
+  // in proxy and scheduler logs. The query form still works so existing
+  // cron-job.org setups don't break, but logs a warning - see
+  // OPERATIONS.md for switching to the header.
+  const headerSecret = req.header("x-cron-secret");
+  const secret = headerSecret || req.query.secret;
+  if (!process.env.CRON_SECRET || !safeEqual(secret, process.env.CRON_SECRET)) {
     return res.status(401).json({ error: "unauthorized" });
   }
+  if (!headerSecret) log.warn("cron tick authenticated via ?secret= query param - switch to the x-cron-secret header");
+
+  // One tick at a time across every instance. A slow tick that's still
+  // running when the scheduler fires again used to run in parallel with
+  // it and double-send reminders.
+  const lockClient = await pool.connect();
+  let locked = false;
   try {
+    ({ rows: [{ locked }] } = await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked", [CRON_LOCK_ID]));
+    if (!locked) {
+      return res.status(202).json({ ok: true, skipped: "previous tick still running" });
+    }
+    await runTick(res);
+  } finally {
+    if (locked) await lockClient.query("SELECT pg_advisory_unlock($1)", [CRON_LOCK_ID]).catch(() => {});
+    lockClient.release();
+  }
+}
+
+async function runTick(res) {
+  try {
+    await pruneExpired().catch((err) => log.error("cron prune failed", { err }));
     // One tick now runs every user's checks in a single pass - this used
     // to read one global settings row; now it loops over every user who
     // has one (every user gets a settings row at signup, see
@@ -655,7 +639,7 @@ async function handleTick(req, res) {
         // something the user has opted out of. `push_enabled` is still
         // enforced separately in lib/push.js as the catch-all master mute.
         const remindersFired = settings.automation_reminders
-          ? await checkDueReminders(userId, settings.display_name)
+          ? await checkDueReminders(userId, settings.display_name, tz)
           : 0;
         const paceChanges = settings.automation_deadline_pace
           ? await checkDeadlinePaceChanges(userId, tz, settings.display_name)
@@ -687,14 +671,14 @@ async function handleTick(req, res) {
           qualityModelRetrained,
         });
       } catch (err) {
-        console.error(`cron tick failed for user ${userId}:`, err);
+        log.error("cron tick failed for user", { userId, err });
         perUser.push({ userId, error: err.message || "unknown error" });
       }
     }
 
     res.json({ ok: true, usersChecked: perUser.length, results: perUser });
   } catch (err) {
-    console.error("cron tick failed:", err);
+    log.error("cron tick failed", { err });
     res.status(500).json({ error: "cron tick failed" });
   }
 }

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import crypto from "node:crypto";
 import { pool } from "../db.js";
 import {
@@ -13,8 +13,10 @@ import {
   pushItemToGoogle,
   getAuthedClient,
 } from "../lib/google.js";
+import { encryptSecret, decryptSecret } from "../lib/crypto.js";
+import { log } from "../lib/log.js";
 
-export const googleAuthRouter = Router();
+export const googleAuthRouter = asyncRouter();
 
 googleAuthRouter.get("/auth/google/status", async (req, res) => {
   if (!googleConfigured) return res.json({ configured: false, connected: false });
@@ -47,7 +49,7 @@ googleAuthRouter.get("/auth/google/start", (req, res) => {
   // guarantees is present for this route.
   const nonce = crypto.randomUUID();
   req.session.googleOAuthState = nonce;
-  res.redirect(getAuthUrl(nonce));
+  req.session.save(() => res.redirect(getAuthUrl(nonce)));
 });
 
 googleAuthRouter.get("/auth/google/callback", async (req, res) => {
@@ -100,7 +102,7 @@ googleAuthRouter.get("/auth/google/callback", async (req, res) => {
        ON CONFLICT (user_id) DO UPDATE SET
          email = $1, access_token = $2, refresh_token = $3, token_expiry = $4,
          connected_at = now(), updated_at = now()`,
-      [email, tokens.access_token, tokens.refresh_token, tokens.expiry_date ? new Date(tokens.expiry_date) : null, userId]
+      [email, encryptSecret(tokens.access_token), encryptSecret(tokens.refresh_token), tokens.expiry_date ? new Date(tokens.expiry_date) : null, userId]
     );
 
     // Backfill: mirror everything currently active/pending out to the
@@ -127,12 +129,12 @@ googleAuthRouter.get("/auth/google/callback", async (req, res) => {
         userId,
       ]);
     } catch (err) {
-      console.error("failed to establish google sync token baseline:", err.message);
+      log.error("failed to establish google sync token baseline", { message: err.message });
     }
 
     redirectTo("connected");
   } catch (err) {
-    console.error("google oauth callback failed:", err.message);
+    log.error("google oauth callback failed", { message: err.message });
     redirectTo("error");
   }
 });
@@ -145,7 +147,7 @@ googleAuthRouter.get("/calendar/today-busy", async (req, res) => {
     const blocks = await fetchTodaysBusyBlocks(req.userId, authClient);
     res.json({ connected: true, blocks });
   } catch (err) {
-    console.error("failed to fetch today's calendar events:", err.message);
+    log.error("failed to fetch today's calendar events", { message: err.message });
     // Same "degrade rather than fail the whole request" reasoning as
     // pushItemToGoogle - Open Slots/the morning plan should still work
     // off goal-math alone if Google is briefly unreachable, not error
@@ -165,11 +167,11 @@ googleAuthRouter.post("/auth/google/disconnect", async (req, res) => {
       // invalid), the local disconnect still proceeds, since the goal is
       // "FocusDial stops touching this calendar," which the DB cleanup
       // below achieves regardless.
-      const token = account.refresh_token || account.access_token;
+      const token = decryptSecret(account.refresh_token) || decryptSecret(account.access_token);
       if (token) {
         await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
           method: "POST",
-        }).catch((err) => console.error("google token revoke failed:", err.message));
+        }).catch((err) => log.error("google token revoke failed", { message: err.message }));
       }
     }
     await pool.query(`DELETE FROM google_account WHERE user_id = $1`, [req.userId]);

@@ -1,7 +1,7 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 
-export const settingsRouter = Router();
+export const settingsRouter = asyncRouter();
 
 // Columns the client is allowed to update, with a validator each. Keeping
 // this as an explicit allowlist (rather than trusting req.body keys)

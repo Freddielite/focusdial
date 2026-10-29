@@ -3721,3 +3721,73 @@ uniqueness is already per-user; DELETE of another account's id returns
 **Not verified:** a real iPhone (the freeze reproduction is the closest
 available stand-in); Google Calendar and push flows (no credentials in
 the test environment).
+
+## Production-readiness pass (Oct 2026)
+
+Audited the app against a long production checklist, reproduced the
+findings against a real Postgres, then fixed them. Every fix below has a
+test in `backend/test/` that fails on the old code.
+
+### Real bugs fixed
+- **One request could crash the API for everyone.** `{"name": 5}` to
+  `POST /api/tags` threw inside an async handler; Express 4 doesn't catch
+  that, Node exits. All routers are now `asyncRouter()`
+  (`lib/asyncRouter.js`) which forwards errors to the handler in `app.js`;
+  `lib/validate.js` type/length-checks every field.
+- **Analytics dropped your newest data past 5,000 sessions**
+  (`ORDER BY started_at ASC LIMIT 5000`). Now the newest 20,000.
+- **Deadline "overdue" never fired**, and dates shifted a day on non-UTC
+  servers: node-pg turned DATE into a JS Date, so
+  `String(due_date).slice(0,10)` was "Thu Oct 01". DATE is now parsed as
+  a plain string (`db.js`). This also fixed Google sync of deadlines,
+  which was sending a timestamp where Google wants a date.
+- **Duplicates:** "done" twice on a recurring deadline/task spawned two
+  next occurrences (the comment said it was guarded; only tasks.js was).
+  Now transactional with `FOR UPDATE` on the previous status. Reminders
+  convert once. POSTs take an `Idempotency-Key` (`lib/idempotency.js`),
+  which the frontend sends on every POST and re-sends on retry.
+- **Negative durations** via PATCHing only `ended_at`. Checked against
+  the stored row + a DB CHECK constraint.
+- **Cron:** overlapping ticks double-sent reminders (now an advisory lock
+  and claim-then-send); recurring reminders drifted an hour at DST (now
+  stepped in local time, `lib/time.js`); a missed day caused a burst of
+  catch-up pushes (now skips to the next future occurrence); Google
+  busy-blocks used the server's 9pm, not the user's.
+- **Every boot ran ~40 ALTER TABLEs** (exclusive locks on every deploy
+  and cold start). Replaced by versioned migrations (`src/migrate.js`,
+  `src/migrations/`): run only when pending, advisory-locked,
+  `lock_timeout 5s`, with `down` for rollback. 001 is the old schema
+  verbatim (idempotent, so existing databases just get it recorded).
+
+### Security
+Session id rotated at login; Google login now has `state` and only links
+verified emails; Origin check against CSRF; layered login rate limits
+(the old IP+email key let one IP spray unlimited emails); logout
+unsubscribes push and clears per-person localStorage; Google tokens and
+MFA secrets AES-GCM encrypted (`TOKEN_ENCRYPTION_KEY`); DB TLS
+verification via `DATABASE_SSL_CA`; idle + absolute session expiry;
+audit log; structured, redacted logs; CSP and security headers on the
+frontend (`vercel.json` - the offline page's inline script moved to
+`offline.js` for it). Dependencies: 0 advisories (Express 4.22.3,
+Vite 7.3.7).
+
+### New features
+Password reset (Resend), TOTP two-step verification with recovery codes,
+change password, sign out other devices / everywhere, security activity,
+full account export, account deletion - all in Settings → Account &
+security (`AccountSecurity.jsx`) and `routes/account.js`.
+
+### Process
+`npm test` (29 integration tests), GitHub Actions CI with a
+migration up/down/up check and a deploy gated on CI, Dependabot,
+CODEOWNERS, frontend ESLint config, OPERATIONS.md (deploys, rollbacks,
+migrations, secrets rotation, backups/restore drill, monitoring,
+runbooks, "things only a person can do"), SECURITY.md.
+
+### Not done / needs a person
+Provider setup (Supabase backups + PITR + a restore drill, uptime and
+error monitoring, cost alerts, Resend domain DNS, Google OAuth
+verification), terms + privacy policy, moving accounts into a company
+name. All listed in OPERATIONS.md. App.jsx (1,100 lines) and analytics.js
+(1,700) are still unsplit - worth doing with frontend tests in place
+first. Rate limits are in-memory (fine for one instance).

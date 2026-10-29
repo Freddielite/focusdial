@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { pool } from "../db.js";
+import { log } from "./log.js";
 
 const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env;
 
@@ -15,10 +16,7 @@ if (pushConfigured) {
   // Not fatal - the app still works without push configured, it just
   // can't send any. Reminders/automation become in-app-only in that
   // case. See HANDOVER.md for how to generate a VAPID key pair.
-  console.warn(
-    "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set - push notifications are disabled. " +
-      "Generate a key pair with `npx web-push generate-vapid-keys` and set them as env vars to enable."
-  );
+  log.warn("VAPID keys not set - push notifications are disabled (npx web-push generate-vapid-keys)");
 }
 
 // Sends `payload` (an object with at least title/body) to every device
@@ -48,14 +46,24 @@ export async function sendPushToUser(userId, payload) {
       endpoint: sub.endpoint,
       keys: { p256dh: sub.p256dh, auth: sub.auth },
     };
-    try {
-      await webpush.sendNotification(subscription, JSON.stringify(payload));
-      sent += 1;
-    } catch (err) {
-      if (err.statusCode === 410 || err.statusCode === 404) {
-        await pool.query(`DELETE FROM push_subscriptions WHERE id = $1`, [sub.id]);
-      } else {
-        console.error("push send failed:", err.statusCode, err.body);
+    // Transient failures (429 / 5xx / network) are retried twice with
+    // backoff; 404/410 mean the browser unsubscribed for good.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 24 * 60 * 60 });
+        sent += 1;
+        break;
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await pool.query(`DELETE FROM push_subscriptions WHERE id = $1`, [sub.id]);
+          break;
+        }
+        const transient = !err.statusCode || err.statusCode === 429 || err.statusCode >= 500;
+        if (!transient || attempt === 2) {
+          log.error("push send failed", { status: err.statusCode, attempt });
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
       }
     }
   }

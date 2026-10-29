@@ -1,5 +1,8 @@
 import { google } from "googleapis";
 import { pool } from "../db.js";
+import { encryptSecret, decryptSecret } from "./crypto.js";
+import { log } from "./log.js";
+import { zonedTimeToday } from "./time.js";
 
 const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } = process.env;
 
@@ -9,9 +12,7 @@ if (!googleConfigured) {
   // Not fatal - same shape as push.js's VAPID check below. The app
   // works without this set, Google Calendar linking is just hidden in
   // Settings. See HANDOVER.md for how to set up an OAuth client.
-  console.warn(
-    "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI not set - Google Calendar linking is disabled."
-  );
+  log.warn("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI not set - Google Calendar linking is disabled.");
 }
 
 function newOAuthClient() {
@@ -66,10 +67,11 @@ const LOGIN_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
-export function getLoginAuthUrl() {
+export function getLoginAuthUrl(state) {
   return newOAuthClient().generateAuthUrl({
     redirect_uri: GOOGLE_LOGIN_REDIRECT_URI,
     scope: LOGIN_SCOPES,
+    state,
   });
 }
 
@@ -84,7 +86,7 @@ export async function exchangeLoginCode(code) {
   const oauth2 = google.oauth2({ version: "v2", auth: client });
   const { data } = await oauth2.userinfo.get();
   if (!data.id || !data.email) throw new Error("google did not return an account id/email");
-  return { googleSub: data.id, email: data.email, name: data.name || null };
+  return { googleSub: data.id, email: data.email, emailVerified: data.verified_email === true, name: data.name || null };
 }
 
 // Loads stored tokens and returns an authenticated client. googleapis'
@@ -100,8 +102,8 @@ export async function getAuthedClient(userId) {
 
   const client = newOAuthClient();
   client.setCredentials({
-    access_token: account.access_token,
-    refresh_token: account.refresh_token,
+    access_token: decryptSecret(account.access_token),
+    refresh_token: decryptSecret(account.refresh_token),
     expiry_date: account.token_expiry ? new Date(account.token_expiry).getTime() : undefined,
   });
   client.on("tokens", (tokens) => {
@@ -112,9 +114,9 @@ export async function getAuthedClient(userId) {
     pool
       .query(
         `UPDATE google_account SET access_token = $1, token_expiry = $2, updated_at = now() WHERE user_id = $3`,
-        [tokens.access_token, tokens.expiry_date ? new Date(tokens.expiry_date) : null, userId]
+        [encryptSecret(tokens.access_token), tokens.expiry_date ? new Date(tokens.expiry_date) : null, userId]
       )
-      .catch((err) => console.error("failed to persist refreshed google token:", err));
+      .catch((err) => log.error("failed to persist refreshed google token", { err }));
   });
   return client;
 }
@@ -139,12 +141,20 @@ export function getCalendarClient(authClient) {
 export async function fetchTodaysBusyBlocks(userId, authClient, dayEndHour = 21) {
   const calendar = getCalendarClient(authClient);
   const now = new Date();
-  const dayEnd = new Date(now);
-  dayEnd.setHours(dayEndHour, 0, 0, 0);
+  // "Today until 9pm" in the *user's* timezone. This used to call
+  // setHours() on the server clock, i.e. 9pm UTC on Render - an hour off
+  // in Lagos, many hours off elsewhere.
+  const { rows: settingsRows } = await pool.query(
+    `SELECT s.timezone, s.timezone_offset_minutes, g.calendar_id FROM settings s
+     LEFT JOIN google_account g ON g.user_id = s.user_id WHERE s.user_id = $1`,
+    [userId]
+  );
+  const prefs = settingsRows[0] || {};
+  const dayEnd = zonedTimeToday(now, dayEndHour, prefs.timezone, prefs.timezone_offset_minutes || 0);
   if (dayEnd <= now) return []; // already past the configured end of day - no remaining window to check
 
   const { data } = await calendar.events.list({
-    calendarId: "primary",
+    calendarId: prefs.calendar_id || "primary",
     timeMin: now.toISOString(),
     timeMax: dayEnd.toISOString(),
     singleEvents: true,
@@ -255,7 +265,7 @@ export async function pushItemToGoogle(userId, itemType, item) {
       [itemType, item.id, response.data.id, response.data.updated ? new Date(response.data.updated) : null]
     );
   } catch (err) {
-    console.error(`failed to push ${itemType} ${item.id} to google calendar:`, err.message);
+    log.error("failed to push item to google calendar", { itemType, itemId: item.id, message: err.message });
   }
 }
 
@@ -284,6 +294,6 @@ export async function deleteItemFromGoogle(userId, itemType, itemId) {
     }
     await pool.query(`DELETE FROM google_event_links WHERE item_type = $1 AND item_id = $2`, [itemType, itemId]);
   } catch (err) {
-    console.error(`failed to delete ${itemType} ${itemId} from google calendar:`, err.message);
+    log.error("failed to delete item from google calendar", { itemType, itemId, message: err.message });
   }
 }

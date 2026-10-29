@@ -1,9 +1,19 @@
 import { useEffect, useState } from "react";
 import FocusMark from "./FocusMark.jsx";
-import { getAuthConfig, register, login, googleLoginStartUrl } from "../api.js";
+import { getAuthConfig, register, login, verifyMfa, requestPasswordReset, confirmPasswordReset, googleLoginStartUrl } from "../api.js";
 
-export default function AuthGate({ onAuthenticated }) {
-  const [mode, setMode] = useState("login"); // "login" | "register"
+const MESSAGES = {
+  error: "Couldn't sign in with Google. Please try again.",
+  unverified: "Google hasn't verified that email address, so it can't be linked to an existing account. Sign in with your password instead.",
+};
+
+export default function AuthGate({ onAuthenticated, initialMode = "login" }) {
+  // "login" | "register" | "mfa" | "forgot" | "reset"
+  const [mode, setMode] = useState(initialMode);
+  const [code, setCode] = useState("");
+  const [notice, setNotice] = useState(null);
+  const [resetToken, setResetToken] = useState(null);
+  const [passwordResetEnabled, setPasswordResetEnabled] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -21,7 +31,10 @@ export default function AuthGate({ onAuthenticated }) {
 
   useEffect(() => {
     getAuthConfig()
-      .then((c) => setGoogleLoginEnabled(c.googleLoginEnabled))
+      .then((c) => {
+        setGoogleLoginEnabled(c.googleLoginEnabled);
+        setPasswordResetEnabled(c.passwordResetEnabled !== false);
+      })
       .catch(() => setGoogleLoginEnabled(false));
 
     // A failed Google sign-in redirects here with ?authResult=error
@@ -31,27 +44,78 @@ export default function AuthGate({ onAuthenticated }) {
     // sign-in previously gave no feedback at all - just silently dumped
     // back on this same screen with nothing explaining why.
     const params = new URLSearchParams(window.location.search);
-    if (params.get("authResult") === "error") {
-      setError("Couldn't sign in with Google. Please try again.");
+    const authResult = params.get("authResult");
+    const token = params.get("resetToken");
+    if (authResult === "mfa") setMode("mfa");
+    else if (MESSAGES[authResult]) setError(MESSAGES[authResult]);
+    if (token) {
+      setResetToken(token);
+      setMode("reset");
+    }
+    if (authResult || token) {
+      // The reset token is removed from the address bar (and history)
+      // right away so it isn't left in the URL or shared by accident.
       params.delete("authResult");
+      params.delete("resetToken");
       const cleaned = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
       window.history.replaceState({}, "", cleaned);
     }
   }, []);
 
+  function switchMode(next) {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+    setCode("");
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      const user = mode === "login" ? await login(email, password) : await register(email, password, displayName);
-      onAuthenticated(user);
+      if (mode === "login") {
+        const result = await login(email, password);
+        if (result.mfaRequired) {
+          setPassword("");
+          switchMode("mfa");
+        } else onAuthenticated(result);
+      } else if (mode === "register") {
+        onAuthenticated(await register(email, password, displayName));
+      } else if (mode === "mfa") {
+        const user = await verifyMfa(code.trim());
+        if (typeof user.recoveryCodesRemaining === "number" && user.recoveryCodesRemaining <= 2) {
+          window.alert(
+            `You have ${user.recoveryCodesRemaining} recovery code${user.recoveryCodesRemaining === 1 ? "" : "s"} left. Make new ones in Settings → Account & security.`
+          );
+        }
+        onAuthenticated(user);
+      } else if (mode === "forgot") {
+        const r = await requestPasswordReset(email);
+        setNotice(r.message);
+      } else if (mode === "reset") {
+        await confirmPasswordReset(resetToken, password);
+        setPassword("");
+        setResetToken(null);
+        switchMode("login");
+        setNotice("Password changed. Sign in with your new password - you've been signed out everywhere else.");
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
   }
+
+  const showTabs = mode === "login" || mode === "register";
+  const submitLabel = {
+    login: "Sign in",
+    register: "Create account",
+    mfa: "Verify",
+    forgot: "Email me a reset link",
+    reset: "Set new password",
+  }[mode];
 
   return (
     <div className="fd-auth-screen">
@@ -61,6 +125,7 @@ export default function AuthGate({ onAuthenticated }) {
           <span>FocusDial</span>
         </div>
 
+        {showTabs && (
         <div className="fd-auth-tabs">
           <button
             type="button"
@@ -77,43 +142,82 @@ export default function AuthGate({ onAuthenticated }) {
             Create account
           </button>
         </div>
+        )}
+        {mode === "mfa" && <h2 className="fd-auth-heading">Two-step verification</h2>}
+        {mode === "forgot" && <h2 className="fd-auth-heading">Reset your password</h2>}
+        {mode === "reset" && <h2 className="fd-auth-heading">Choose a new password</h2>}
 
-        <form className="fd-auth-form" onSubmit={handleSubmit}>
+        <form className="fd-auth-form" onSubmit={handleSubmit} noValidate={false}>
           {mode === "register" && (
             <label>
               Name (optional)
-              <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+              <input type="text" value={displayName} maxLength={80} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" />
             </label>
           )}
-          <label>
-            Email
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              minLength={mode === "register" ? 8 : undefined}
-              required
-            />
-          </label>
-          {mode === "register" && <div className="fd-auth-hint">At least 8 characters.</div>}
-          {error && <div className="fd-inline-error">{error}</div>}
+          {(mode === "login" || mode === "register" || mode === "forgot") && (
+            <label>
+              Email
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" maxLength={254} required />
+            </label>
+          )}
+          {(mode === "login" || mode === "register" || mode === "reset") && (
+            <label>
+              {mode === "reset" ? "New password" : "Password"}
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                minLength={mode === "login" ? undefined : 8}
+                required
+              />
+            </label>
+          )}
+          {(mode === "register" || mode === "reset") && <div className="fd-auth-hint">At least 8 characters.</div>}
+          {mode === "mfa" && (
+            <label>
+              Code from your authenticator app, or a recovery code
+              <input
+                type="text"
+                inputMode="text"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                maxLength={20}
+                required
+                autoFocus
+              />
+            </label>
+          )}
+          {notice && (
+            <div className="fd-auth-hint" role="status">
+              {notice}
+            </div>
+          )}
+          {error && (
+            <div className="fd-inline-error" role="alert">
+              {error}
+            </div>
+          )}
           <button type="submit" className="fd-btn fd-btn--start" disabled={busy}>
-            {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+            {busy ? "Please wait…" : submitLabel}
           </button>
+          {mode === "login" && passwordResetEnabled && (
+            <button type="button" className="fd-auth-link" onClick={() => switchMode("forgot")}>
+              Forgot password?
+            </button>
+          )}
+          {(mode === "forgot" || mode === "mfa" || mode === "reset") && (
+            <button type="button" className="fd-auth-link" onClick={() => switchMode("login")}>
+              Back to sign in
+            </button>
+          )}
+          {mode === "mfa" && (
+            <div className="fd-auth-hint">Lost your phone? Enter one of the recovery codes you saved when you turned this on.</div>
+          )}
         </form>
 
-        {googleLoginEnabled && (
+        {googleLoginEnabled && showTabs && (
           <>
             <div className="fd-auth-divider">or</div>
             <a

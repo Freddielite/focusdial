@@ -1,8 +1,9 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 import { nextDueDate, spawnNextOccurrence } from "./deadlines.js";
+import { pushItemToGoogle } from "../lib/google.js";
 
-export const tasksRouter = Router();
+export const tasksRouter = asyncRouter();
 
 // Marking a recurring plain task done spawns the next occurrence as a
 // fresh row, same "new row, not the same row advanced in place" shape
@@ -20,9 +21,9 @@ export const tasksRouter = Router();
 // now() on the fresh row, which is exactly right - a brand new
 // occurrence hasn't been sitting untouched, its staleness clock should
 // start over.
-async function spawnNextTaskOccurrence(userId, completed) {
+async function spawnNextTaskOccurrence(userId, completed, db = pool) {
   const nextDue = nextDueDate(completed.due_date, completed.recurrence);
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     `INSERT INTO tasks (title, due_date, recurrence, tag_id, estimate_minutes, user_id)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
     [completed.title, nextDue, completed.recurrence, completed.tag_id, completed.estimate_minutes, userId]
@@ -81,8 +82,8 @@ tasksRouter.get("/tasks/completed", async (req, res) => {
 });
 
 tasksRouter.post("/tasks", async (req, res) => {
-  const { title, due_date, recurrence, tag_id, estimate_minutes } = req.body;
-  if (!title || !title.trim()) {
+  const { title, due_date, recurrence, tag_id, estimate_minutes } = req.body || {};
+  if (typeof title !== "string" || !title.trim()) {
     return res.status(400).json({ error: "title is required" });
   }
   // A recurrence needs a date to advance from - without one there's
@@ -103,7 +104,7 @@ tasksRouter.post("/tasks", async (req, res) => {
        )
        SELECT inserted.*, tg.name AS tag_name, tg.color AS tag_color
        FROM inserted LEFT JOIN tags tg ON tg.id = inserted.tag_id`,
-      [title.trim(), due_date || null, recurrence || "none", tag_id || null, estimate_minutes || null, req.userId]
+      [title.trim(), due_date || null, recurrence || "none", tag_id || null, estimate_minutes ? Math.round(estimate_minutes) : null, req.userId]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -113,34 +114,44 @@ tasksRouter.post("/tasks", async (req, res) => {
 });
 
 tasksRouter.patch("/tasks/:id", async (req, res) => {
-  const { title, due_date, status, recurrence, tag_id, estimate_minutes } = req.body;
+  const body = req.body || {};
+  const { title, due_date, status, recurrence, tag_id, estimate_minutes } = body;
+  if (title !== undefined && (typeof title !== "string" || !title.trim())) {
+    return res.status(400).json({ error: "title can't be empty" });
+  }
   if (recurrence && recurrence !== "none" && due_date === null) {
     return res.status(400).json({ error: "a due date is required to repeat a task" });
   }
-  if (estimate_minutes != null && (typeof estimate_minutes !== "number" || estimate_minutes <= 0)) {
-    return res.status(400).json({ error: "estimate_minutes must be a positive number" });
-  }
-  // tag_id/estimate_minutes/due_date/recurrence all need the same "was
-  // this key sent at all" distinction sessions.js's PATCH already uses
-  // for task_id - COALESCE against undefined would silently ignore a
-  // deliberate "clear this field" (e.g. due_date: null, to remove a due
-  // date from the edit form) the same way it'd ignore a field that was
-  // never sent, so all four go through explicit CASE WHEN <field
-  // present> instead. due_date and recurrence are grouped together here
-  // (same hasDueDateField flag) since clearing a due date from the edit
-  // form should also clear any recurrence riding on it - a recurrence
-  // can't mean anything without a due date to advance from (see the
-  // validation above and in POST /tasks).
-  const hasTagField = Object.prototype.hasOwnProperty.call(req.body, "tag_id");
-  const hasEstimateField = Object.prototype.hasOwnProperty.call(req.body, "estimate_minutes");
-  const hasDueDateField = Object.prototype.hasOwnProperty.call(req.body, "due_date");
+  // tag_id/estimate_minutes/due_date need "was this key sent at all"
+  // handling so an explicit null clears the field; clearing due_date also
+  // clears recurrence (a recurrence needs a date to advance from).
+  const hasTagField = Object.prototype.hasOwnProperty.call(body, "tag_id");
+  const hasEstimateField = Object.prototype.hasOwnProperty.call(body, "estimate_minutes");
+  const hasDueDateField = Object.prototype.hasOwnProperty.call(body, "due_date");
+
+  const client = await pool.connect();
+  let task;
+  let spawnedDeadline = null;
   try {
-    const { rows } = await pool.query(
+    await client.query("BEGIN");
+    // Lock and read the prior status, so recurrence spawning (for this task
+    // and for a linked deadline) happens only on the open -> done
+    // transition - a repeated "mark done" no longer spawns duplicates.
+    const { rows: beforeRows } = await client.query(`SELECT status FROM tasks WHERE id = $1 AND user_id = $2 FOR UPDATE`, [
+      req.params.id,
+      req.userId,
+    ]);
+    if (beforeRows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "task not found" });
+    }
+    const wasDone = beforeRows[0].status === "done";
+    const { rows } = await client.query(
       `UPDATE tasks SET
          title = COALESCE($3, title),
          due_date = CASE WHEN $11 THEN $4 ELSE due_date END,
          status = COALESCE($5, status),
-         recurrence = CASE WHEN $11 THEN COALESCE($6, 'none') ELSE COALESCE($6, recurrence) END,
+         recurrence = CASE WHEN $11 AND $4::date IS NULL THEN 'none' ELSE COALESCE($6, recurrence) END,
          tag_id = CASE WHEN $7 THEN $8 ELSE tag_id END,
          estimate_minutes = CASE WHEN $9 THEN $10 ELSE estimate_minutes END,
          last_touched_at = now(),
@@ -149,69 +160,49 @@ tasksRouter.patch("/tasks/:id", async (req, res) => {
       [
         req.params.id,
         req.userId,
-        title,
-        due_date,
-        status,
-        recurrence,
+        title === undefined ? null : title.trim(),
+        due_date || null,
+        status || null,
+        recurrence || null,
         hasTagField,
         tag_id || null,
         hasEstimateField,
-        estimate_minutes || null,
+        estimate_minutes ? Math.round(estimate_minutes) : null,
         hasDueDateField,
       ]
     );
-    if (rows.length === 0) return res.status(404).json({ error: "task not found" });
-    // Mirror completion back onto the deadline this task was created
-    // from (see POST /deadlines' add_as_task), same reasoning as the
-    // deadline -> task direction in routes/deadlines.js.
-    if (rows[0].deadline_id && (status === "done" || status === "open")) {
-      // Fetched before the mirror UPDATE below so the transition can be
-      // detected (was it already done?) rather than just the end state -
-      // guarding on the transition, not just "status is done", is what
-      // stops a deadline that's already done from spawning a duplicate
-      // occurrence every time this task gets touched again (e.g. a
-      // second, redundant "mark done" click). Same guard shape as
-      // deadlines.js's own PATCH handler uses for the same reason.
-      const { rows: beforeRows } = await pool.query(
-        `SELECT * FROM deadlines WHERE id = $1 AND user_id = $2`,
-        [rows[0].deadline_id, req.userId]
-      );
-      const deadlineBefore = beforeRows[0];
-      await pool.query(
-        `UPDATE deadlines SET status = $3, updated_at = now() WHERE id = $1 AND user_id = $2`,
-        [rows[0].deadline_id, req.userId, status === "done" ? "done" : "active"]
-      );
-      // Completing a recurring deadline from its linked task (checking
-      // the box here in the Tasks widget) used to skip this entirely -
-      // only completing it from the Deadlines tab itself actually spawned
-      // the next occurrence, since that spawn call lived solely in
-      // routes/deadlines.js's own PATCH handler, which this mirror never
-      // went through. Fixed here rather than left as a gap while adding
-      // task-level recurrence right next to it in the same file.
-      if (
-        status === "done" &&
-        deadlineBefore &&
-        deadlineBefore.status !== "done" &&
-        deadlineBefore.recurrence !== "none"
-      ) {
-        await spawnNextOccurrence(req.userId, deadlineBefore);
+    task = rows[0];
+    const becameDone = status === "done" && !wasDone;
+    const reopened = status === "open" && wasDone;
+
+    if (task.deadline_id && (becameDone || reopened)) {
+      const { rows: dRows } = await client.query(`SELECT * FROM deadlines WHERE id = $1 AND user_id = $2 FOR UPDATE`, [
+        task.deadline_id,
+        req.userId,
+      ]);
+      const deadlineBefore = dRows[0];
+      await client.query(`UPDATE deadlines SET status = $3, updated_at = now() WHERE id = $1 AND user_id = $2`, [
+        task.deadline_id,
+        req.userId,
+        becameDone ? "done" : "active",
+      ]);
+      if (becameDone && deadlineBefore && deadlineBefore.status !== "done" && deadlineBefore.recurrence !== "none") {
+        spawnedDeadline = await spawnNextOccurrence(req.userId, deadlineBefore, client);
       }
     }
-    // Own recurrence only applies to plain tasks (no deadline_id) - a
-    // deadline-linked task's due date/recurrence is meaningless on its
-    // own, it just mirrors whatever the deadline itself is doing.
-    if (status === "done" && !rows[0].deadline_id && rows[0].recurrence !== "none" && rows[0].due_date) {
-      await spawnNextTaskOccurrence(req.userId, rows[0]);
+    if (becameDone && !task.deadline_id && task.recurrence !== "none" && task.due_date) {
+      await spawnNextTaskOccurrence(req.userId, task, client);
     }
-    const { rows: joined } = await pool.query(`${TASK_SELECT} WHERE t.id = $1 AND t.user_id = $2`, [
-      rows[0].id,
-      req.userId,
-    ]);
-    res.json(joined[0] || rows[0]);
+    await client.query("COMMIT");
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "failed to update task" });
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
+  if (spawnedDeadline) await pushItemToGoogle(req.userId, "deadline", spawnedDeadline);
+  const { rows: joined } = await pool.query(`${TASK_SELECT} WHERE t.id = $1 AND t.user_id = $2`, [task.id, req.userId]);
+  res.json(joined[0] || task);
 });
 
 // Feature 3's "bump"/defer action: resets the staleness clock without

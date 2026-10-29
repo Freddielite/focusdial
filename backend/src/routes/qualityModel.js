@@ -1,7 +1,7 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 
-export const qualityModelRouter = Router();
+export const qualityModelRouter = asyncRouter();
 
 // Read-only by design - the model is only ever written by
 // routes/cron.js's weekly retrain (see checkQualityModelTraining).

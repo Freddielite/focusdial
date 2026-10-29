@@ -1,8 +1,8 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 import { pushItemToGoogle, deleteItemFromGoogle } from "../lib/google.js";
 
-export const remindersRouter = Router();
+export const remindersRouter = asyncRouter();
 
 remindersRouter.get("/reminders", async (req, res) => {
   try {
@@ -18,8 +18,8 @@ remindersRouter.get("/reminders", async (req, res) => {
 });
 
 remindersRouter.post("/reminders", async (req, res) => {
-  const { title, note, remind_at, recurrence, auto_source_type, auto_source_id } = req.body;
-  if (!title || !title.trim() || !remind_at) {
+  const { title, note, remind_at, recurrence, auto_source_type, auto_source_id } = req.body || {};
+  if (typeof title !== "string" || !title.trim() || !remind_at) {
     return res.status(400).json({ error: "title and remind_at are required" });
   }
   // Both or neither -- see the auto_source_type column's CHECK
@@ -50,8 +50,11 @@ remindersRouter.post("/reminders", async (req, res) => {
 // here since remind_at already carries both date and time in one
 // timestamp column.
 remindersRouter.patch("/reminders/:id", async (req, res) => {
-  const { title, note, remind_at, recurrence } = req.body;
-  const hasNoteField = Object.prototype.hasOwnProperty.call(req.body, "note");
+  const { title, note, remind_at, recurrence } = req.body || {};
+  const hasNoteField = Object.prototype.hasOwnProperty.call(req.body || {}, "note");
+  if (title !== undefined && (typeof title !== "string" || !title.trim())) {
+    return res.status(400).json({ error: "title can't be empty" });
+  }
   try {
     const { rows } = await pool.query(
       `UPDATE reminders SET
@@ -61,7 +64,7 @@ remindersRouter.patch("/reminders/:id", async (req, res) => {
          recurrence = COALESCE($7, recurrence),
          updated_at = now()
        WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [req.params.id, req.userId, title, hasNoteField, hasNoteField ? note : null, remind_at, recurrence]
+      [req.params.id, req.userId, title === undefined ? null : title.trim(), hasNoteField, hasNoteField ? note || null : null, remind_at || null, recurrence || null]
     );
     if (rows.length === 0) return res.status(404).json({ error: "reminder not found" });
     if (rows[0].status === "pending") {
@@ -79,20 +82,27 @@ remindersRouter.patch("/reminders/:id", async (req, res) => {
 // from the person converting it, since a reminder has no sense of how
 // long the resulting work will take.
 remindersRouter.post("/reminders/:id/convert-to-deadline", async (req, res) => {
-  const { due_date, estimated_hours, tag_id } = req.body;
-  if (!due_date || !estimated_hours) {
-    return res.status(400).json({ error: "due_date and estimated_hours are required" });
+  const { due_date, estimated_hours, tag_id } = req.body || {};
+  if (!due_date) return res.status(400).json({ error: "due_date is required" });
+  if (typeof estimated_hours !== "number" || !(estimated_hours > 0)) {
+    return res.status(400).json({ error: "estimated_hours must be a positive number" });
   }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // FOR UPDATE + the status check: converting is a one-time action. A
+    // double click used to create two deadlines/tasks from one reminder.
     const { rows: reminderRows } = await client.query(
-      `SELECT * FROM reminders WHERE id = $1 AND user_id = $2`,
+      `SELECT * FROM reminders WHERE id = $1 AND user_id = $2 FOR UPDATE`,
       [req.params.id, req.userId]
     );
     if (reminderRows.length === 0) {
       await client.query("ROLLBACK");
       return res.status(404).json({ error: "reminder not found" });
+    }
+    if (reminderRows[0].status !== "pending") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: `this reminder was already ${reminderRows[0].status}` });
     }
     const reminder = reminderRows[0];
     const { rows: deadlineRows } = await client.query(
@@ -118,17 +128,23 @@ remindersRouter.post("/reminders/:id/convert-to-deadline", async (req, res) => {
 });
 
 remindersRouter.post("/reminders/:id/convert-to-task", async (req, res) => {
-  const { due_date } = req.body;
+  const { due_date } = req.body || {};
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // FOR UPDATE + the status check: converting is a one-time action. A
+    // double click used to create two deadlines/tasks from one reminder.
     const { rows: reminderRows } = await client.query(
-      `SELECT * FROM reminders WHERE id = $1 AND user_id = $2`,
+      `SELECT * FROM reminders WHERE id = $1 AND user_id = $2 FOR UPDATE`,
       [req.params.id, req.userId]
     );
     if (reminderRows.length === 0) {
       await client.query("ROLLBACK");
       return res.status(404).json({ error: "reminder not found" });
+    }
+    if (reminderRows[0].status !== "pending") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: `this reminder was already ${reminderRows[0].status}` });
     }
     const reminder = reminderRows[0];
     const { rows: taskRows } = await client.query(

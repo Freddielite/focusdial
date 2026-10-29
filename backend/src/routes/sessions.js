@@ -1,7 +1,7 @@
-import { Router } from "express";
 import { pool } from "../db.js";
+import { asyncRouter } from "../lib/asyncRouter.js";
 
-export const sessionsRouter = Router();
+export const sessionsRouter = asyncRouter();
 
 // Persisting the running session to the database (rather than only
 // holding it in frontend memory/localStorage) means a page refresh or
@@ -34,7 +34,7 @@ async function fetchRunningSessionRow(userId) {
 }
 
 sessionsRouter.post("/sessions/start", async (req, res) => {
-  const { tag_id, note, task_id, device_name } = req.body;
+  const { tag_id, note, task_id, device_name } = req.body || {};
   try {
     const { rows: existing } = await pool.query(
       `SELECT id FROM sessions WHERE user_id = $1 AND ended_at IS NULL LIMIT 1`,
@@ -106,6 +106,8 @@ sessionsRouter.post("/sessions/start", async (req, res) => {
 });
 
 const QUALITY_VALUES = ["focused", "neutral", "distracted"];
+// ~10 years of heavy daily use; payload stays a few MB.
+const HISTORY_LIMIT = 20000;
 
 // A minute of slack for ordinary client/server clock drift -- generous
 // enough to absorb that, not so generous it defeats the point of the
@@ -149,7 +151,7 @@ sessionsRouter.post("/sessions/:id/stop", async (req, res) => {
 // already known, as opposed to the start/stop pair above which only
 // knows the end time once you call /stop.
 sessionsRouter.post("/sessions", async (req, res) => {
-  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
+  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body || {};
   if (!started_at || !ended_at) {
     return res.status(400).json({ error: "started_at and ended_at are required" });
   }
@@ -213,10 +215,19 @@ sessionsRouter.get("/sessions/history", async (req, res) => {
               t.name AS tag_name, t.color AS tag_color, tk.title AS task_title
        FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id LEFT JOIN tasks tk ON tk.id = s.task_id
        WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
-       ORDER BY s.started_at ASC
-       LIMIT 5000`,
-      [req.userId]
+       ORDER BY s.started_at DESC
+       LIMIT $2`,
+      [req.userId, HISTORY_LIMIT + 1]
     );
+    // Capped, but on the *newest* sessions. This used to be
+    // ORDER BY started_at ASC LIMIT 5000 - past 5,000 sessions it
+    // returned the oldest ones and silently dropped today's, so the
+    // streak, today/this-week totals and every insight went wrong.
+    // Callers still get the list oldest-first, as before.
+    const truncated = rows.length > HISTORY_LIMIT;
+    if (truncated) rows.pop();
+    rows.reverse();
+    res.set("X-History-Truncated", truncated ? "true" : "false");
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -231,71 +242,78 @@ sessionsRouter.get("/sessions/history", async (req, res) => {
 function csvCell(value) {
   if (value === null || value === undefined) return "";
   let str = String(value);
-  if (/^[=+\-@]/.test(str)) str = `'${str}`;
-  if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+  if (/^[=+\-@\t\r]/.test(str) && !/^-?\d+(\.\d+)?$/.test(str)) str = `'${str}`;
+  if (/[",\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
   return str;
 }
 
-// Streams the full completed-session history for the Settings → Export
-// control. Deliberately a separate endpoint from /sessions/history (which
-// feeds the frontend's own analytics) since the two have different
-// shapes and different consumers - one's JS-internal, this one produces
-// a file meant to leave the app. Session-cookie protected like any other
-// route here (unlike the ICS calendar export) since this is only ever
-// opened by the same logged-in browser clicking a Settings button, never
-// polled by an external service.
-sessionsRouter.get("/sessions/export", async (req, res) => {
-  const format = req.query.format === "json" ? "json" : "csv";
-  try {
+// Settings -> Export. Streamed in keyset-paginated batches rather than
+// built in memory: the old version held every row and the whole CSV
+// string at once (2M rows -> a 379 MB response and ~1 GB of RAM, past a
+// 512 MB instance's limit). Timestamps are ISO 8601 UTC so spreadsheets
+// parse them; they used to be JS Date.toString() output like
+// "Wed Oct 28 2026 09:00:00 GMT+0000 (Coordinated Universal Time)".
+const EXPORT_BATCH = 2000;
+
+async function* exportRows(userId) {
+  let cursor = null;
+  for (;;) {
     const { rows } = await pool.query(
-      `SELECT s.id, s.started_at, s.ended_at, s.note, s.source, s.quality,
-              t.name AS tag_name
+      `SELECT s.id, s.started_at, s.ended_at, s.note, s.source, s.quality, t.name AS tag_name
        FROM sessions s LEFT JOIN tags t ON t.id = s.tag_id
        WHERE s.user_id = $1 AND s.ended_at IS NOT NULL
-       ORDER BY s.started_at ASC`,
-      [req.userId]
+         AND ($2::timestamptz IS NULL OR (s.started_at, s.id) > ($2::timestamptz, $3::uuid))
+       ORDER BY s.started_at ASC, s.id ASC
+       LIMIT $4`,
+      [userId, cursor?.started_at || null, cursor?.id || null, EXPORT_BATCH]
     );
+    if (!rows.length) return;
+    yield rows;
+    cursor = rows[rows.length - 1];
+  }
+}
 
-    if (format === "json") {
-      res.setHeader("Content-Type", "application/json");
-      res.setHeader("Content-Disposition", 'attachment; filename="sessions.json"');
-      return res.send(
-        JSON.stringify(
-          rows.map((r) => ({
-            id: r.id,
-            tag: r.tag_name || null,
-            started_at: r.started_at,
-            ended_at: r.ended_at,
-            duration_seconds: Math.round(
-              (new Date(r.ended_at).getTime() - new Date(r.started_at).getTime()) / 1000
-            ),
-            note: r.note || null,
-            quality: r.quality || null,
-            source: r.source,
-          })),
-          null,
-          2
-        )
-      );
-    }
+function exportRecord(r) {
+  return {
+    id: r.id,
+    tag: r.tag_name || null,
+    started_at: new Date(r.started_at).toISOString(),
+    ended_at: new Date(r.ended_at).toISOString(),
+    duration_seconds: Math.round((new Date(r.ended_at).getTime() - new Date(r.started_at).getTime()) / 1000),
+    note: r.note || null,
+    quality: r.quality || null,
+    source: r.source,
+  };
+}
 
-    const lines = ["id,tag,started_at,ended_at,duration_seconds,note,quality,source"];
-    for (const r of rows) {
-      const durationSeconds = Math.round(
-        (new Date(r.ended_at).getTime() - new Date(r.started_at).getTime()) / 1000
-      );
-      lines.push(
-        [r.id, r.tag_name || "", r.started_at, r.ended_at, durationSeconds, r.note || "", r.quality || "", r.source]
-          .map(csvCell)
-          .join(",")
-      );
+sessionsRouter.get("/sessions/export", async (req, res) => {
+  const format = req.query.format === "json" ? "json" : "csv";
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", format === "json" ? "application/json; charset=utf-8" : "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="focusdial-sessions-${stamp}.${format}"`);
+
+  let first = true;
+  if (format === "csv") res.write("\ufeffid,tag,started_at,ended_at,duration_seconds,note,quality,source\n"); // BOM: Excel reads UTF-8 (emoji, accents) correctly
+  else res.write("[\n");
+  try {
+    for await (const batch of exportRows(req.userId)) {
+      let chunk = "";
+      for (const r of batch) {
+        const rec = exportRecord(r);
+        if (format === "csv") {
+          chunk += [rec.id, rec.tag, rec.started_at, rec.ended_at, String(rec.duration_seconds), rec.note, rec.quality, rec.source].map(csvCell).join(",") + "\n";
+        } else {
+          chunk += (first ? "" : ",\n") + JSON.stringify(rec);
+          first = false;
+        }
+      }
+      if (!res.write(chunk)) await new Promise((resolve) => res.once("drain", resolve));
     }
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", 'attachment; filename="sessions.csv"');
-    res.send(lines.join("\n"));
+    res.end(format === "json" ? "\n]\n" : "");
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "failed to export sessions" });
+    // Headers are already sent; the best that can be done is to cut the
+    // stream so the download visibly fails rather than looking complete.
+    res.destroy(err);
   }
 });
 
@@ -448,7 +466,7 @@ sessionsRouter.get("/sessions", async (req, res) => {
 });
 
 sessionsRouter.patch("/sessions/:id", async (req, res) => {
-  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body;
+  const { tag_id, started_at, ended_at, note, quality, task_id } = req.body || {};
   // COALESCE-against-null looks right for started_at/ended_at (you'd
   // never intentionally PATCH a timestamp to null), but tag_id and note
   // are legitimately clearable - "remove the tag", "clear the note" - // and COALESCE can't tell "field omitted" from "field explicitly set
@@ -464,11 +482,21 @@ sessionsRouter.patch("/sessions/:id", async (req, res) => {
   if (ended_at && isFuture(ended_at)) {
     return res.status(400).json({ error: "ended_at cannot be in the future" });
   }
-  if (started_at && ended_at && new Date(ended_at) <= new Date(started_at)) {
-    return res.status(400).json({ error: "ended_at must be after started_at" });
-  }
   if (hasQualityField && quality && !QUALITY_VALUES.includes(quality)) {
     return res.status(400).json({ error: "quality must be focused, neutral, distracted, or null" });
+  }
+  // Check the *resulting* pair, not just the fields that were sent:
+  // sending only ended_at (or only started_at) used to skip the check
+  // entirely and could store a session that ends before it starts.
+  const { rows: existing } = await pool.query(`SELECT started_at, ended_at FROM sessions WHERE id = $1 AND user_id = $2`, [
+    req.params.id,
+    req.userId,
+  ]);
+  if (existing.length === 0) return res.status(404).json({ error: "session not found" });
+  const nextStart = new Date(started_at || existing[0].started_at);
+  const nextEnd = ended_at ? new Date(ended_at) : existing[0].ended_at ? new Date(existing[0].ended_at) : null;
+  if (nextEnd && nextEnd <= nextStart) {
+    return res.status(400).json({ error: "ended_at must be after started_at" });
   }
   try {
     const { rows } = await pool.query(

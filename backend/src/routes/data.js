@@ -1,7 +1,7 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 
-export const dataRouter = Router();
+export const dataRouter = asyncRouter();
 
 // Per-category wipe for the Settings → Reset data control. The user
 // picks exactly which categories to clear, so this takes an explicit
@@ -34,10 +34,19 @@ const CATEGORY_SQL = {
       automation_runaway_timer = true,
       automation_weekly_digest = true,
       automation_google_sync = true,
+      automation_category_nudge = true,
+      automation_risk_reminders = true,
       notify_session_completed = true,
       notify_deadline_completed = true,
       notify_budget_reached = true,
+      streak_recovery_grace_enabled = false,
+      rest_day_of_week = NULL,
+      daily_focus_goal_seconds = NULL,
+      weekly_digest_day_of_week = 0,
+      weekly_digest_hour = 19,
+      due_toast_interval_minutes = 60,
       last_streak_nudge_date = NULL,
+      last_weekly_digest_week = NULL,
       updated_at = now()
     WHERE user_id = $1`,
 };
@@ -48,7 +57,7 @@ dataRouter.post("/data/reset", async (req, res) => {
     return res.status(400).json({ error: "categories must be a non-empty array" });
   }
 
-  const invalid = categories.filter((c) => !CATEGORY_SQL[c]);
+  const invalid = categories.filter((c) => typeof c !== "string" || !Object.prototype.hasOwnProperty.call(CATEGORY_SQL, c));
   if (invalid.length > 0) {
     return res.status(400).json({ error: `unknown categories: ${invalid.join(", ")}` });
   }

@@ -51,8 +51,19 @@ function isIdempotentMethod(options) {
 // out surfaces the error normally rather than risk a duplicate write.
 function isRetryable(err, options) {
   if (err instanceof TypeError) return true;
-  if (err.name === "AbortError") return isIdempotentMethod(options);
+  // A timed-out POST is safe to retry now that it carries an
+  // Idempotency-Key - the server replays instead of writing twice.
+  if (err.name === "AbortError") return isIdempotentMethod(options) || Boolean(options.headers?.["Idempotency-Key"]);
   return false;
+}
+
+// Something a person can act on, for the rare response with no message.
+function friendlyStatusMessage(status) {
+  if (status === 429) return "Too many attempts. Wait a few minutes and try again.";
+  if (status === 413) return "That's too large to save.";
+  if (status >= 500) return "The server had a problem. Your change may not have saved - please try again.";
+  if (status === 404) return "That item no longer exists. Refresh to see the latest.";
+  return `Request failed (${status}). Please try again.`;
 }
 
 async function attemptFetch(path, options, timeoutMs) {
@@ -71,7 +82,7 @@ async function attemptFetch(path, options, timeoutMs) {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       if (res.status === 401) unauthorizedHandler?.();
-      const err = new Error(body.error || `Request failed with status ${res.status}`);
+      const err = new Error(body.error || friendlyStatusMessage(res.status));
       // Attached so callers can branch on more than just the message
       // string -- e.g. /sessions/start's 409 conflict body carries the
       // actual running session (see TimerPanel's multi-device conflict
@@ -87,7 +98,21 @@ async function attemptFetch(path, options, timeoutMs) {
   }
 }
 
+function newIdempotencyKey() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
 async function apiFetch(path, options = {}) {
+  // Every POST carries an Idempotency-Key, generated once per user action
+  // and re-sent unchanged if this function retries. If the first attempt
+  // actually reached the server (a network error can happen *after* the
+  // request was sent), the retry gets the original response back instead
+  // of creating a second session/deadline/task. See backend
+  // lib/idempotency.js.
+  if ((options.method || "GET").toUpperCase() === "POST" && !options.headers?.["Idempotency-Key"]) {
+    options = { ...options, headers: { ...(options.headers || {}), "Idempotency-Key": newIdempotencyKey() } };
+  }
   let countedSlow = false;
   const timer = setTimeout(() => {
     countedSlow = true;
@@ -132,6 +157,30 @@ export const login = (email, password) =>
 export const logout = () => apiFetch("/auth/logout", { method: "POST" });
 export const updateProfile = (displayName) =>
   apiFetch("/auth/me", { method: "PATCH", body: JSON.stringify({ displayName }) });
+export const verifyMfa = (code) => apiFetch("/auth/mfa/verify", { method: "POST", body: JSON.stringify({ code }) });
+export const requestPasswordReset = (email) =>
+  apiFetch("/auth/password-reset/request", { method: "POST", body: JSON.stringify({ email }) });
+export const confirmPasswordReset = (token, password) =>
+  apiFetch("/auth/password-reset/confirm", { method: "POST", body: JSON.stringify({ token, password }) });
+
+// Account security (Settings -> Account & security).
+export const changePassword = (currentPassword, newPassword) =>
+  apiFetch("/account/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
+export const listAccountSessions = () => apiFetch("/account/sessions");
+export const revokeSessions = (keepCurrent, currentEndpoint) =>
+  apiFetch("/account/sessions/revoke", { method: "POST", body: JSON.stringify({ keepCurrent, currentEndpoint }) });
+export const getMfaStatus = () => apiFetch("/account/mfa");
+export const startMfaSetup = () => apiFetch("/account/mfa/setup", { method: "POST" });
+export const enableMfa = (code) => apiFetch("/account/mfa/enable", { method: "POST", body: JSON.stringify({ code }) });
+export const disableMfa = (password, code) =>
+  apiFetch("/account/mfa/disable", { method: "POST", body: JSON.stringify({ password, code }) });
+export const regenerateRecoveryCodes = (code) =>
+  apiFetch("/account/mfa/recovery-codes", { method: "POST", body: JSON.stringify({ code }) });
+export const getSecurityActivity = () => apiFetch("/account/activity");
+export const accountExportUrl = () => `${BASE_URL}/account/export`;
+export const deleteAccount = (password, confirmEmail) =>
+  apiFetch("/account/delete", { method: "POST", body: JSON.stringify({ password, confirmEmail }) });
+
 // Full-page redirect, not a fetch - same reasoning as googleAuthStartUrl
 // below.
 export const googleLoginStartUrl = () => `${BASE_URL}/auth/google/login/start`;

@@ -1,8 +1,8 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 import { sendPushToUser } from "../lib/push.js";
 
-export const notifyRouter = Router();
+export const notifyRouter = asyncRouter();
 
 // The three "app-driven" events - the ones that happen in response to
 // something the user just did in the app (finishing a session, hitting a
@@ -30,6 +30,9 @@ notifyRouter.post("/notify", async (req, res) => {
   }
   if (!title || typeof title !== "string") {
     return res.status(400).json({ error: "title is required" });
+  }
+  if (body !== undefined && body !== null && (typeof body !== "string" || body.length > 500)) {
+    return res.status(400).json({ error: "body must be text of 500 characters or fewer" });
   }
 
   try {

@@ -1,8 +1,8 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 import { pushItemToGoogle, deleteItemFromGoogle } from "../lib/google.js";
 
-export const deadlinesRouter = Router();
+export const deadlinesRouter = asyncRouter();
 
 // Same recurrence step reminders' cron-side nextOccurrence() (routes/cron.js)
 // uses, but operating on a plain DATE rather than a TIMESTAMPTZ - a
@@ -12,7 +12,7 @@ export const deadlinesRouter = Router();
 // tasks (which also only ever carry a DATE, never a time), rather than
 // duplicating the same date-stepping logic in a second file.
 export function nextDueDate(dueDate, recurrence) {
-  const d = new Date(dueDate);
+  const d = new Date(`${String(dueDate).slice(0, 10)}T00:00:00Z`);
   if (recurrence === "daily") d.setUTCDate(d.getUTCDate() + 1);
   else if (recurrence === "weekly") d.setUTCDate(d.getUTCDate() + 7);
   else if (recurrence === "monthly") d.setUTCMonth(d.getUTCMonth() + 1);
@@ -31,27 +31,29 @@ export function nextDueDate(dueDate, recurrence) {
 // task is what actually completes the deadline (see that file's PATCH
 // handler for why the mirror path needs its own call into this, not
 // just this route's).
-export async function spawnNextOccurrence(userId, completed) {
+export async function spawnNextOccurrence(userId, completed, db = pool) {
   const nextDue = nextDueDate(completed.due_date, completed.recurrence);
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     `INSERT INTO deadlines (title, tag_id, due_date, due_time, estimated_hours, recurrence, user_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
     [completed.title, completed.tag_id, nextDue, completed.due_time, completed.estimated_hours, completed.recurrence, userId]
   );
   const spawned = rows[0];
-  const { rows: linkedTasks } = await pool.query(`SELECT id FROM tasks WHERE deadline_id = $1 AND user_id = $2`, [
+  const { rows: linkedTasks } = await db.query(`SELECT id FROM tasks WHERE deadline_id = $1 AND user_id = $2`, [
     completed.id,
     userId,
   ]);
   if (linkedTasks.length > 0) {
-    await pool.query(`INSERT INTO tasks (title, due_date, deadline_id, user_id) VALUES ($1, $2, $3, $4)`, [
+    await db.query(`INSERT INTO tasks (title, due_date, deadline_id, user_id) VALUES ($1, $2, $3, $4)`, [
       completed.title,
       nextDue,
       spawned.id,
       userId,
     ]);
   }
-  await pushItemToGoogle(userId, "deadline", spawned); // no-op if Google isn't connected
+  // Google sync is done by the caller *after* its transaction commits, so
+  // a slow or failing Google API never holds a row lock or rolls back the
+  // local write.
   return spawned;
 }
 
@@ -80,57 +82,74 @@ deadlinesRouter.get("/deadlines", async (req, res) => {
 });
 
 deadlinesRouter.post("/deadlines", async (req, res) => {
-  const { title, tag_id, due_date, due_time, estimated_hours, add_as_task, recurrence } = req.body;
-  if (!title || !title.trim() || !due_date) {
+  const { title, tag_id, due_date, due_time, estimated_hours, add_as_task, recurrence } = req.body || {};
+  if (typeof title !== "string" || !title.trim() || !due_date) {
     return res.status(400).json({ error: "title and due_date are required" });
   }
-  // A falsy check alone (!estimated_hours) lets a negative number
-  // through - it's truthy, so -5 would pass straight into the column.
-  // Matches the explicit typeof+range check tasks.js already uses for
-  // estimate_minutes.
   if (typeof estimated_hours !== "number" || estimated_hours <= 0) {
     return res.status(400).json({ error: "estimated_hours must be a positive number" });
   }
+  // Deadline + its optional shadow task are one unit: both or neither.
+  const client = await pool.connect();
+  let created;
   try {
-    const { rows } = await pool.query(
+    await client.query("BEGIN");
+    const { rows } = await client.query(
       `INSERT INTO deadlines (title, tag_id, due_date, due_time, estimated_hours, recurrence, user_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [title.trim(), tag_id || null, due_date, due_time || null, estimated_hours, recurrence || "none", req.userId]
     );
+    created = rows[0];
     if (add_as_task) {
-      await pool.query(
-        `INSERT INTO tasks (title, due_date, deadline_id, user_id) VALUES ($1, $2, $3, $4)`,
-        [title.trim(), due_date, rows[0].id, req.userId]
-      );
+      await client.query(`INSERT INTO tasks (title, due_date, deadline_id, user_id) VALUES ($1, $2, $3, $4)`, [
+        title.trim(),
+        due_date,
+        created.id,
+        req.userId,
+      ]);
     }
-    await pushItemToGoogle(req.userId, "deadline", rows[0]); // no-op if Google isn't connected
-    res.status(201).json(rows[0]);
+    await client.query("COMMIT");
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "failed to create deadline" });
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
+  await pushItemToGoogle(req.userId, "deadline", created); // no-op if Google isn't connected
+  res.status(201).json(created);
 });
 
 deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
-  const { title, tag_id, due_date, due_time, estimated_hours, status, recurrence } = req.body;
-  const hasTagField = Object.prototype.hasOwnProperty.call(req.body, "tag_id");
-  // due_time needs the same "was this field even sent" treatment as
-  // tag_id (rather than plain COALESCE) so a request that wants to clear
-  // the time back to "just a date" can send due_time: null and have it
-  // stick, instead of COALESCE silently keeping the old value.
-  const hasDueTimeField = Object.prototype.hasOwnProperty.call(req.body, "due_time");
-  // Same gap as POST /deadlines above, and same "only when the field
-  // was actually sent" treatment as tag_id/due_time - omitting
-  // estimated_hours entirely is the normal "don't touch this field"
-  // PATCH shape and must stay allowed.
-  if (
-    Object.prototype.hasOwnProperty.call(req.body, "estimated_hours") &&
-    (typeof estimated_hours !== "number" || estimated_hours <= 0)
-  ) {
-    return res.status(400).json({ error: "estimated_hours must be a positive number" });
+  const { title, tag_id, due_date, due_time, estimated_hours, status, recurrence } = req.body || {};
+  const hasTagField = Object.prototype.hasOwnProperty.call(req.body || {}, "tag_id");
+  // due_time needs the "was this field sent" treatment too, so due_time:
+  // null clears it back to "just a date" instead of COALESCE keeping it.
+  const hasDueTimeField = Object.prototype.hasOwnProperty.call(req.body || {}, "due_time");
+  if (title !== undefined && (typeof title !== "string" || !title.trim())) {
+    return res.status(400).json({ error: "title can't be empty" });
   }
+
+  const client = await pool.connect();
+  let updated;
+  let spawned = null;
   try {
-    const { rows } = await pool.query(
+    await client.query("BEGIN");
+    // Lock the row and read its status *before* the update. Spawning the
+    // next occurrence of a recurring deadline must happen only on the
+    // transition into "done". The old code checked the request body
+    // instead, so a double-click or retried "mark done" spawned a
+    // duplicate next occurrence each time. FOR UPDATE also serializes two
+    // simultaneous requests, so exactly one of them sees the transition.
+    const { rows: beforeRows } = await client.query(`SELECT status FROM deadlines WHERE id = $1 AND user_id = $2 FOR UPDATE`, [
+      req.params.id,
+      req.userId,
+    ]);
+    if (beforeRows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "deadline not found" });
+    }
+    const before = beforeRows[0];
+    const { rows } = await client.query(
       `UPDATE deadlines SET
          title = COALESCE($3, title),
          tag_id = CASE WHEN $4 THEN $5 ELSE tag_id END,
@@ -144,46 +163,42 @@ deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
       [
         req.params.id,
         req.userId,
-        title,
+        title === undefined ? null : title.trim(),
         hasTagField,
-        hasTagField ? tag_id : null,
-        due_date,
+        hasTagField ? tag_id || null : null,
+        due_date || null,
         hasDueTimeField,
-        hasDueTimeField ? due_time : null,
-        estimated_hours,
-        status,
-        recurrence,
+        hasDueTimeField ? due_time || null : null,
+        estimated_hours ?? null,
+        status || null,
+        recurrence || null,
       ]
     );
-    if (rows.length === 0) return res.status(404).json({ error: "deadline not found" });
-    // Mirror completion onto a linked task (from "Add as task" at
-    // creation, see POST above) so the two never disagree about
-    // whether the work is done.
-    if (status === "done" || status === "active") {
-      await pool.query(
-        `UPDATE tasks SET status = $3, updated_at = now() WHERE deadline_id = $1 AND user_id = $2`,
-        [rows[0].id, req.userId, status === "done" ? "done" : "open"]
-      );
+    updated = rows[0];
+    // Mirror completion onto a linked task so the two never disagree.
+    if (status && status !== before.status && (status === "done" || status === "active")) {
+      await client.query(`UPDATE tasks SET status = $3, updated_at = now() WHERE deadline_id = $1 AND user_id = $2`, [
+        updated.id,
+        req.userId,
+        status === "done" ? "done" : "open",
+      ]);
     }
-    // 'active' stays mirrored; anything else (done/archived) means it's
-    // no longer relevant on the calendar, so remove the event instead of
-    // leaving a stale entry sitting there.
-    if (rows[0].status === "active") {
-      await pushItemToGoogle(req.userId, "deadline", rows[0]);
-    } else {
-      await deleteItemFromGoogle(req.userId, "deadline", rows[0].id);
+    if (status === "done" && before.status !== "done" && updated.recurrence !== "none") {
+      spawned = await spawnNextOccurrence(req.userId, updated, client);
     }
-    // Only on the transition into 'done' - not on every PATCH to an
-    // already-done recurring deadline (e.g. a later edit to its title),
-    // which would otherwise spawn a duplicate occurrence every time.
-    if (status === "done" && rows[0].recurrence !== "none") {
-      await spawnNextOccurrence(req.userId, rows[0]);
-    }
-    res.json(rows[0]);
+    await client.query("COMMIT");
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "failed to update deadline" });
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
+
+  // Google mirror after commit (best-effort; see lib/google.js).
+  if (updated.status === "active") await pushItemToGoogle(req.userId, "deadline", updated);
+  else await deleteItemFromGoogle(req.userId, "deadline", updated.id);
+  if (spawned) await pushItemToGoogle(req.userId, "deadline", spawned);
+  res.json(updated);
 });
 
 // Adds to manual_hours_logged atomically (read-modify-write in SQL rather
@@ -191,7 +206,7 @@ deadlinesRouter.patch("/deadlines/:id", async (req, res) => {
 // tag-linked ones compute progress from real session history instead
 // (see the frontend's analytics for that calculation).
 deadlinesRouter.post("/deadlines/:id/log", async (req, res) => {
-  const { hours } = req.body;
+  const { hours } = req.body || {};
   if (typeof hours !== "number" || hours <= 0) {
     return res.status(400).json({ error: "hours must be a positive number" });
   }

@@ -64,8 +64,14 @@ export async function disablePush() {
   const reg = await navigator.serviceWorker.ready;
   const existing = await reg.pushManager.getSubscription();
   if (existing) {
-    await unsubscribeFromPush(existing.endpoint);
-    await existing.unsubscribe();
+    // Browser-side unsubscribe happens even if the server call fails
+    // (e.g. the session already ended), so this device stops receiving
+    // pushes either way.
+    try {
+      await unsubscribeFromPush(existing.endpoint);
+    } finally {
+      await existing.unsubscribe();
+    }
   }
 }
 
@@ -123,5 +129,15 @@ export async function clearRunningSessionNotification() {
     existing.forEach((n) => n.close());
   } catch {
     // Same reasoning as above - never worth surfacing to the user.
+  }
+}
+
+export async function currentPushEndpoint() {
+  if (!isPushSupported()) return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return (await reg.pushManager.getSubscription())?.endpoint || null;
+  } catch {
+    return null;
   }
 }

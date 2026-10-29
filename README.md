@@ -22,6 +22,16 @@ are derived from your own history, not generated.
 - **Installable as a Chrome/desktop app** via a web app manifest and a
   minimal service worker — see "Installing it" below.
 
+## Accounts and security
+
+FocusDial has real multi-user accounts (email + password, or Sign in with
+Google), with optional two-step verification (authenticator app +
+recovery codes), password reset by email, "sign out everywhere", a
+personal security activity log, full data export and account deletion,
+all under Settings → Account & security. Every row belongs to one user and
+every query is scoped to them. See OPERATIONS.md for the full list of
+controls, and SECURITY.md to report a vulnerability.
+
 ## Time Budgets
 
 Budgets are weekly hour targets, kept as their **own list, separate from
@@ -83,9 +93,10 @@ to guess or assume UTC, which can misclassify a session that happened
 late at night in the user's actual timezone. The browser already knows
 the user's real local timezone via `Date`, so `GET /api/sessions/history`
 just returns the raw session list, and `analytics.js` does all the
-bucketing (by local day, local hour) client-side. This is the correct
-call for a single-user personal tool; it would need rethinking if this
-ever became multi-timezone/multi-user.
+bucketing (by local day, local hour) client-side. Each user's
+browser buckets their own data in their own timezone, so this holds for
+multiple users too. The server-side cron job uses each user's stored IANA
+timezone (DST-aware) for its own local-time decisions.
 
 ## Data model
 
@@ -172,24 +183,47 @@ instead of the simpler in-app-only version. Three things make this work:
    reminders/automation will never fire** — the in-app streak banner
    still works (that's pure client-side), but nothing else will.
 
-**A known limitation, not a bug:** the cron job approximates your local
-day/hour using a fixed UTC-offset number (registered automatically from
-your browser on load, via `PUT /api/settings`), not a real timezone
-database — so it doesn't adjust for daylight saving time shifts. Can be
-off by an hour part of the year in DST-observing regions. See
-HANDOVER.md if this ever needs upgrading to a real timezone library.
+The cron job uses each user's IANA timezone (registered from the browser
+on load) so local times, including recurring reminders, stay correct
+across daylight-saving changes. Send `CRON_SECRET` as the
+`x-cron-secret` header; the `?secret=` form still works but is logged as
+a warning because URLs end up in logs. Overlapping ticks are safe - a
+second tick while one is running returns 202 and does nothing.
 
 ## Running locally
+
+Prerequisites: Node 20+ and Postgres 14+ running locally.
 
 **Backend:**
 
 ```bash
 cd backend
 cp .env.example .env
-# edit DATABASE_URL — see HANDOVER.md for local Postgres setup notes
+# set DATABASE_URL and SESSION_SECRET (the .env.example says how)
 npm install
+npm run migrate      # creates/updates the schema
 npm run dev
 ```
+
+Password-reset emails are printed to the backend log in development, so
+you can test the flow without an email provider.
+
+**Tests** (needs a separate, disposable database - tests create data):
+
+```bash
+createdb focus_test
+TEST_DATABASE_URL=postgresql://localhost/focus_test npm test
+```
+
+The suite covers auth (session rotation, rate limits, MFA, password
+reset, sign-out-everywhere, deletion), cross-user isolation, input
+validation, duplicate prevention, the cron job and data export. CI runs
+it on every PR along with a migration up/down/up check, `npm audit`,
+frontend lint and build.
+
+**Migrations:** `npm run migrate`, `npm run migrate:down` (reverts the
+latest), `npm run migrate:status`. See OPERATIONS.md for how to write one
+that doesn't lock live tables.
 
 **Frontend:**
 
@@ -205,6 +239,18 @@ npm run dev
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Liveness check |
+| GET | `/health/ready` | Readiness: also checks the database (point uptime monitors here) |
+| POST | `/api/auth/register`, `/api/auth/login`, `/api/auth/logout` | Accounts. Login may answer `{ mfaRequired: true }` |
+| POST | `/api/auth/mfa/verify` | Second login step: authenticator or recovery code |
+| POST | `/api/auth/password-reset/request`, `/confirm` | Email a single-use reset link / use it |
+| GET/PATCH | `/api/auth/me` | Current user / change display name |
+| POST | `/api/account/password` | Change (or set) password; signs out other devices |
+| GET | `/api/account/sessions` | Signed-in devices |
+| POST | `/api/account/sessions/revoke` | Sign out other devices, or everywhere |
+| GET/POST | `/api/account/mfa`, `/setup`, `/enable`, `/disable`, `/recovery-codes` | Two-step verification |
+| GET | `/api/account/activity` | Your security activity |
+| GET | `/api/account/export` | Everything stored for your account, as JSON |
+| POST | `/api/account/delete` | Delete the account and all its data |
 | GET/POST | `/api/tags` | List / create tags |
 | PATCH | `/api/tags/:id` | Update a tag's name/color, or assign/unassign its budget |
 | DELETE | `/api/tags/:id` | Delete a tag (sessions keep their history, tag_id goes null) |
@@ -213,7 +259,8 @@ npm run dev
 | POST | `/api/sessions/:id/stop` | Stop a running session |
 | POST | `/api/sessions` | Create a manual (backfilled) session |
 | GET | `/api/sessions?limit=&offset=` | A page of completed sessions (`{ sessions, total }`), for the log UI |
-| GET | `/api/sessions/history` | Full completed-session history, for analytics |
+| GET | `/api/sessions/history` | Completed-session history for analytics (newest 20,000; `X-History-Truncated` says if more exist) |
+| GET | `/api/sessions/export?format=csv\|json` | Streamed export, ISO 8601 UTC timestamps |
 | PATCH/DELETE | `/api/sessions/:id` | Edit or delete a session |
 | GET/POST | `/api/budgets` | List (with assigned tags) / create a budget |
 | PATCH/DELETE | `/api/budgets/:id` | Update or delete a budget |
@@ -232,12 +279,17 @@ npm run dev
 | GET/POST | `/api/tasks` | List open tasks / create one |
 | PATCH/DELETE | `/api/tasks/:id` | Update (e.g. mark done) or delete a task |
 | GET/PUT | `/api/settings` | Read/update the stored timezone offset used by the cron job |
-| GET/POST | `/api/cron/tick?secret=` | Checks due reminders, deadline pace changes, and streak risk — meant for an external scheduler, not manual use |
+| GET/POST | `/api/cron/tick` (header `x-cron-secret`) | Due reminders, deadline pace, streak risk, digests, Google sync, housekeeping - for an external scheduler |
+
+All POSTs accept an `Idempotency-Key` header (the frontend always sends
+one): repeating a request with the same key replays the first response
+instead of acting twice.
 
 ## Deploying
 
-Same free-tier pattern as this series' other projects: backend on Render
-(free tier), frontend on Vercel, Postgres on Supabase. See HANDOVER.md for
+Backend on Render, frontend on Vercel, Postgres on Supabase - see
+**OPERATIONS.md** for the deploy pipeline, rollbacks, secrets, backups,
+monitoring and runbooks. See HANDOVER.md for
 the specific gotchas already hit on those earlier deploys (Supabase IPv6,
 Render's dynamic `PORT`, Vite env vars needing a rebuild to take effect,
 and the `.env.example` placeholder mistake that broke local dev once
@@ -245,13 +297,13 @@ before) — same lessons apply here.
 
 ## Not built (by design, for now)
 
-- No auth/PIN — single-user personal tool. Add one later if this ever
-  needs to be shared or made more private.
-- No editing UI for manual sessions beyond delete (the PATCH endpoint
-  exists on the backend, just no frontend form wired to it yet).
 - No offline support beyond the static app shell — the service worker
   never caches API responses, so the app still needs a network
   connection to actually load or log data. It's installable, not
   offline-first.
 - Deadlines have no notion of "planned rest days" in the pace
   calculation — see HANDOVER.md.
+- No admin panel or support impersonation, no roles beyond "your own
+  account", no billing - none are needed while this is a personal tool.
+- No translations: the UI is English-only, though dates and numbers use
+  the browser's locale.

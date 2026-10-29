@@ -4949,3 +4949,48 @@ button {
   gap: 10px;
   flex-shrink: 0;
 }
+
+/* Auth: secondary actions + headings for MFA / reset steps */
+.fd-auth-heading { font-size: 1.05rem; font-weight: 700; margin: 0 0 0.75rem; }
+.fd-auth-link {
+  background: none; border: 0; padding: 0.25rem 0; margin-top: 0.25rem;
+  color: inherit; opacity: 0.75; text-decoration: underline; cursor: pointer; font: inherit; align-self: center;
+}
+.fd-auth-link:hover, .fd-auth-link:focus-visible { opacity: 1; }
+
+/* Settings -> Account & security */
+.fd-sec { display: flex; flex-direction: column; }
+.fd-sec-panel {
+  padding: 13px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.fd-sec-panel:last-child { border-bottom: none; }
+.fd-sec-panel__body { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.fd-sec-form { display: flex; flex-direction: column; gap: 10px; max-width: 420px; }
+.fd-sec-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--parchment-dim); }
+.fd-sec-field input {
+  font: inherit; font-size: 15px; color: var(--parchment);
+  background: var(--grad-input); border: 1px solid var(--glass-border);
+  border-radius: 4px; padding: 9px 10px; min-width: 0;
+}
+.fd-sec-field input:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.fd-sec-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.fd-sec-ok { font-size: 13px; color: var(--focus-green); }
+.fd-sec-steps { margin: 0; padding-left: 1.2em; font-size: 13.5px; color: var(--parchment); display: flex; flex-direction: column; gap: 6px; }
+.fd-sec-steps a { color: var(--brass); }
+.fd-sec-secret {
+  display: block; margin-top: 6px; font-family: var(--font-mono); font-size: 14px;
+  letter-spacing: 0.08em; color: var(--parchment); overflow-wrap: anywhere; user-select: all;
+}
+.fd-sec-codes pre {
+  font-family: var(--font-mono); font-size: 14px; color: var(--parchment);
+  background: var(--grad-input); border: 1px solid var(--glass-border); border-radius: 10px;
+  padding: 10px 12px; margin: 6px 0 8px; columns: 2; user-select: all; white-space: pre-wrap;
+}
+.fd-sec-activity { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.fd-sec-activity li {
+  display: flex; justify-content: space-between; gap: 12px; padding: 6px 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--line) 45%, transparent); color: var(--parchment);
+}
+.fd-sec-activity li:last-child { border-bottom: none; }
+.fd-sec-activity time { color: var(--parchment-dim); font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }

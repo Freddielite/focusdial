@@ -1,16 +1,16 @@
-import { Router } from "express";
+import { asyncRouter } from "../lib/asyncRouter.js";
 import { pool } from "../db.js";
 import { pushConfigured } from "../lib/push.js";
 
-export const pushRouter = Router();
+export const pushRouter = asyncRouter();
 
 pushRouter.get("/push/public-key", (req, res) => {
   res.json({ publicKey: pushConfigured ? process.env.VAPID_PUBLIC_KEY : null, configured: pushConfigured });
 });
 
 pushRouter.post("/push/subscribe", async (req, res) => {
-  const { endpoint, keys } = req.body;
-  if (!endpoint || !keys?.p256dh || !keys?.auth) {
+  const { endpoint, keys } = req.body || {};
+  if (typeof endpoint !== "string" || !/^https:\/\//.test(endpoint) || typeof keys?.p256dh !== "string" || typeof keys?.auth !== "string" || keys.p256dh.length > 200 || keys.auth.length > 100) {
     return res.status(400).json({ error: "a valid PushSubscription object is required" });
   }
   try {
@@ -28,7 +28,7 @@ pushRouter.post("/push/subscribe", async (req, res) => {
 });
 
 pushRouter.post("/push/unsubscribe", async (req, res) => {
-  const { endpoint } = req.body;
+  const { endpoint } = req.body || {};
   if (!endpoint) return res.status(400).json({ error: "endpoint is required" });
   try {
     await pool.query(`DELETE FROM push_subscriptions WHERE endpoint = $1 AND user_id = $2`, [endpoint, req.userId]);
