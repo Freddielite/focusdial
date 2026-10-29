@@ -10,7 +10,7 @@
     "lint": "eslint src public/sw.js public/offline.js"
   },
   "dependencies": {
-    "framer-motion": "^11.11.17",
+    "framer-motion": "^14.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
